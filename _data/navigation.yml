@@ -1,6 +1,6 @@
 - title: Home
   url: /
-- title: Scala
-  url: scala/
-- title: Sbt
-  url: sbt/
+- title: Blog
+  url: /posts/
+- title: Search
+  url: /search/

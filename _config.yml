@@ -111,6 +111,12 @@ footer_links:
   - title: GitHub
     url: https://github.com/ruach
     icon: fab fa-github-square
+  - title: LinkedIn
+    url: https://www.linkedin.com/in/jaehyuk-lee-29b33b121/
+    icon: fab fa-linkedin
+  - title: StackOverflow
+    url: https://stackoverflow.com/users/4460514/jaehyuk-lee?tab=profile
+    icon: fab fa-stack-overflow
   - title: Feed
     url: atom.xml
     icon: fas fa-rss-square

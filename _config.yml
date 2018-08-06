@@ -20,7 +20,7 @@ email: jhyuk.lee@outlook.com
 description: >- # this means to ignore newlines until "baseurl:"
 logo: # path of site logo, e.g. "/images/logo.png"
 baseurl: "" # the subpath of your site, e.g. /blog
-url: "https://ruach.github.io/" # the base hostname & protocol for your site, e.g. http://example.com
+url: "http://ruach.github.io" # the base hostname & protocol for your site, e.g. http://example.com
 date_format: "%B %-d, %Y"
 read_time: # reading time estimates, e.g. true
 words_per_minute: # 200

@@ -4,8 +4,7 @@ titile: "How ALU module resolves branch"
 categories: risc-v, boom
 ---
 
-```scala
-
+```{.scala filename="execution_unit.scala"}
 204 class ALUExeUnit(
 205   hasBrUnit      : Boolean = false,
 206   hasCSR         : Boolean = false,
@@ -36,7 +35,6 @@ categories: risc-v, boom
 231     hasMem           = hasMem,
 232     hasRocc          = hasRocc)
 233   with freechips.rocketchip.rocket.constants.MemoryOpConstants
-
 ```
 
 

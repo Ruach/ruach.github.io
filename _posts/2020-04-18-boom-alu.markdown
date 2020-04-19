@@ -5,7 +5,7 @@ categories: risc-v, boom
 ---
 
 ```scala
-**exu/execution_unit/execution_units.scala**
+**`exu/execution_unit/execution_units.scala`**
 204 class ALUExeUnit(
 205   hasBrUnit      : Boolean = false,
 206   hasCSR         : Boolean = false,
@@ -34,8 +34,10 @@ categories: risc-v, boom
 229     hasDiv           = hasDiv,
 230     hasIfpu          = hasIfpu,
 231     hasMem           = hasMem,
+
 232     hasRocc          = hasRocc)
 233   with freechips.rocketchip.rocket.constants.MemoryOpConstants
+
 ```
 
 

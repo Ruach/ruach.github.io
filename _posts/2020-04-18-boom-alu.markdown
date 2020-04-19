@@ -36,10 +36,44 @@ categories: risc-v, boom
 229     hasDiv           = hasDiv,
 230     hasIfpu          = hasIfpu,
 231     hasMem           = hasMem,
-
 232     hasRocc          = hasRocc)
 233   with freechips.rocketchip.rocket.constants.MemoryOpConstants
 
+...
+
+269   // ALU Unit -------------------------------
+270   var alu: ALUUnit = null
+271   if (hasAlu) {
+272     alu = Module(new ALUUnit(isBranchUnit = hasBrUnit,
+273                              numStages = numBypassStages,
+274                              dataWidth = xLen))
+275     alu.io.req.valid := (
+276       io.req.valid &&
+277       (io.req.bits.uop.fu_code === FU_ALU ||
+278        io.req.bits.uop.fu_code === FU_BRU ||
+279       (io.req.bits.uop.fu_code === FU_CSR && io.req.bits.uop.uopc =/= uopROCC)))
+280     //ROCC Rocc Commands are taken by the RoCC unit
+281
+282     alu.io.req.bits.uop      := io.req.bits.uop
+283     alu.io.req.bits.kill     := io.req.bits.kill
+284     alu.io.req.bits.rs1_data := io.req.bits.rs1_data
+285     alu.io.req.bits.rs2_data := io.req.bits.rs2_data
+286     alu.io.req.bits.rs3_data := DontCare
+287     alu.io.resp.ready := DontCare
+288     alu.io.brinfo <> io.brinfo
+289
+290     iresp_fu_units += alu
+291
+292     // Bypassing only applies to ALU
+293     io.bypass <> alu.io.bypass
+294
+295     // branch unit is embedded inside the ALU
+296     if (hasBrUnit) {
+297       io.br_unit <> alu.io.br_unit
+298       alu.io.get_ftq_pc <> io.get_ftq_pc
+299       alu.io.status <> io.status
+300     }
+301   }
 ```
 
 

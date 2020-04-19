@@ -4,16 +4,8 @@ titile: "How ALU module resolves branch"
 categories: risc-v, boom
 ---
 
-<style>
-div.sourceCode::before {
-    content: attr(data-filename);
-    display: block;
-    background-color: #cfeadd;
-    font-family: monospace;
-}
-</style>
-
-```{.scala filename="execution_unit.scala"}
+```scala
+**exu/execution_unit/execution_units.scala**
 204 class ALUExeUnit(
 205   hasBrUnit      : Boolean = false,
 206   hasCSR         : Boolean = false,

@@ -73,5 +73,14 @@ categories: risc-v, boom
 301   }
 ```
 
+Class ALUExeUnit makes use of ALUUnit class to instantiate execution pipeline. 
+Here, ALUUnit isnstance introduces a branch unit 
+that can resolve branch instruction (taken/not-taken) and 
+calculate the target address if the branch instruction is taken.
+%
+To resolve the branch instruction,
+there are several information that should be passed to the branch unit.
+The rs1_data and rs2_data are required to calculate the target address.
+Also, the predicted result is passed to the alu as brinfo.
 
 

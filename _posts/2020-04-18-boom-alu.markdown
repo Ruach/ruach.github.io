@@ -1,0 +1,43 @@
+---
+layout: post
+titile: "How ALU module resolves branch"
+categories: risc-v, boom
+---
+
+```scala
+
+204 class ALUExeUnit(
+205   hasBrUnit      : Boolean = false,
+206   hasCSR         : Boolean = false,
+207   hasAlu         : Boolean = true,
+208   hasMul         : Boolean = false,
+209   hasDiv         : Boolean = false,
+210   hasIfpu        : Boolean = false,
+211   hasMem         : Boolean = false,
+212   hasRocc        : Boolean = false)
+213   (implicit p: Parameters)
+214   extends ExecutionUnit(
+215     readsIrf         = true,
+216     writesIrf        = hasAlu || hasMul || hasDiv,
+217     writesLlIrf      = hasMem || hasRocc,
+218     writesLlFrf      = (hasIfpu || hasMem) && p(tile.TileKey).core.fpu != None,
+219     numBypassStages  =
+220       if (hasAlu && hasMul) 3 //TODO XXX p(tile.TileKey).core.imulLatency
+221       else if (hasAlu) 1 else 0,
+222     dataWidth        = p(tile.XLen) + 1,
+223     bypassable       = hasAlu,
+224     alwaysBypassable = hasAlu && !(hasMem || hasBrUnit || hasMul || hasDiv || hasCSR || hasIfpu || hasRocc),
+225     hasCSR           = hasCSR,
+226     hasBrUnit        = hasBrUnit,
+227     hasAlu           = hasAlu,
+228     hasMul           = hasMul,
+229     hasDiv           = hasDiv,
+230     hasIfpu          = hasIfpu,
+231     hasMem           = hasMem,
+232     hasRocc          = hasRocc)
+233   with freechips.rocketchip.rocket.constants.MemoryOpConstants
+
+```
+
+
+

@@ -74,7 +74,7 @@ where the each component is accessed in which pipeline stage.
 249   fetch_controller.io.imem_resp.bits.xcpt := s2_tlb_resp
 250   when (icache.io.resp.valid && icache.io.resp.bits.ae) { fetch_controller.io.imem_resp.bits.xcpt.ae.inst := true.B }
 ```
-![Boom Frontend Pipeline](/_data/front-end.svg)
+![Boom Frontend Pipeline](/data/front-end.svg)
 
 First of all,
 s0_pc is determined based on the signal sent from the fetch_controller.

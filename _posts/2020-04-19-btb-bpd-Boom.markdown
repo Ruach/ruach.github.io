@@ -74,7 +74,6 @@ where the each component is accessed in which pipeline stage.
 249   fetch_controller.io.imem_resp.bits.xcpt := s2_tlb_resp
 250   when (icache.io.resp.valid && icache.io.resp.bits.ae) { fetch_controller.io.imem_resp.bits.xcpt.ae.inst := true.B }
 ```
-![Boom Frontend Pipeline](/images/front-end.svg)
 
 First of all,
 s0_pc is determined based on the signal sent from the fetch_controller.
@@ -83,6 +82,30 @@ When the fetch_controller.io.imem_req.valid signal is true,
 then the new address determined by the fetch_controller should be used
 to fetch instructions from the icache.
 On the other hand, next pc address (npc) is used. 
+
+![Boom Frontend Pipeline](/images/front-end.svg)
+As shown in the above image, 
+frontend of the boom core is pipelined as 5 stages.
+The FetchControlUnit class is the implementation 
+of these 5 stages pipeline.
+%
+Although the figure describes 
+entire fetch pipelines and required components 
+such as TLB, BTB, BPD, and ICache 
+are embedded in the front end pipeline,
+the FetchControlUnit class doesn't include 
+those separate components.
+The required components are instantiated by the BoomFrontendModule
+and thier input/outputs are connected by the BoomFrontendModule.
+%
+Therefore, 
+instead of accessing the Icache directly from the FetchControlUnit class,
+it receives the valid signal and data inputs from the Icache
+which is managed by the BoomFrontendModule class. 
+
+
+The fetch_controller member in the above 
+which is the instance of FetchControlUnit class
 
 **ifu/fetch-control-unit.scala**
 ```scala

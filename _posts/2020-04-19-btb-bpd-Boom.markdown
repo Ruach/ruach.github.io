@@ -88,7 +88,7 @@ As shown in the above image,
 frontend of the boom core is pipelined as 5 stages.
 The FetchControlUnit class is the implementation 
 of these 5 stages pipeline.
-%
+#
 Although the figure describes 
 entire fetch pipelines and required components 
 such as TLB, BTB, BPD, and ICache 
@@ -97,7 +97,7 @@ the FetchControlUnit class doesn't include
 those separate components.
 The required components are instantiated by the BoomFrontendModule
 and thier input/outputs are connected by the BoomFrontendModule.
-%
+#
 Therefore, 
 instead of accessing the Icache directly from the FetchControlUnit class,
 it receives the valid signal and data inputs from the Icache

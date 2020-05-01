@@ -10,11 +10,9 @@ The Fetch and Branch Prediction portions of the pipeline that fetch instructions
 Also, to support enhanced fetch and branch prediction,
 it needs multiple different components
 such as TLB, I-Cache that aids performance of front-end.
-#()
 In this post, 
 we will explore how those components are combined and organized together 
 in the Boom Frontend.
-#()
 To whom wants to understand how the frontend instance is initiated in the boom and 
 how the different components of the Boom is connected with the frontend, 
 please refer the previous posting. 
@@ -53,26 +51,26 @@ Let's delve into the actual pipeline of front-end logic of the Boom core.
 ![Boom Frontend Pipeline](/images/front-end.svg)
 As shown in the above image, 
 frontend of the boom core is pipelined in 5 stages.
-The ***FetchControlUnit*** class is the implementation 
-of these 5 stages pipeline.
-#
+The ***FetchControlUnit*** class instatiated by BoomFrontendModule
+implements these 5 stages pipeline.
 Although the figure describes 
 entire fetch pipelines and required components 
 such as TLB, BTB, BPD, and ICache 
 are embedded in the front end pipeline,
-the FetchControlUnit class doesn't include 
-those separate components.
-The required components are instantiated by the BoomFrontendModule
-and thier input/outputs are connected by this module.
-#
+the actual FetchControlUnit class implementation 
+doesn't include those components.
+Those auxiliary components are instantiated 
+by the BoomFrontendModule and BoomFrontend class
+and the modules can be referenced
+thorugh the outer module instance.
+
+This is because the modules are not only accessed by the front-end pipeline,
+but also utilized by the different pipelines of Boom core.
 Therefore, 
-instead of accessing the Icache directly from the FetchControlUnit class,
-it receives the valid signal and data inputs from the Icache
-which is managed by the BoomFrontendModule class. 
-The fetch_controller member in the above 
-is the instance of FetchControlUnit class.
-Now let's take a look at 
-each pipeline stage of front-end.
+instead of embedding the Icache instance 
+directly from the FetchControlUnit class,
+it receives the valid signal and data inputs from the Icache module
+managed by the upper layer module, the BoomFrontendModule class. 
 
 **ifu/frontend.scala**
 ```scala 
@@ -107,15 +105,15 @@ each pipeline stage of front-end.
 249   fetch_controller.io.imem_resp.bits.xcpt := s2_tlb_resp
 250   when (icache.io.resp.valid && icache.io.resp.bits.ae) { fetch_controller.io.imem_resp.bits.xcpt.ae.inst := true.B }
 ```
-
-First of all,
+The *fetch_controller* member in the BoomFrontendModule
+is the instance of FetchControlUnit class.
+As fetch_controller instacne determines next fetch-pc address,
 s0_pc is determined based on the signal sent from the fetch_controller.
-Here the fetch_controller is an instance of FetchControlUnit.
 When the fetch_controller.io.imem_req.valid signal is true,
 then the new address determined by the fetch_controller should be used
 to fetch instructions from the icache.
 On the other hand, next pc address (npc) is used. 
-
+Now let's take a look at the implementation of 5 stages of front-end. 
 
 
 **ifu/fetch-control-unit.scala**

@@ -10,11 +10,11 @@ The Fetch and Branch Prediction portions of the pipeline that fetch instructions
 Also, to support enhanced fetch and branch prediction,
 it needs multiple different components
 such as TLB, I-Cache that aids performance of front-end.
-%
+#
 In this post, 
 we will explore how those components are combined and organized together 
 in the Boom Frontend.
-%
+#
 To whom wants to understand how the frontend instance is initiated in the boom and 
 how the different components of the Boom is connected with the frontend, 
 please refer the previous posting. 

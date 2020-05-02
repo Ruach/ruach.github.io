@@ -1,6 +1,5 @@
 ---
 layout: single
-classes: wide
 titile: "What is the frontend and how does it orchestrate different components?"
 categories: risc-v, boom
 ---

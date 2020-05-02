@@ -94,6 +94,7 @@ defaults:
       layout: post
       comments: true
       share: true
+    classes: wide
 
 
 # Site Author

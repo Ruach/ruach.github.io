@@ -167,8 +167,6 @@ dpending on the different redirect signals.
 Theses two signals are transferred to the BoomFrontendModule
 through the ready-valid interface.
 
-
-**ifu/fetch-control-unit.scala**
 ```scala
 205   //-------------------------------------------------------------
 206   // **** ICache Access (F1) ****
@@ -223,6 +221,7 @@ which is connected to the fetch_controller.io.imem_resp.bits.data.
 Therefore, without ICache accessing logic in the FetchControlUnit class,
 it can access real instruction bytes fetched from the ICache.
 
+**ifu/fetch-control-unit.scala**
 ```scala
 211   //-------------------------------------------------------------
 212   // **** ICache Response/Pre-decode (F2) ****
@@ -234,7 +233,56 @@ it can access real instruction bytes fetched from the ICache.
 218   q_f3_imemresp.io.enq.bits := io.imem_resp.bits
 219   q_f3_btb_resp.io.enq.bits := io.f2_btb_resp
 ```
+The Boom frontend manages two response queues to keep fetching instructions.
+Note that the queues only considers the input as valid 
+when the io.imem_resp.valid is true. 
+The signal is set on as true 
+when the icache and tlb response correctly
+and s1 and s2 signals are valid. 
+When the signal truns out to be ture,
+The *IMem Response Queue* stores 
+fetched instruction bytes and related informations together. 
 
+**rocket/Frontend.scala**
+```scala
+ 33 class FrontendResp(implicit p: Parameters) extends CoreBundle()(p) {
+ 34   val btb = new BTBResp
+ 35   val pc = UInt(width = vaddrBitsExtended)  // ID stage PC
+ 36   val data = UInt(width = fetchWidth * coreInstBits)
+ 37   val mask = Bits(width = fetchWidth)
+ 38   val xcpt = new FrontendExceptions
+ 39   val replay = Bool()
+ 40 }
+```
+The other queue maintains BTB information.
+
+**bpu/btb/btb.scala**
+```scala 
+113 /**
+114  * The response packet sent back from the BTB
+115  */
+116 class BoomBTBResp(implicit p: Parameters) extends BoomBTBBundle
+117 {
+118   val taken     = Bool()   // is BTB predicting a taken cfi?
+119   val target    = UInt(vaddrBits.W) // what target are we predicting?
+120
+121   // a mask of valid instructions (instructions are
+122   //   masked off by the predicted taken branch from the BTB).
+123   val mask      = UInt(fetchWidth.W) // mask of valid instructions.
+124
+125   // the low-order PC bits of the predicted branch (after
+126   //   shifting off the lowest log(inst_bytes) bits off).
+127   val cfi_idx   = UInt(log2Ceil(fetchWidth).W) // where is cfi we are predicting?
+128   val bpd_type  = BpredType() // which predictor should we use?
+129   val cfi_type  = UInt(CFI_SZ.W)  // what type of instruction is this?
+130   val fetch_pc  = UInt(vaddrBits.W) // the PC we're predicting on (start of the fetch packet).
+131
+132   val bim_resp  = Valid(new BimResp) // Output from the bimodal table. Valid if prediction provided.
+133
+134   val is_rvc    = Bool()
+135   val is_edge   = Bool()
+136 }
+```
 
 ```scala
 252   //-------------------------------------------------------------

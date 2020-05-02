@@ -90,11 +90,12 @@ defaults:
   - scope:
       path: "_posts"
       type: posts
+      classes: wide
     values:
       layout: post
       comments: true
       share: true
-    classes: wide
+      classes: wide
 
 
 # Site Author

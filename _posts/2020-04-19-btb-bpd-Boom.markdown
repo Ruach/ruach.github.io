@@ -167,6 +167,8 @@ dpending on the different redirect signals.
 Theses two signals are transferred to the BoomFrontendModule
 through the ready-valid interface.
 
+
+**ifu/fetch-control-unit.scala**
 ```scala
 205   //-------------------------------------------------------------
 206   // **** ICache Access (F1) ****
@@ -174,6 +176,54 @@ through the ready-valid interface.
 208
 209   // twiddle thumbs
 210
+```
+Interestingly, for the next pipeline stage,
+the FetchControlUnit doesn't include any logic for accessing the ICache. 
+This is because 
+ICache module is included in the BoomFrontend class and 
+actual access to the ICache is managed by the BoomFrontendModule class. 
+Let's revist the BoomFrontendModule class again 
+to take a look at how the frontend access the Icache,
+and its result is forwarded to the FetchControlUnit class. 
+
+**ifu/frontend.scala**
+```scala
+226   icache.io.hartid := io.hartid
+227   icache.io.req.valid := s0_valid
+228   icache.io.req.bits.addr := s0_pc
+229   icache.io.invalidate := io.cpu.flush_icache
+230   icache.io.s1_vaddr := s1_pc
+231   icache.io.s1_paddr := tlb.io.resp.paddr
+232   icache.io.s2_vaddr := s2_pc
+233   icache.io.s1_kill := s2_redirect || tlb.io.resp.miss || s2_replay
+234   icache.io.s2_kill := s2_speculative && !s2_tlb_resp.cacheable || s2_xcpt
+235   icache.io.s2_prefetch := s2_tlb_resp.prefetchable
+236
+237   s0_pc := alignPC(Mux(fetch_controller.io.imem_req.valid, fetch_controller.io.imem_req.bits.pc, npc))
+238   fetch_controller.io.imem_resp.valid := RegNext(s1_valid) && s2_valid &&
+239                                          (icache.io.resp.valid || !s2_tlb_resp.miss && icache.io.s2_kill)
+240   fetch_controller.io.imem_resp.bits.pc := s2_pc
+241
+242   fetch_controller.io.imem_resp.bits.data := icache.io.resp.bits.data
+243   fetch_controller.io.imem_resp.bits.mask := fetchMask(s2_pc)
+244
+245   fetch_controller.io.imem_resp.bits.replay := icache.io.resp.bits.replay || icache.io.s2_kill &&
+246                                                !icache.io.resp.valid && !s2_xcpt
+247   fetch_controller.io.imem_resp.bits.btb := s2_btb_resp_bits
+248   fetch_controller.io.imem_resp.bits.btb.taken := s2_btb_taken
+249   fetch_controller.io.imem_resp.bits.xcpt := s2_tlb_resp
+250   when (icache.io.resp.valid && icache.io.resp.bits.ae) { fetch_controller.io.imem_resp.bits.xcpt.ae.inst := true.B }
+```
+As shown in the above line 226 to 235,
+BoomFrontendModule class sets IO signals 
+required for accessing the instruction cache. 
+And the result of cache access can be retrieved from 
+icache.io.resp.bits.data wire 
+which is connected to the fetch_controller.io.imem_resp.bits.data.
+Therefore, without ICache accessing logic in the FetchControlUnit class,
+it can access real instruction bytes fetched from the ICache.
+
+```scala
 211   //-------------------------------------------------------------
 212   // **** ICache Response/Pre-decode (F2) ****
 213   //-------------------------------------------------------------
@@ -184,6 +234,7 @@ through the ready-valid interface.
 218   q_f3_imemresp.io.enq.bits := io.imem_resp.bits
 219   q_f3_btb_resp.io.enq.bits := io.f2_btb_resp
 ```
+
 
 ```scala
 252   //-------------------------------------------------------------

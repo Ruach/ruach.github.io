@@ -107,14 +107,15 @@ managed by the upper layer module, the BoomFrontendModule class.
 ```
 The *fetch_controller* member in the BoomFrontendModule
 is the instance of FetchControlUnit class.
-As fetch_controller instacne determines next fetch-pc address,
-s0_pc is determined based on the signal sent from the fetch_controller.
+Also, as *BoomFrontendModule* orchestrates most of the front-end modules,
+it feeds current PC address to branch prediction(BTB, BPD) and instruction cache.
+The next fetch address *s0_pc* is determined by the BoomFrontendModule 
+considering different signals sent from the redirect logic and NPC logic. 
 When the fetch_controller.io.imem_req.valid signal is true,
-then the new address determined by the fetch_controller should be used
+the new address determined by the fetch_controller should be used
 to fetch instructions from the icache.
 On the other hand, next pc address (npc) is used. 
 Now let's take a look at the implementation of 5 stages of front-end. 
-
 
 **ifu/fetch-control-unit.scala**
 ```scala

@@ -152,10 +152,20 @@ Now let's take a look at the implementation of 5 stages of front-end.
 202       r_f4_req.bits.addr,
 203       io.f2_btb_resp.bits.target)))))
 ```
-As shown in the above code,
-depending on the multiple different redirection events
-(branch, flush, sfence, btb response??),
-the next pc address should be redirected.
+As shown in the BoomFrontendModule, 
+depending on the fetch_controller.io.imem_req.valid signal,
+s0_pc (next fetch address) is determined.
+The first stage (F0) of the FetchControlUnit determines
+if the next fetch address should be changed 
+from current PC + 4. 
+*f0_redirect_val* is bool type variable
+which indicates whether the next fetch address should be redirected.
+For example, branch, flush, sfence, btb response signals affects redirection.
+Also, *f0_redirect_pc* determines the redirected fetch address.
+Multiple cascaded Mux determines the redirected address
+dpending on the different redirect signals.
+Theses two signals are transferred to the BoomFrontendModule
+through the ready-valid interface.
 
 ```scala
 205   //-------------------------------------------------------------

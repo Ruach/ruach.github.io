@@ -542,6 +542,26 @@ target address of the branch if available.
 350   val f3_btb_mask = Wire(UInt(fetchWidth.W))
 ```
 
+This is off-topic a bit, but 
+to understnad the implementation, we should understand how the 
+chisel convert one data type to the other conveniently.
+First of all, when we look at the line 319
+*is_br* which is Bool type vector 
+is converted into single UInt data.
+Chisel automatically convert each Bool data stored in the vector 
+and 
+form one UInt data 
+by concatenating multiple Bool-to-UInt transformed data.
+For example, if the vector stores 
+[true, true, false]
+in descending order index
+then it will be tranformed as *b110.U*.
+The tranferred value is ANDed with *io.f3_bpd_resp.bits.takens*,
+which finds out predicted taken branch exist in the fetched packet
+based on the information provided by the Backing Predictor (BPD).
+Note that this data structure is different from the 
+*f3_btb_resp* dequeued item from the BTB response queue. 
+
 
 
 ```scala

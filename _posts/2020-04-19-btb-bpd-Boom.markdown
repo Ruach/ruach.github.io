@@ -433,10 +433,75 @@ Although the variables declared in line 256-258 looks single instances
 shared among multiple instruction decoding,
 chisel initiates fetchWidth modules and wires 
 that are not shared.
-The BranchDecode module returns 
-type of branch instruction
+
+**exu/decode.scala**
+```scala
+584 /**
+585  * Smaller Decode unit for the Frontend to decode different
+586  * branches.
+587  * Accepts EXPANDED RVC instructions
+588  */
+589
+590 class BranchDecode(implicit p: Parameters) extends BoomModule
+591 {
+592   val io = IO(new Bundle {
+593     val inst    = Input(UInt(32.W))
+594     val pc      = Input(UInt(vaddrBitsExtended.W))
+595     val is_br   = Output(Bool())
+596     val is_jal  = Output(Bool())
+597     val is_jalr = Output(Bool())
+598     val is_ret  = Output(Bool())
+599     val is_call = Output(Bool())
+600     val target = Output(UInt(vaddrBitsExtended.W))
+601     val cfi_type = Output(UInt(CFI_SZ.W))
+602   })
+603
+604   val bpd_csignals =
+605     freechips.rocketchip.rocket.DecodeLogic(io.inst,
+606                   List[BitPat](N, N, N, IS_X),
+607 ////                      //   is br?
+608 ////                      //   |  is jal?
+609 ////                      //   |  |  is jalr?
+610 ////                      //   |  |  |  br type
+611 ////                      //   |  |  |  |
+612             Array[(BitPat, List[BitPat])](
+613                JAL     -> List(N, Y, N, IS_J),
+614                JALR    -> List(N, N, Y, IS_I),
+615                BEQ     -> List(Y, N, N, IS_B),
+616                BNE     -> List(Y, N, N, IS_B),
+617                BGE     -> List(Y, N, N, IS_B),
+618                BGEU    -> List(Y, N, N, IS_B),
+619                BLT     -> List(Y, N, N, IS_B),
+620                BLTU    -> List(Y, N, N, IS_B)
+621             ))
+622
+623   val (cs_is_br: Bool) :: (cs_is_jal: Bool) :: (cs_is_jalr:Bool) :: imm_sel_ :: Nil = bpd_csignals
+624
+625   io.is_br   := cs_is_br
+626   io.is_jal  := cs_is_jal
+627   io.is_jalr := cs_is_jalr
+628   io.is_call := (cs_is_jal || cs_is_jalr) && GetRd(io.inst) === RA
+629   io.is_ret  := cs_is_jalr && GetRs1(io.inst) === BitPat("b00?01")
+630
+631   io.target := Mux(cs_is_br, ComputeBranchTarget(io.pc, io.inst, xLen),
+632                               ComputeJALTarget(io.pc, io.inst, xLen))
+633   io.cfi_type :=
+634     Mux(cs_is_jalr,
+635       CFI_JALR,
+636     Mux(cs_is_jal,
+637       CFI_JAL,
+638     Mux(cs_is_br,
+639       CFI_BR,
+640       CFI_X)))
+641 }
+```
+The BranchDecode module gets 
+instruction bytes to decode and 
+pc address to compute the target address of branch instruction.
+As a result it turns 
+type of branch instruction (e.g., BR, JAL, CALL)
 and 
-target address of the branch if available.
+target address of the branch if available. 
 
 ```scala
 315

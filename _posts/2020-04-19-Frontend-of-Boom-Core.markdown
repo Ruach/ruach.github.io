@@ -553,7 +553,7 @@ and
 form one UInt data 
 by concatenating multiple Bool-to-UInt transformed data.
 For example, if the vector stores 
-*[true, true, false]*
+[true, true, false]
 in descending order index
 then it will be tranformed as *b110.U*.
 The tranferred value is ANDed with *io.f3_bpd_resp.bits.takens*,

@@ -560,7 +560,8 @@ The tranferred value is ANDed with io.f3_bpd_resp.bits.takens,
 which finds out predicted taken branch in the fetched packet.
 Note that one of the dequeued entry from the BTB response queue has been used here.
 
-351
+
+```scala
 352   when (f3_fire) {
 353     val last_idx  = Mux(inLastChunk(f3_fetch_bundle.pc) && icIsBanked.B,
 354                       (fetchWidth/2-1).U, (fetchWidth-1).U)

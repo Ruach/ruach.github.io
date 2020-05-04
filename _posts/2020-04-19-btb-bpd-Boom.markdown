@@ -223,6 +223,10 @@ it can access real instruction bytes fetched from the ICache.
 
 **ifu/fetch-control-unit.scala**
 ```scala
+130   val q_f3_imemresp   = withReset(reset.toBool || clear_f3) {
+131                           Module(new ElasticReg(gen = new freechips.rocketchip.rocket.FrontendResp)) }
+132   val q_f3_btb_resp   = withReset(reset.toBool || clear_f3) { Module(new ElasticReg(gen = Valid(new BoomBTBResp))) }
+...
 211   //-------------------------------------------------------------
 212   // **** ICache Response/Pre-decode (F2) ****
 213   //-------------------------------------------------------------
@@ -240,8 +244,11 @@ The signal is set on as true
 when the icache and tlb response correctly
 and s1 and s2 signals are valid. 
 When the signal truns out to be ture,
-The *IMem Response Queue* stores 
-fetched instruction bytes and related informations together. 
+The *IMem Response Queue* is a decoupled queue 
+consists of *FrontendResp* class instances.
+The IMem response queue stores 
+fetched instruction bytes 
+and related informations together. 
 
 **rocket/Frontend.scala**
 ```scala
@@ -255,6 +262,8 @@ fetched instruction bytes and related informations together.
  40 }
 ```
 The other queue maintains BTB information.
+*BTB Response Queue* is also decoupled queue and 
+its element consist of *BoomBTBResp* class instance. 
 
 **bpu/btb/btb.scala**
 ```scala 
@@ -284,6 +293,15 @@ The other queue maintains BTB information.
 136 }
 ```
 
+F3 stage is the most complex stage in the front-end pipeline of the Boom.
+Before we delve into its implementation, 
+although the different stages of front-end doesn't split into
+individual modules, 
+digging into input/output of F3 stage
+and  
+which operations are done on its input
+is helpful to understand overall implementation.
+
 **ifu/fetch-control-unit.scala**
 ```scala
 221   //-------------------------------------------------------------
@@ -297,7 +315,30 @@ The other queue maintains BTB information.
 229
 230   q_f3_imemresp.io.deq.ready := f4_ready
 231   q_f3_btb_resp.io.deq.ready := f4_ready
-232
+```
+As shown before in the F2 stage, 
+most important inputs to the F3 stage are 
+IMem response queue and BTB response queue.
+Because F3 stage is a consumer of the two queues,
+it should set the ready signals of the queues.
+And the data stored in the queues are dequeued 
+and stored in f3_imemresp and f3_btb_resp variables.
+Then what operations are done in the F3 stage 
+on the dequeued data?
+
+First, we will take a look at the pre-decode operations 
+done on the feched instructions. 
+Although current implementations are related with fetch stages,
+it needs information about fetched instructions
+because 
+next fecth address can be redirected depending on the branch instructions.
+To fetch instructions back-to-back seamlessly without pipeline stalls,
+it cannot wait until the decode stage finds out the branch instruction from the fecthed packet. 
+Therefore, to locate branch instruction from the fetched instructions
+stored in the IMem Response Queue, 
+F3 stage requires pre-decode stage.
+
+```scala
 233   // round off to nearest fetch boundary
 234   val f3_aligned_pc = alignToFetchBoundary(f3_imemresp.pc)
 235   val f3_debug_pcs  = Wire(Vec(fetchWidth, UInt(vaddrBitsExtended.W)))
@@ -380,6 +421,24 @@ The other queue maintains BTB information.
 312     jal_targs(i) := bpd_decoder.io.target
 313     jal_targs_ma(i) := jal_targs(i)(1) && is_jal(i) && !usingCompressed.B
 314   }
+```
+
+Line 255-314 initiates BranchDecode modules 
+and provides instructions fetched from the Imem response queue. 
+Note that the fetchWidth denotes number of instructions fetched by once
+by the front-end pipeline. 
+Here, the for loop initiates fetchWidth BranchDecode modules
+to pre-decode instructions in parallel.
+Although the variables declared in line 256-258 looks single instances
+shared among multiple instruction decoding,
+chisel initiates fetchWidth modules and wires 
+that are not shared.
+The BranchDecode module returns 
+type of branch instruction
+and 
+target address of the branch if available.
+
+```scala
 315
 316   // Does the BPD have a prediction to make (in the case of a BTB miss?)
 317   // Calculate in F3 but don't redirect until F4.

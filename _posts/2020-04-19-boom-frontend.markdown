@@ -313,13 +313,14 @@ retrieved by *BranchPredictionStage*.
 136 }
 ```
 
-F3 stage is the most complex stage in the front-end pipeline of the Boom.
-Before we delve into its implementation, 
-although the different stages of front-end doesn't split into
-individual modules, 
-digging into input/output of F3 stage
+F3 stage is the most complex stage 
+in the front-end pipeline of the Boom.
+Although 
+the different stages of front-end doesn't split 
+into individual modules, 
+focusing on input/output of F3 stage (data touched in F3 stage)
 and  
-which operations are done on its input
+operations done on the input
 is helpful to understand overall implementation.
 
 **ifu/fetch-control-unit.scala**
@@ -358,8 +359,6 @@ branch instruction can determine
 if the next fecth address should be redirected.
 However, only knowing the branch instruction is inlcuded in the fetch packet
 cannot determine the redirection.
- 
-
 
 
 ```scala

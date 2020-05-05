@@ -56,21 +56,13 @@ implements these 5 stages pipeline.
 Although the figure describes 
 entire fetch pipelines and required components 
 such as TLB, BTB, BPD, and ICache 
-are embedded in the front end pipeline,
+are embedded in the one giant module,
 the actual FetchControlUnit class implementation 
 doesn't include those components.
 Those auxiliary components are instantiated 
-by the BoomFrontendModule and BoomFrontend class
-and the modules can be referenced
+by the BoomFrontendModule and BoomFrontend classes,
+and the initiated modules can be referenced
 thorugh the outer module instance.
-
-This is because the modules are not only accessed by the front-end pipeline,
-but also utilized by the different pipelines of Boom core.
-Therefore, 
-instead of embedding the Icache instance 
-directly from the FetchControlUnit class,
-it receives the valid signal and data inputs from the Icache module
-managed by the upper layer module, the BoomFrontendModule class. 
 
 **ifu/frontend.scala**
 ```scala 
@@ -105,17 +97,28 @@ managed by the upper layer module, the BoomFrontendModule class.
 249   fetch_controller.io.imem_resp.bits.xcpt := s2_tlb_resp
 250   when (icache.io.resp.valid && icache.io.resp.bits.ae) { fetch_controller.io.imem_resp.bits.xcpt.ae.inst := true.B }
 ```
-The *fetch_controller* member in the BoomFrontendModule
-is the instance of FetchControlUnit class.
-Also, as *BoomFrontendModule* orchestrates most of the front-end modules,
-it feeds current PC address to branch prediction(BTB, BPD) and instruction cache.
-The next fetch address *s0_pc* is determined by the BoomFrontendModule 
-considering different signals sent from the redirect logic and NPC logic. 
-When the fetch_controller.io.imem_req.valid signal is true,
-the new address determined by the fetch_controller should be used
-to fetch instructions from the icache.
-On the other hand, next pc address (npc) is used. 
-Now let's take a look at the implementation of 5 stages of front-end. 
+Although F0 stage is implemented inside
+the FectchControlUnit module, 
+BoomFrontendModule manages the next fetch address *s0_pc*.
+This is because *BoomFrontendModule* orchestrates 
+not only the front-end pipeline,
+but also the other auxiliary modules that require next fetch addres.
+The role of the fetch controller is 
+examining whether fetch-addresss-redirection is necessary.
+As shown in the line 237, 
+when the fetch_controller.io.imem_req.valid returns true,
+it will redirect the next fetch address to 
+fetch_controller.io.imem_req.bits.pc.
+On the other hand, 
+next pc address (npc) which is (current PC + 4) is used 
+as the next fetch address.
+Now let's take a look at 
+how the FetchControlUnit determines redirection and retrieve the redirection targetr 
+thorugh the rest of 5 stages in front-end. 
+(How the branch prediction results are derived 
+and 
+how Icache retrieves the actual instruction bytes 
+will be discussed)
 
 **ifu/fetch-control-unit.scala**
 ```scala
@@ -140,7 +143,7 @@ Now let's take a look at the implementation of 5 stages of front-end.
 190   io.imem_resp.ready  := q_f3_imemresp.io.enq.ready
 191
 192   f0_redirect_pc :=
-193     Mux(io.sfence_take_pc,
+193      Mux(io.sfence_take_pc,
 194       io.sfence_addr,
 195     Mux(ftq.io.take_pc.valid,
 196       ftq.io.take_pc.bits.addr,
@@ -152,20 +155,29 @@ Now let's take a look at the implementation of 5 stages of front-end.
 202       r_f4_req.bits.addr,
 203       io.f2_btb_resp.bits.target)))))
 ```
+
 As shown in the BoomFrontendModule, 
 depending on the fetch_controller.io.imem_req.valid signal,
 s0_pc (next fetch address) is determined.
-The first stage (F0) of the FetchControlUnit determines
-if the next fetch address should be changed 
-from current PC + 4. 
+To determine the redirection,
+it should reflect multiple information derived from
+different pipeline stages. 
 *f0_redirect_val* is bool type variable
-which indicates whether the next fetch address should be redirected.
+indicating whether the next fetch address should be redirected.
 For example, branch, flush, sfence, btb response signals affects redirection.
-Also, *f0_redirect_pc* determines the redirected fetch address.
+When redirection is necessary,
+*f0_redirect_pc* contains the redirected fetch address.
 Multiple cascaded Mux determines the redirected address
 dpending on the different redirect signals.
 Theses two signals are transferred to the BoomFrontendModule
 through the ready-valid interface.
+
+In addition to fetching actual instructions and feed them to the execution unit,
+determining the next fecth address is one of the most important job of the front-end. 
+Therefore, while we traverse the 5 stage pipelines of front-end,
+it is worthwhile to carefully look at
+the dependent signals that can affect those two signals 
+that can determine redirection.
 
 ```scala
 205   //-------------------------------------------------------------
@@ -217,7 +229,7 @@ BoomFrontendModule class sets IO signals
 required for accessing the instruction cache. 
 And the result of cache access can be retrieved from 
 icache.io.resp.bits.data wire 
-which is connected to the fetch_controller.io.imem_resp.bits.data.
+which is connected to the fetch_controller.io.imem_resp.bits.data (line 242).
 Therefore, without ICache accessing logic in the FetchControlUnit class,
 it can access real instruction bytes fetched from the ICache.
 
@@ -237,18 +249,22 @@ it can access real instruction bytes fetched from the ICache.
 218   q_f3_imemresp.io.enq.bits := io.imem_resp.bits
 219   q_f3_btb_resp.io.enq.bits := io.f2_btb_resp
 ```
-The Boom frontend manages two response queues to keep fetching instructions.
+The Boom frontend manages two response queues to keep fetching instructions:
+*IMem Response Queue* and *BTB Response Queue*.
 Note that the queues only considers the input as valid 
-when the io.imem_resp.valid is true. 
-The signal is set on as true 
-when the icache and tlb response correctly
-and s1 and s2 signals are valid. 
-When the signal truns out to be ture,
-The *IMem Response Queue* is a decoupled queue 
-consists of *FrontendResp* class instances.
-The IMem response queue stores 
-fetched instruction bytes 
-and related informations together. 
+when the io.imem_resp.valid is true
+because the queues are declared with *decoupled interface*.
+This is because those two reponses can be retrieved 
+from outer modules, ICache and BTB.
+As shown in the line 238-239 in BoomFrontendModule,
+the signal is set on as true 
+when the icache and tlb response correctly, and 
+s1 and s2 signals are valid. 
+
+The IMem Response Queue can enqueue *FrontendResp* class instances.
+The most valuable information in the FronendResp is the data 
+fetched from the *ICache*, 
+which is the raw bytes of instructions.
 
 **rocket/Frontend.scala**
 ```scala
@@ -261,9 +277,13 @@ and related informations together.
  39   val replay = Bool()
  40 }
 ```
-The other queue maintains BTB information.
-*BTB Response Queue* is also decoupled queue and 
-its element consist of *BoomBTBResp* class instance. 
+The other queue 
+stores BTB information called *BoomBTBResp*.
+This structure provides valuable branch prediction information
+such as the type of branch instruction (cfi_type),
+the direction of the branch (taken),
+and target address of the branch (address)
+retrieved by *BranchPredictionStage*.
 
 **bpu/btb/btb.scala**
 ```scala 
@@ -319,24 +339,28 @@ is helpful to understand overall implementation.
 As shown before in the F2 stage, 
 most important inputs to the F3 stage are 
 IMem response queue and BTB response queue.
-Because F3 stage is a consumer of the two queues,
-it should set the ready signals of the queues.
-And the data stored in the queues are dequeued 
-and stored in f3_imemresp and f3_btb_resp variables.
-Then what operations are done in the F3 stage 
-on the dequeued data?
+Because F3 stage consumes the two queues,
+it should set the ready signals of the queues
+before draining the data.
+The f3_imemresp and f3_btb_resp variables
+stores fetche packet and btb prediction 
+for the current fetch pc. 
+Then what operations are done on the data
+in the F3 stage? 
 
 First, we will take a look at the pre-decode operations 
-done on the feched instructions. 
-Although current implementations are related with fetch stages,
-it needs information about fetched instructions
-because 
-next fecth address can be redirected depending on the branch instructions.
-To fetch instructions back-to-back seamlessly without pipeline stalls,
-it cannot wait until the decode stage finds out the branch instruction from the fecthed packet. 
-Therefore, to locate branch instruction from the fetched instructions
-stored in the IMem Response Queue, 
-F3 stage requires pre-decode stage.
+that discern branch instructions within the fetch packet.
+Although current implementations are about fetch pipelines,
+it needs to understand what instructions are contained in the fetch packet
+before the decode stage comes.
+This is because
+branch instruction can determine 
+if the next fecth address should be redirected.
+However, only knowing the branch instruction is inlcuded in the fetch packet
+cannot determine the redirection.
+ 
+
+
 
 ```scala
 233   // round off to nearest fetch boundary
@@ -433,6 +457,7 @@ Although the variables declared in line 256-258 looks single instances
 shared among multiple instruction decoding,
 chisel initiates fetchWidth modules and wires 
 that are not shared.
+The actual pre-decode operation is done by the BranchDecode module. 
 
 **exu/decode.scala**
 ```scala
@@ -495,13 +520,33 @@ that are not shared.
 640       CFI_X)))
 641 }
 ```
+
 The BranchDecode module gets 
-instruction bytes to decode and 
-pc address to compute the target address of branch instruction.
-As a result it turns 
-type of branch instruction (e.g., BR, JAL, CALL)
-and 
-target address of the branch if available. 
+instruction bytes to decode and its address(PC)
+to decode branch instruction and 
+compute the target address of branch instruction.
+Although all branch instructions cannot be fully executed
+at this moment,
+front-end can easliy retrieve 
+target address and taken/not-taken information
+of some branch instructions
+such as XXX
+
+The reason F3 stage requires branch related pre-decoded information is 
+branch target address and taken/not-taken information 
+are necessary to redirect the front-end pipeline.
+To determine redirection, first of all, 
+it should validate whether the branch has been predicted
+by BTB or BPD
+regardless of its validity about taken/not-taken.
+If the branch has been found,
+it should be redirected only when the branch is predicted as taken.
+Note that redirection is determined speculatively 
+because front-end cannot know 
+whether the branch will be actually taken or not taken 
+at the end of the execution pipeline. 
+
+
 
 ```scala
 315
@@ -563,20 +608,9 @@ Note that this data structure is different from the
 *f3_btb_resp* dequeued item from the BTB response queue. 
 
 
-
 ```scala
-352   when (f3_fire) {
-353     val last_idx  = Mux(inLastChunk(f3_fetch_bundle.pc) && icIsBanked.B,
-354                       (fetchWidth/2-1).U, (fetchWidth-1).U)
-355     prev_is_half := (usingCompressed.B
-356     && !(f3_valid_mask(last_idx-1.U) && f3_fetch_bundle.insts(last_idx-1.U)(1,0) === 3.U)
-357     && !f3_kill_mask(last_idx)
-358     && f3_btb_mask(last_idx)
-359     && f3_fetch_bundle.insts(last_idx)(1,0) === 3.U)
-360     prev_half    := f3_fetch_bundle.insts(last_idx)(15,0)
-361   } .elsewhen (io.clear_fetchbuffer) {
-362     prev_is_half := false.B
-363   }
+135   val f3_valid        = q_f3_imemresp.io.deq.valid
+...
 364
 365   when (f3_valid && f3_btb_resp.valid) {
 366     // btb made a prediction
@@ -612,7 +646,27 @@ Note that this data structure is different from the
 396
 397   assert (PopCount(VecInit(f3_bpd_may_redirect_taken, f3_bpd_may_redirect_next)) <= 1.U,
 398     "[bpd_pipeline] mutually-exclusive signals firing")
-399
+```
+
+For branch predictior, there are always tradeoff in between
+complexity and accuracy.
+The Boom Core BTB and BPD design try to get the best of both worlds. 
+The simplest version of branch predictor adopted by the Boom core is Next Line Predictor (NLP).
+NLP makes use of Bi-Modal table, BTB, Return Address Stack(RAS) 
+and simply represented as BTB.
+Complex but accurate version is BPD.
+Basically, BPD makes use of global branch history for prediction.
+However,
+depending on the configuration of the Boom core, 
+it can be presented as different implementations.
+Because NLP is simple,
+when the prediction is avaiable from the NLP,
+it prefers prediction from the BTB.
+However, when the BTB prediction is unavailable,
+it consults the BPD.
+
+
+```scala
 400   // catch any BTB mispredictions (and fix-up missed JALs)
 401   bchecker.io.valid := f3_valid
 402   bchecker.io.inst_mask := VecInit(f3_imemresp.mask.asBools)
@@ -629,6 +683,145 @@ Note that this data structure is different from the
 413   bchecker.io.aligned_pc := f3_aligned_pc
 414   bchecker.io.btb_resp := f3_btb_resp
 415   bchecker.io.bpd_resp := io.f3_bpd_resp
+```
+
+
+**ifu/branch-checker.scala**
+```scala
+ 32 /**
+ 33  * Combinational logic to verify that the BoomBTB predicted correctly. This chooses
+ 34  * between the BrPredictor or the BoomBTB. Also catch JALs.
+ 35  */
+ 36 class BranchChecker(implicit p: Parameters) extends BoomModule
+ 37   with HasL1ICacheBankedParameters
+ 38 {
+ 39   val io = IO(new Bundle {
+ 40     val req           = Valid(new PCReq)
+ 41
+ 42     val valid         = Input(Bool())                   // are the inputs valid?
+ 43     val inst_mask     = Input(Vec(fetchWidth, Bool())) // valid instruction mask from I$
+ 44     val is_br         = Input(Vec(fetchWidth, Bool()))
+ 45     val is_jal        = Input(Vec(fetchWidth, Bool()))
+ 46     val is_jr         = Input(Vec(fetchWidth, Bool()))
+ 47     val is_call       = Input(Vec(fetchWidth, Bool()))
+ 48     val is_ret        = Input(Vec(fetchWidth, Bool()))
+ 49     val is_rvc        = Input(Vec(fetchWidth, Bool()))
+ 50     val br_targs      = Input(Vec(fetchWidth, UInt(vaddrBitsExtended.W)))
+ 51     val jal_targs     = Input(Vec(fetchWidth, UInt(vaddrBitsExtended.W)))
+ 52
+ 53     val edge_inst     = Input(Bool())
+ 54
+ 55     val fetch_pc      = Input(UInt(vaddrBitsExtended.W))
+ 56     val aligned_pc    = Input(UInt(vaddrBitsExtended.W))
+ 57
+ 58     val btb_resp      = Flipped(Valid(new BoomBTBResp))
+ 59     val bpd_resp      = Flipped(Valid(new BpdResp))
+ 60
+ 61     val btb_update    = Valid(new BoomBTBUpdate)
+ 62     val ras_update    = Valid(new RasUpdate)
+ 63
+ 64     val req_cfi_idx   = Output(UInt(log2Ceil(fetchWidth).W)) // where is cfi we are predicting?
+ 65   })
+ 66
+ 67   // Did the BTB mispredict the cfi type?
+ 68   // Did the BTB mispredict the cfi target?
+ 69   // Did the BTB predict a masked-off instruction?
+ 70   val wrong_cfi = WireInit(false.B)
+ 71   val wrong_target = WireInit(false.B)
+ 72
+ 73   val btb_idx = io.btb_resp.bits.cfi_idx
+ 74   val btb_target = io.btb_resp.bits.target
+ 75   val bpd_predicted_taken = io.bpd_resp.valid && io.bpd_resp.bits.takens(io.btb_resp.bits.cfi_idx)
+ 76
+ 77   when (io.btb_resp.valid) {
+ 78     when (io.btb_resp.bits.cfi_type === CFI_BR && (io.btb_resp.bits.taken || bpd_predicted_taken)) {
+ 79       wrong_cfi := !io.is_br(btb_idx)
+ 80       wrong_target := io.br_targs(btb_idx) =/= btb_target
+ 81     } .elsewhen (io.btb_resp.bits.cfi_type === CFI_JAL) {
+ 82       wrong_cfi := !io.is_jal(btb_idx)
+ 83       wrong_target := io.jal_targs(btb_idx) =/= btb_target
+ 84     } .elsewhen (io.btb_resp.bits.cfi_type === CFI_JALR) {
+ 85       wrong_cfi := !io.is_jr(btb_idx)
+ 86     } .otherwise {
+ 87       wrong_cfi := io.btb_resp.bits.cfi_type === CFI_X && io.btb_resp.bits.taken
+ 88       when (io.valid) {
+ 89         assert (io.btb_resp.bits.cfi_type =/= CFI_X, "[fetch] predicted on a non-cfi type.")
+ 90       }
+ 91     }
+ 92   }
+```
+
+The BranchChecker module makes use of pre-decoded information 
+to figure out the branch has been correctly predicted. 
+Especailly, as shown in Line 72-92,
+the module figures out 
+branch traget and branch type has been correctly predicted.
+Note that 
+pre-decode stage cannot retrieve
+target addres for jalr 
+which requires register read to calculate target address, so 
+it cannot validate whether the target has been correctly predicted. 
+
+
+
+ 93
+ 94   val nextline_pc = nextFetchStart(io.aligned_pc)
+ 95
+ 96   val btb_was_wrong = io.btb_resp.valid && (wrong_cfi || wrong_target || !io.inst_mask(btb_idx))
+ 97
+ 98   val jal_idx = PriorityEncoder(io.is_jal.asUInt)
+ 99   val btb_hit  = io.btb_resp.valid
+100   val jal_wins = io.is_jal.reduce(_|_) &&
+101                  (!btb_hit ||
+102                  btb_was_wrong ||
+103                  (jal_idx < btb_idx) ||
+104                  !io.btb_resp.bits.taken)
+105
+106   //-------------------------------------------------------------
+107   // Perform redirection
+108
+109   // Redirect if:
+110   //    - JAL comes before BTB's cfi_idx
+111   //       * kill everything behind JAL -- including BTB's predinfo
+112   //    - BTB was wrong
+113   //       * if JAL, take JAL (if valid instructions available)
+114   //       * if !JAL, request nextline (set all masks to valid).
+115   //    - No JAL, BTB correct
+116   //       * do nothing
+117
+118   io.req.valid := jal_wins || btb_was_wrong
+119   io.req.bits.addr := Mux(jal_wins, io.jal_targs(jal_idx), nextline_pc)
+120   // Help mask out instructions after predicted cfi.
+121   io.req_cfi_idx := Mux(jal_wins, jal_idx, (fetchWidth-1).U)
+122
+123
+124   //-------------------------------------------------------------
+125   // Perform updates
+126
+127   // update the BTB for jumps it missed.
+128   // TODO XXX also allow us to clear bad BTB entries when btb is wrong.
+129   io.btb_update.valid         := jal_wins
+130   io.btb_update.bits.pc       := io.fetch_pc
+131   io.btb_update.bits.target   := io.jal_targs(jal_idx)
+132   io.btb_update.bits.taken    := true.B
+133   io.btb_update.bits.cfi_idx  := jal_idx
+134   io.btb_update.bits.bpd_type := Mux(io.is_call(jal_idx), BpredType.CALL, BpredType.JUMP)
+135   io.btb_update.bits.cfi_type := CFI_JAL
+136   io.btb_update.bits.is_rvc   := io.is_rvc(jal_idx)
+137   io.btb_update.bits.is_edge  := io.edge_inst && (jal_idx === 0.U)
+138
+139   // for critical path reasons, remove dependence on bpu_request to ras_update.
+140   val jal_may_win = io.is_jal.reduce(_|_) && (!btb_hit || btb_was_wrong || jal_idx < btb_idx)
+141   io.ras_update.valid := jal_may_win && io.is_call(jal_idx)
+142   io.ras_update.bits.is_call     := true.B
+143   io.ras_update.bits.is_ret      := false.B
+144   io.ras_update.bits.return_addr := (io.aligned_pc
+145                                     + (jal_idx << log2Ceil(coreInstBytes))
+146                                     + Mux(io.is_rvc(jal_idx), 2.U, 4.U))
+147 }
+```
+
+```scala
 416
 417   // who wins? bchecker or bpd?
 418   val jal_overrides_bpd = f3_has_jal && f3_jal_idx < f3_bpd_redirect_cfiidx && f3_bpd_may_redirect_taken
@@ -712,143 +905,3 @@ Note that this data structure is different from the
 496     }
 497   }
 ```
-
-```scala
-252   //-------------------------------------------------------------
-253   // **** Fetch Controller ****
-254   //-------------------------------------------------------------
-255
-256   fetch_controller.io.br_unit           := io.cpu.br_unit
-257   fetch_controller.io.tsc_reg           := io.cpu.tsc_reg
-258
-259   fetch_controller.io.status            := io.cpu.status
-260   fetch_controller.io.bp                := io.cpu.bp
-261
-262   fetch_controller.io.f2_btb_resp       := bpdpipeline.io.f2_btb_resp
-263   fetch_controller.io.f3_bpd_resp       := bpdpipeline.io.f3_bpd_resp
-264   fetch_controller.io.f2_bpd_resp       := DontCare
-265
-266   fetch_controller.io.clear_fetchbuffer := io.cpu.clear_fetchbuffer
-267
-268   fetch_controller.io.sfence_take_pc    := io.cpu.sfence_take_pc
-269   fetch_controller.io.sfence_addr       := io.cpu.sfence_addr
-270
-271   fetch_controller.io.flush_take_pc     := io.cpu.flush_take_pc
-272   fetch_controller.io.flush_pc          := io.cpu.flush_pc
-273   fetch_controller.io.com_ftq_idx       := io.cpu.com_ftq_idx
-274
-275   fetch_controller.io.flush_info        := io.cpu.flush_info
-276   fetch_controller.io.commit            := io.cpu.commit
-277
-278   io.cpu.get_pc <> fetch_controller.io.get_pc
-279
-280   io.cpu.com_fetch_pc := fetch_controller.io.com_fetch_pc
-281
-282   io.cpu.fetchpacket <> fetch_controller.io.fetchpacket
-```
-
-The s0_pc address determines the next fetch address in the frontend.
-When the 
-
-```scala
-284   //-------------------------------------------------------------
-285   // **** Branch Prediction ****
-286   //-------------------------------------------------------------
-287
-288   bpdpipeline.io.s0_req.valid := s0_valid
-289   bpdpipeline.io.s0_req.bits.addr := s0_pc
-290
-291   bpdpipeline.io.f2_replay := s2_replay
-292   bpdpipeline.io.f2_stall := !fetch_controller.io.imem_resp.ready
-293   bpdpipeline.io.f3_stall := fetch_controller.io.f3_stall
-294   bpdpipeline.io.f3_is_br := fetch_controller.io.f3_is_br
-295   bpdpipeline.io.debug_imemresp_pc := fetch_controller.io.imem_resp.bits.pc
-296
-297   bpdpipeline.io.br_unit_resp := io.cpu.br_unit
-298   bpdpipeline.io.ftq_restore := fetch_controller.io.ftq_restore_history
-299   bpdpipeline.io.redirect := fetch_controller.io.imem_req.valid
-300
-301   bpdpipeline.io.flush := io.cpu.flush
-302
-303   bpdpipeline.io.f2_valid := fetch_controller.io.imem_resp.valid
-304   bpdpipeline.io.f2_redirect := fetch_controller.io.f2_redirect
-305   bpdpipeline.io.f3_will_redirect := fetch_controller.io.f3_will_redirect
-306   bpdpipeline.io.f4_redirect := fetch_controller.io.f4_redirect
-307   bpdpipeline.io.f4_taken := fetch_controller.io.f4_taken
-308   bpdpipeline.io.fe_clear := fetch_controller.io.clear_fetchbuffer
-309
-310   bpdpipeline.io.f2_aligned_pc := alignToFetchBoundary(s2_pc)
-311   bpdpipeline.io.f3_ras_update := fetch_controller.io.f3_ras_update
-312   bpdpipeline.io.f3_btb_update := fetch_controller.io.f3_btb_update
-313   bpdpipeline.io.bim_update    := fetch_controller.io.bim_update
-314   bpdpipeline.io.bpd_update    := fetch_controller.io.bpd_update
-315
-316   bpdpipeline.io.status_prv    := io.cpu.status_prv
-317   bpdpipeline.io.status_debug  := io.cpu.status_debug
-```
-
-**bpu/bpd-pipeline.scala**
-```scala
- 53 /**
- 54  * Wraps the BoomBTB and BrPredictor into a pipeline that is parallel with the Fetch pipeline.
- 55  */
- 56 class BranchPredictionStage(val bankBytes: Int)(implicit p: Parameters) extends BoomModule
- 57 {
- 58   val io = IO(new BoomBundle {
- 59     // Fetch0
- 60     val s0_req            = Flipped(Valid(new freechips.rocketchip.rocket.BTBReq))
- 61     val debug_imemresp_pc = Input(UInt(vaddrBitsExtended.W)) // For debug -- make sure I$ and BTB are synchronised.
- 62
- 63     // Fetch1
- 64
- 65     // Fetch2
- 66     val f2_valid      = Input(Bool()) // f2 stage may proceed into the f3 stage.
- 67     val f2_btb_resp   = Valid(new BoomBTBResp)
- 68     val f2_stall      = Input(Bool()) // f3 is not ready -- back-pressure the f2 stage.
- 69     val f2_replay     = Input(Bool()) // I$ is replaying S2 PC into S0 again (S2 backed up or failed).
- 70     val f2_redirect   = Input(Bool()) // I$ is being redirected from F2.
- 71     val f2_aligned_pc = Input(UInt(vaddrBitsExtended.W))
- 72
- 73     // Fetch3
- 74     val f3_is_br      = Input(Vec(fetchWidth, Bool())) // mask of branches from I$
- 75     val f3_bpd_resp   = Valid(new BpdResp)
- 76     val f3_btb_update = Flipped(Valid(new BoomBTBUpdate))
- 77     val f3_ras_update = Flipped(Valid(new RasUpdate))
- 78     val f3_stall      = Input(Bool()) // f4 is not ready -- back-pressure the f3 stage.
- 79     val f3_will_redirect = Input(Bool())
- 80
- 81     // Fetch4
- 82     val f4_redirect   = Input(Bool()) // I$ is being redirected from F4.
- 83     val f4_taken      = Input(Bool()) // I$ is being redirected from F4 (and it is to take a CFI).
- 84
- 85     // Commit
- 86     val bim_update    = Flipped(Valid(new BimUpdate))
- 87     val bpd_update    = Flipped(Valid(new BpdUpdate))
- 88
- 89     // Other
- 90     val br_unit_resp  = Input(new BranchUnitResp())
- 91     val fe_clear      = Input(Bool()) // The FrontEnd needs to be cleared (due to redirect or flush).
- 92     val ftq_restore   = Flipped(Valid(new RestoreHistory))
- 93     val flush         = Input(Bool()) // pipeline flush from ROB TODO CODEREVIEW (redudant with fe_clear?)
- 94     val redirect      = Input(Bool())
- 95     val status_prv    = Input(UInt(freechips.rocketchip.rocket.PRV.SZ.W))
- 96     val status_debug  = Input(Bool())
- 97   })
- 98
- 99   //************************************************
-100   // construct all of the modules
-101
-102   val btb = BoomBTB(boomParams, bankBytes)
-103   val bpd = BoomBrPredictor(boomParams)
-104
-105   btb.io.status_debug := io.status_debug
-106   bpd.io.status_prv := io.status_prv
-107   bpd.io.do_reset := false.B // TODO
-108
-109   //************************************************
-110   // Branch Prediction (F0 Stage)
-111
-112   btb.io.req := io.s0_req
-113   bpd.io.req := io.s0_req
-```
-

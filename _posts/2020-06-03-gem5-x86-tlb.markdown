@@ -1,0 +1,1078 @@
+---
+layout: post
+titile: "Pagetable walking and pagefault handling in Gem5"
+categories: GEM5, TLB
+---
+*gem5/src/arch/x86/isa/microops/ldstop.isa*
+```cpp
+119 def template MicroLoadInitiateAcc {{
+120     Fault %(class_name)s::initiateAcc(ExecContext * xc,
+121             Trace::InstRecord * traceData) const
+122     {
+123         Fault fault = NoFault;
+124         Addr EA;
+125
+126         %(op_decl)s;
+127         %(op_rd)s;
+128         %(ea_code)s;
+129         DPRINTF(X86, "%s : %s: The address is %#x\n", instMnem, mnemonic, EA);
+130
+131         fault = initiateMemRead(xc, traceData, EA,
+132                                 %(memDataSize)s, memFlags);
+133
+134         return fault;
+135     }
+136 }};
+137
+138 def template MicroLoadCompleteAcc {{
+139     Fault %(class_name)s::completeAcc(PacketPtr pkt, ExecContext * xc,
+140                                       Trace::InstRecord * traceData) const
+141     {
+142         Fault fault = NoFault;
+143
+144         %(op_decl)s;
+145         %(op_rd)s;
+146
+147         getMem(pkt, Mem, dataSize, traceData);
+148
+149         %(code)s;
+150
+151         if(fault == NoFault)
+152         {
+153             %(op_wb)s;
+154         }
+155
+156         return fault;
+157     }
+158 }};
+```
+
+*gem5/src/cpu/simple/timing.cc*
+```cpp
+ 418 Fault
+ 419 TimingSimpleCPU::initiateMemRead(Addr addr, unsigned size,
+ 420                                  Request::Flags flags,
+ 421                                  const std::vector<bool>& byte_enable)
+ 422 {
+ 423     SimpleExecContext &t_info = *threadInfo[curThread];
+ 424     SimpleThread* thread = t_info.thread;
+ 425
+ 426     Fault fault;
+ 427     const int asid = 0;
+ 428     const Addr pc = thread->instAddr();
+ 429     unsigned block_size = cacheLineSize();
+ 430     BaseTLB::Mode mode = BaseTLB::Read;
+ 431
+ 432     if (traceData)
+ 433         traceData->setMem(addr, size, flags);
+ 434
+ 435     RequestPtr req = std::make_shared<Request>(
+ 436         asid, addr, size, flags, dataMasterId(), pc,
+ 437         thread->contextId());
+ 438     if (!byte_enable.empty()) {
+ 439         req->setByteEnable(byte_enable);
+ 440     }
+ 441
+ 442     req->taskId(taskId());
+ 443
+ 444     Addr split_addr = roundDown(addr + size - 1, block_size);
+ 445     assert(split_addr <= addr || split_addr - addr < block_size);
+ 446
+ 447     _status = DTBWaitResponse;
+ 448     if (split_addr > addr) {
+ 449         RequestPtr req1, req2;
+ 450         assert(!req->isLLSC() && !req->isSwap());
+ 451         req->splitOnVaddr(split_addr, req1, req2);H
+ 452
+ 453         WholeTranslationState *state =
+ 454             new WholeTranslationState(req, req1, req2, new uint8_t[size],
+ 455                                       NULL, mode);
+ 456         DataTranslation<TimingSimpleCPU *> *trans1 =
+ 457             new DataTranslation<TimingSimpleCPU *>(this, state, 0);
+ 458         DataTranslation<TimingSimpleCPU *> *trans2 =
+ 459             new DataTranslation<TimingSimpleCPU *>(this, state, 1);
+ 460
+ 461         thread->dtb->translateTiming(req1, thread->getTC(), trans1, mode);
+ 462         thread->dtb->translateTiming(req2, thread->getTC(), trans2, mode);
+ 463     } else {
+ 464         WholeTranslationState *state =
+ 465             new WholeTranslationState(req, new uint8_t[size], NULL, mode);
+ 466         DataTranslation<TimingSimpleCPU *> *translation
+ 467             = new DataTranslation<TimingSimpleCPU *>(this, state);
+ 468         thread->dtb->translateTiming(req, thread->getTC(), translation, mode);
+ 469     }
+ 470
+ 471     return NoFault;
+ 472 }
+```
+
+*gem5/src/arch/x86/tlb.cc*
+```cpp
+441 void
+442 TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
+443         Translation *translation, Mode mode)
+444 {
+445     bool delayedResponse;
+446     assert(translation);
+447     Fault fault =
+448         TLB::translate(req, tc, translation, mode, delayedResponse, true);
+449
+450     if (!delayedResponse)
+451         translation->finish(fault, req, tc, mode);
+452     else
+453         translation->markDelayed();
+454 }
+```
+
+After walking the pagetable, 
+it invokes the finish function defined in the translation object.
+Then where is the translation object? 
+It has been passed by the cpu and 
+instantiated as a DataTranslation class instance.
+
+
+*gem5/src/cpu/translation.hh*
+```cpp
+208 /**
+209  * This class represents part of a data address translation.  All state for
+210  * the translation is held in WholeTranslationState (above).  Therefore this
+211  * class does not need to know whether the translation is split or not.  The
+212  * index variable determines this but is simply passed on to the state class.
+213  * When this part of the translation is completed, finish is called.  If the
+214  * translation state class indicate that the whole translation is complete
+215  * then the execution context is informed.
+216  */
+217 template <class ExecContextPtr>
+218 class DataTranslation : public BaseTLB::Translation
+219 {
+220   protected:
+221     ExecContextPtr xc;
+222     WholeTranslationState *state;
+223     int index;
+224
+225   public:
+226     DataTranslation(ExecContextPtr _xc, WholeTranslationState* _state)
+227         : xc(_xc), state(_state), index(0)
+228     {
+229     }
+230
+231     DataTranslation(ExecContextPtr _xc, WholeTranslationState* _state,
+232                     int _index)
+233         : xc(_xc), state(_state), index(_index)
+234     {
+235     }
+236
+237     /**
+238      * Signal the translation state that the translation has been delayed due
+239      * to a hw page table walk.  Split requests are transparently handled.
+240      */
+241     void
+242     markDelayed()
+243     {
+244         state->delay = true;
+245     }
+246
+247     /**
+248      * Finish this part of the translation and indicate that the whole
+249      * translation is complete if the state says so.
+250      */
+251     void
+252     finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc,
+253            BaseTLB::Mode mode)
+254     {
+255         assert(state);
+256         assert(mode == state->mode);
+257         if (state->finish(fault, index)) {
+258             if (state->getFault() == NoFault) {
+259                 // Don't access the request if faulted (due to squash)
+260                 req->setTranslateLatency();
+261             }
+262             xc->finishTranslation(state);
+263         }
+264         delete this;
+265     }
+266
+267     bool
+268     squashed() const
+269     {
+270         return xc->isSquashed();
+271     }
+272 };
+```
+
+Here finish function defined in DataTranslation re-invokes another finish function through the state member field.
+State field is initiated with the second parameter passed to the constructor of the DataTranslation class.
+When we look at the below code excerpted from the initiateMemRead function,
+we can easily know that WholeTranslationState instance has been passed to the DataTranslation instance.
+
+```cpp
+ 464         WholeTranslationState *state =
+ 465             new WholeTranslationState(req, new uint8_t[size], NULL, mode);
+ 466         DataTranslation<TimingSimpleCPU *> *translation
+ 467             = new DataTranslation<TimingSimpleCPU *>(this, state);
+```
+
+Now let's look at the WholeTranslationState class to figure out another finish function defined in there. 
+
+
+*gem5/src/cpu/translation.hh*
+```cpp
+ 51 /**
+ 52  * This class captures the state of an address translation.  A translation
+ 53  * can be split in two if the ISA supports it and the memory access crosses
+ 54  * a page boundary.  In this case, this class is shared by two data
+ 55  * translations (below).  Otherwise it is used by a single data translation
+ 56  * class.  When each part of the translation is finished, the finish
+ 57  * function is called which will indicate whether the whole translation is
+ 58  * completed or not.  There are also functions for accessing parts of the
+ 59  * translation state which deal with the possible split correctly.
+ 60  */
+ 61 class WholeTranslationState
+ 62 {
+ 63   protected:
+ 64     int outstanding;
+ 65     Fault faults[2];
+ 66
+ 67   public:
+ 68     bool delay;
+ 69     bool isSplit;
+ 70     RequestPtr mainReq;
+ 71     RequestPtr sreqLow;
+ 72     RequestPtr sreqHigh;
+ 73     uint8_t *data;
+ 74     uint64_t *res;
+ 75     BaseTLB::Mode mode;
+ 76
+ 77     /**
+ 78      * Single translation state.  We set the number of outstanding
+ 79      * translations to one and indicate that it is not split.
+ 80      */
+ 81     WholeTranslationState(const RequestPtr &_req, uint8_t *_data,
+ 82                           uint64_t *_res, BaseTLB::Mode _mode)
+ 83         : outstanding(1), delay(false), isSplit(false), mainReq(_req),
+ 84           sreqLow(NULL), sreqHigh(NULL), data(_data), res(_res), mode(_mode)
+ 85     {
+ 86         faults[0] = faults[1] = NoFault;
+ 87         assert(mode == BaseTLB::Read || mode == BaseTLB::Write);
+ 88     }
+ 89
+ 90     /**
+ 91      * Split translation state.  We copy all state into this class, set the
+ 92      * number of outstanding translations to two and then mark this as a
+ 93      * split translation.
+ 94      */
+ 95     WholeTranslationState(const RequestPtr &_req, const RequestPtr &_sreqLow,
+ 96                           const RequestPtr &_sreqHigh, uint8_t *_data,
+ 97                           uint64_t *_res, BaseTLB::Mode _mode)
+ 98         : outstanding(2), delay(false), isSplit(true), mainReq(_req),
+ 99           sreqLow(_sreqLow), sreqHigh(_sreqHigh), data(_data), res(_res),
+100           mode(_mode)
+101     {
+102         faults[0] = faults[1] = NoFault;
+103         assert(mode == BaseTLB::Read || mode == BaseTLB::Write);
+104     }
+105
+106     /**
+107      * Finish part of a translation.  If there is only one request then this
+108      * translation is completed.  If the request has been split in two then
+109      * the outstanding count determines whether the translation is complete.
+110      * In this case, flags from the split request are copied to the main
+111      * request to make it easier to access them later on.
+112      */
+113     bool
+114     finish(const Fault &fault, int index)
+115     {
+116         assert(outstanding);
+117         faults[index] = fault;
+118         outstanding--;
+119         if (isSplit && outstanding == 0) {
+120
+121             // For ease later, we copy some state to the main request.
+122             if (faults[0] == NoFault) {
+123                 mainReq->setPaddr(sreqLow->getPaddr());
+124             }
+125             mainReq->setFlags(sreqLow->getFlags());
+126             mainReq->setFlags(sreqHigh->getFlags());
+127         }
+128         return outstanding == 0;
+129     }
+```
+the finish function defined in WholeTranslationState class 
+just stores generated fault in its own buffer.
+Then who actually process the genereated fault?
+That is *xc->finishTranslation(state)* code in the finish function of DataTranslation class.
+Because DataTranslation class is declared as a template,
+the passed type ExecContextPtr will determine the type of member filed xc.
+
+```cpp
+ 466         DataTranslation<TimingSimpleCPU *> *translation
+ 467             = new DataTranslation<TimingSimpleCPU *>(this, state);
+```
+As shown in the code,
+DataTranslation instance is generated with TimingSimpleCPU class in the initiateMemRead.
+also note that the instance of TImingSimpleCPU is passed to the DataTranslation class constructor 
+and set the xs field of the created instance.
+Therefore, when the xc->finishTranslation(sate) is called above,
+it will invoke finishTranslation function defined in the TimingSimpleCPU.
+Let's look at the function.
+
+```cpp
+ 627 void
+ 628 TimingSimpleCPU::finishTranslation(WholeTranslationState *state)
+ 629 {
+ 630     _status = BaseSimpleCPU::Running;
+ 631
+ 632     if (state->getFault() != NoFault) {
+ 633         if (state->isPrefetch()) {
+ 634             state->setNoFault();
+ 635         }
+ 636         delete [] state->data;
+ 637         state->deleteReqs();
+ 638         translationFault(state->getFault());
+ 639     } else {
+ 640         if (!state->isSplit) {
+ 641             sendData(state->mainReq, state->data, state->res,
+ 642                      state->mode == BaseTLB::Read);
+ 643         } else {
+ 644             sendSplitData(state->sreqLow, state->sreqHigh, state->mainReq,
+ 645                           state->data, state->mode == BaseTLB::Read);
+ 646         }
+ 647     }
+ 648
+ 649     delete state;
+ 650 }
+```
+it ends up ivnoking translationFault function with the fault previously stored in the buffer of the state.
+
+```cpp
+ 361 void
+ 362 TimingSimpleCPU::translationFault(const Fault &fault)
+ 363 {
+ 364     // fault may be NoFault in cases where a fault is suppressed,
+ 365     // for instance prefetches.
+ 366     updateCycleCounts();
+ 367     updateCycleCounters(BaseCPU::CPU_STATE_ON);
+ 368
+ 369     if (traceData) {
+ 370         // Since there was a fault, we shouldn't trace this instruction.
+ 371         delete traceData;
+ 372         traceData = NULL;
+ 373     }
+ 374
+ 375     postExecute();
+ 376
+ 377     advanceInst(fault);
+ 378 }
+```
+translateFault function defined in the TimingSimpleCPU invokes postExecute.
+After the poseExecute has been called, 
+it will invoke advanceInst instruction with the generated fault.
+By looking at the function argument,
+we can know that advanceInst function actually deal with the fault.
+
+
+*gem5/src/cpu/simple/base.cc*
+```cpp 
+572 void
+573 BaseSimpleCPU::postExecute()
+574 {
+575     SimpleExecContext &t_info = *threadInfo[curThread];
+576     SimpleThread* thread = t_info.thread;
+577
+578     assert(curStaticInst);
+579
+580     TheISA::PCState pc = threadContexts[curThread]->pcState();
+581     Addr instAddr = pc.instAddr();
+582     if (FullSystem && thread->profile) {
+583         bool usermode = TheISA::inUserMode(threadContexts[curThread]);
+584         thread->profilePC = usermode ? 1 : instAddr;
+585         ProfileNode *node = thread->profile->consume(threadContexts[curThread],
+586                                                      curStaticInst);
+587         if (node)
+588             thread->profileNode = node;
+589     }
+590
+591     if (curStaticInst->isMemRef()) {
+592         t_info.numMemRefs++;
+593     }
+594
+595     if (curStaticInst->isLoad()) {
+596         ++t_info.numLoad;
+597     }
+598
+599     if (CPA::available()) {
+600         CPA::cpa()->swAutoBegin(threadContexts[curThread], pc.nextInstAddr());
+601     }
+602
+603     if (curStaticInst->isControl()) {
+604         ++t_info.numBranches;
+605     }
+606
+607     /* Power model statistics */
+608     //integer alu accesses
+609     if (curStaticInst->isInteger()){
+610         t_info.numIntAluAccesses++;
+611         t_info.numIntInsts++;
+612     }
+613
+614     //float alu accesses
+615     if (curStaticInst->isFloating()){
+616         t_info.numFpAluAccesses++;
+617         t_info.numFpInsts++;
+618     }
+619
+620     //vector alu accesses
+621     if (curStaticInst->isVector()){
+622         t_info.numVecAluAccesses++;
+623         t_info.numVecInsts++;
+624     }
+625
+626     //number of function calls/returns to get window accesses
+627     if (curStaticInst->isCall() || curStaticInst->isReturn()){
+628         t_info.numCallsReturns++;
+629     }
+630
+631     //the number of branch predictions that will be made
+632     if (curStaticInst->isCondCtrl()){
+633         t_info.numCondCtrlInsts++;
+634     }
+635
+636     //result bus acceses
+637     if (curStaticInst->isLoad()){
+638         t_info.numLoadInsts++;
+639     }
+640
+641     if (curStaticInst->isStore() || curStaticInst->isAtomic()){
+642         t_info.numStoreInsts++;
+643     }
+644     /* End power model statistics */
+645
+646     t_info.statExecutedInstType[curStaticInst->opClass()]++;
+647
+648     if (FullSystem)
+649         traceFunctions(instAddr);
+650
+651     if (traceData) {
+652         traceData->dump();
+653         delete traceData;
+654         traceData = NULL;
+655     }
+656
+657     // Call CPU instruction commit probes
+658     probeInstCommit(curStaticInst, instAddr);
+659 }
+```
+postExecute function doesn't invoke any meaningful function to proceed pipeline.
+It updates stat of the processor such as 
+power model, load instruction counter, etc.
+Lastly, it calls probeInstCommit function.
+This function makes use of probe in GEM5 which supports XXX
+
+*gem5/src/cpu/base.cc*
+``` cpp
+344 ProbePoints::PMUUPtr
+345 BaseCPU::pmuProbePoint(const char *name)
+346 {
+347     ProbePoints::PMUUPtr ptr;
+348     ptr.reset(new ProbePoints::PMU(getProbeManager(), name));
+349
+350     return ptr;
+351 }
+352
+353 void
+354 BaseCPU::regProbePoints()
+355 {
+356     ppAllCycles = pmuProbePoint("Cycles");
+357     ppActiveCycles = pmuProbePoint("ActiveCycles");
+358
+359     ppRetiredInsts = pmuProbePoint("RetiredInsts");
+360     ppRetiredInstsPC = pmuProbePoint("RetiredInstsPC");
+361     ppRetiredLoads = pmuProbePoint("RetiredLoads");
+362     ppRetiredStores = pmuProbePoint("RetiredStores");
+363     ppRetiredBranches = pmuProbePoint("RetiredBranches");
+364
+365     ppSleeping = new ProbePointArg<bool>(this->getProbeManager(),
+366                                          "Sleeping");
+367 }
+368
+369 void
+370 BaseCPU::probeInstCommit(const StaticInstPtr &inst, Addr pc)
+371 {
+372     if (!inst->isMicroop() || inst->isLastMicroop()) {
+373         ppRetiredInsts->notify(1);
+374         ppRetiredInstsPC->notify(pc);
+375     }
+376
+377     if (inst->isLoad())
+378         ppRetiredLoads->notify(1);
+379
+380     if (inst->isStore() || inst->isAtomic())
+381         ppRetiredStores->notify(1);
+382
+383     if (inst->isControl())
+384         ppRetiredBranches->notify(1);
+385 }
+```
+probeInstCommit function send notification to the different listener
+registered by XXX.
+The notify function actually send the notification 
+to the listener.
+Now, let's go back to the advanceInst function
+which recieves the Fault instance as its parameter.
+
+*gem5/src/cpu/simple/timing.cc*
+```cpp
+ 734 void
+ 735 TimingSimpleCPU::advanceInst(const Fault &fault)
+ 736 {
+ 737     SimpleExecContext &t_info = *threadInfo[curThread];
+ 738
+ 739     if (_status == Faulting)
+ 740         return;
+ 741
+ 742     if (fault != NoFault) {
+ 743         DPRINTF(SimpleCPU, "Fault occured. Handling the fault\n");
+ 744
+ 745         advancePC(fault);
+ 746
+ 747         // A syscall fault could suspend this CPU (e.g., futex_wait)
+ 748         // If the _status is not Idle, schedule an event to fetch the next
+ 749         // instruction after 'stall' ticks.
+ 750         // If the cpu has been suspended (i.e., _status == Idle), another
+ 751         // cpu will wake this cpu up later.
+ 752         if (_status != Idle) {
+ 753             DPRINTF(SimpleCPU, "Scheduling fetch event after the Fault\n");
+ 754
+ 755             Tick stall = dynamic_pointer_cast<SyscallRetryFault>(fault) ?
+ 756                          clockEdge(syscallRetryLatency) : clockEdge();
+ 757             reschedule(fetchEvent, stall, true);
+ 758             _status = Faulting;
+ 759         }
+ 760
+ 761         return;
+ 762     }
+ 763
+ 764     if (!t_info.stayAtPC)
+ 765         advancePC(fault);
+ 766
+ 767     if (tryCompleteDrain())
+ 768         return;
+ 769
+ 770     if (_status == BaseSimpleCPU::Running) {
+ 771         // kick off fetch of next instruction... callback from icache
+ 772         // response will cause that instruction to be executed,
+ 773         // keeping the CPU running.
+ 774         fetch();
+ 775     }
+ 776 }
+```
+When the fault argument says that 
+fault has happend during the execution of the previous instruction,
+it delegates fault exception to the advancePC function
+which actually controls the PC register of the core.
+
+*gem5/src/cpu/simple/base.cc*
+```cpp
+661 void
+662 BaseSimpleCPU::advancePC(const Fault &fault)
+663 {
+664     SimpleExecContext &t_info = *threadInfo[curThread];
+665     SimpleThread* thread = t_info.thread;
+666
+667     const bool branching(thread->pcState().branching());
+668
+669     //Since we're moving to a new pc, zero out the offset
+670     t_info.fetchOffset = 0;
+671     if (fault != NoFault) {
+672         curMacroStaticInst = StaticInst::nullStaticInstPtr;
+673         fault->invoke(threadContexts[curThread], curStaticInst);
+674         thread->decoder.reset();
+675     } else {
+676         if (curStaticInst) {
+677             if (curStaticInst->isLastMicroop())
+678                 curMacroStaticInst = StaticInst::nullStaticInstPtr;
+679             TheISA::PCState pcState = thread->pcState();
+680             TheISA::advancePC(pcState, curStaticInst);
+681             thread->pcState(pcState);
+682         }
+683     }
+684
+685     if (branchPred && curStaticInst && curStaticInst->isControl()) {
+686         // Use a fake sequence number since we only have one
+687         // instruction in flight at the same time.
+688         const InstSeqNum cur_sn(0);
+689
+690         if (t_info.predPC == thread->pcState()) {
+691             // Correctly predicted branch
+692             branchPred->update(cur_sn, curThread);
+693         } else {
+694             // Mis-predicted branch
+695             branchPred->squash(cur_sn, thread->pcState(), branching, curThread);
+696             ++t_info.numBranchMispred;
+697         }
+698     }
+699 }
+```
+
+The advancePC function updates current PC of the cpu context in general.
+However, depending on the current CPU state,
+whether the fault has been raised or not,
+it choose different path to update the PC.
+When the fault has been raised, 
+it calls the invoke function referenced by the fault object.
+On the other hand, as usually taken path,
+it updates micropc of the processor
+to execute the current insturction represented by the curStaticInst field. 
+
+Then let's take a look at how the fault can be handled by the invoke function.
+*gem5/srch/arch/x86/faults.cc*
+```cpp
+ 53 namespace X86ISA
+ 54 {
+ 55     void X86FaultBase::invoke(ThreadContext * tc, const StaticInstPtr &inst)
+ 56     {
+ 57         if (!FullSystem) {
+ 58             FaultBase::invoke(tc, inst);
+ 59             return;
+ 60         }
+ 61
+ 62         PCState pcState = tc->pcState();
+ 63         Addr pc = pcState.pc();
+ 64         DPRINTF(Faults, "RIP %#x: vector %d: %s\n",
+ 65                 pc, vector, describe());
+ 66         using namespace X86ISAInst::RomLabels;
+ 67         HandyM5Reg m5reg = tc->readMiscRegNoEffect(MISCREG_M5_REG);
+ 68         MicroPC entry;
+ 69         if (m5reg.mode == LongMode) {
+ 70             if (isSoft()) {
+ 71                 entry = extern_label_longModeSoftInterrupt;
+ 72             } else {
+ 73                 entry = extern_label_longModeInterrupt;
+ 74             }
+ 75         } else {
+ 76             entry = extern_label_legacyModeInterrupt;
+ 77         }
+ 78         tc->setIntReg(INTREG_MICRO(1), vector);
+ 79         tc->setIntReg(INTREG_MICRO(7), pc);
+ 80         if (errorCode != (uint64_t)(-1)) {
+ 81             if (m5reg.mode == LongMode) {
+ 82                 entry = extern_label_longModeInterruptWithError;
+ 83             } else {
+ 84                 panic("Legacy mode interrupts with error codes "
+ 85                         "aren't implementde.\n");
+ 86             }
+ 87             // Software interrupts shouldn't have error codes. If one
+ 88             // does, there would need to be microcode to set it up.
+ 89             assert(!isSoft());
+ 90             tc->setIntReg(INTREG_MICRO(15), errorCode);
+ 91         }
+ 92         pcState.upc(romMicroPC(entry));
+ 93         pcState.nupc(romMicroPC(entry) + 1);
+ 94         tc->pcState(pcState);
+ 95     }
+```
+gem5 provides base interface for every faults defined in the x86 architecture.
+x86 provides different types of events that can intervene the normal execution flow,
+which are fault, abort, trap, interrupts. 
+All those events inherit from the base x86 fault class *X86FaultBase*
+which provides general interfaces and semantics of the x86 fault events.
+Because currently, we are looking at general semantics of x86 fault,
+let's take a look at invoke function provided by X86FaultBase class. 
+But note that depending on type of events,
+different classes inheriting the X86FaultBase can override invoke function
+to define their own semantics of fault events. 
+
+Basically, invoke function makes the processor 
+jump to the pre-defined microcode function
+that actually implements basic semantics of x86 fault,
+which defines what processor registers should be stored to where
+and 
+where the control flow should be transferred after register storing.
+
+To jump to the pre-defined function,
+it makes use of ROM labels that statically stores sequence of x86 microops.
+All the available ROM labels are defined in the RomLabels namespace as show in the below.
+
+*gem5/build/X86/arch/x86/generated/decoder-ns.hh.inc*
+```cpp
+ 4587 namespace RomLabels {
+ 4588 const static uint64_t label_longModeSoftInterrupt_stackSwitched = 92;
+ 4589 const static uint64_t label_longModeInterrupt_processDescriptor = 11;
+ 4590 const static uint64_t label_longModeInterruptWithError_cplStackSwitch = 152;
+ 4591 const static uint64_t label_longModeInterrupt_istStackSwitch = 28;
+ 4592 const static uint64_t label_jmpFarWork = 192;
+ 4593 const static uint64_t label_farJmpSystemDescriptor = 207;
+ 4594 const static uint64_t label_longModeSoftInterrupt_globalDescriptor = 71;
+ 4595 const static uint64_t label_farJmpGlobalDescriptor = 199;
+ 4596 const static uint64_t label_initIntHalt = 186;
+ 4597 const static uint64_t label_longModeInterruptWithError_istStackSwitch = 150;
+ 4598 const static uint64_t label_legacyModeInterrupt = 184;
+ 4599 const static uint64_t label_longModeInterruptWithError_globalDescriptor = 132;
+ 4600 const static uint64_t label_longModeSoftInterrupt_processDescriptor = 72;
+ 4601 const static uint64_t label_longModeInterruptWithError = 122;
+ 4602 const static uint64_t label_farJmpProcessDescriptor = 200;
+ 4603 const static uint64_t label_longModeSoftInterrupt = 61;
+ 4604 const static uint64_t label_longModeSoftInterrupt_istStackSwitch = 89;
+ 4605 const static uint64_t label_longModeInterrupt_globalDescriptor = 10;
+ 4606 const static uint64_t label_longModeInterrupt_cplStackSwitch = 30;
+ 4607 const static uint64_t label_longModeInterrupt = 0;
+ 4608 const static uint64_t label_longModeInterruptWithError_processDescriptor = 133;
+ 4609 const static uint64_t label_longModeInterruptWithError_stackSwitched = 153;
+ 4610 const static uint64_t label_longModeInterrupt_stackSwitched = 31;
+ 4611 const static uint64_t label_longModeSoftInterrupt_cplStackSwitch = 91;
+ 4612 const static MicroPC extern_label_initIntHalt = 186;
+ 4613 const static MicroPC extern_label_longModeInterruptWithError = 122;
+ 4614 const static MicroPC extern_label_longModeInterrupt = 0;
+ 4615 const static MicroPC extern_label_longModeSoftInterrupt = 61;
+ 4616 const static MicroPC extern_label_legacyModeInterrupt = 184;
+ 4617 const static MicroPC extern_label_jmpFarWork = 192;
+ 4618 }
+```
+Because we are investigating general x86-64 faults,
+we will take a look at the ROM label named *label_longModeInterrupt*
+which is referenced when the processor runs as longmode with no software interrupt.
+After it selects the ROM label depnding on the processor state,
+it sets the registers to pass two basic arguments
+interrupt number and PC address 
+ to the selected microcode function.
+Additional, when the interrupt pass the error code,
+then it pass that code also.
+
+To pass the arguments, 
+it invokes setIntRegs function defined in the threadcontext. 
+threadcontext used here is instance of SimpleThread class defined in cpu/simple_thread.hh
+When you use the o3 out-of-order cpu model, then you have to look at O3ThreadContext class.
+Both classes inheirt ThreadContext class which provide generic interface 
+for different CPU models. 
+
+*gem5/src/cpu/simple_thread.hh*
+```cpp
+ 98 class SimpleThread : public ThreadState, public ThreadContext
+ 99 {
+100   protected:
+101     typedef TheISA::MachInst MachInst;
+102     using VecRegContainer = TheISA::VecRegContainer;
+103     using VecElem = TheISA::VecElem;
+104     using VecPredRegContainer = TheISA::VecPredRegContainer;
+105   public:
+106     typedef ThreadContext::Status Status;
+107
+108   protected:
+109     std::array<RegVal, TheISA::NumFloatRegs> floatRegs;
+110     std::array<RegVal, TheISA::NumIntRegs> intRegs;
+111     std::array<VecRegContainer, TheISA::NumVecRegs> vecRegs;
+112     std::array<VecPredRegContainer, TheISA::NumVecPredRegs> vecPredRegs;
+113     std::array<RegVal, TheISA::NumCCRegs> ccRegs;
+114     TheISA::ISA *const isa;    // one "instance" of the current ISA.
+115
+116     TheISA::PCState _pcState;
+
+477     void
+478     setIntReg(RegIndex reg_idx, RegVal val) override
+479     {
+480         int flatIndex = isa->flattenIntIndex(reg_idx);
+481         assert(flatIndex < TheISA::NumIntRegs);
+482         DPRINTF(IntRegs, "Setting int reg %d (%d) to %#x.\n",
+483                 reg_idx, flatIndex, val);
+484         setIntRegFlat(flatIndex, val);
+485     }
+```
+As shown in the above class definition,
+it declares ISA dependent registers as its member field. 
+*TheISA* defined symbol will be translated to 
+architecture specific namespace depending on the architecture
+that the Gem5 has been compiled to.
+And the setIntReg function just stores
+the data to the intRegs array located by the index. 
+Note that setIntReg array contains not only the architecture registers 
+such as rsi,rdi,rcx in x86,
+but also the integer type micro-registers 
+used by the microops.
+
+Because x86 in GEM5 defines 16 Integer registers available to the microops,
+(look at gem5/src/arch/x86/x86_traits.hh) 
+it can pass up to 16 Integer value through setIntReg function.
+As shown in the above code, micro register 1,7, and 15 has been used 
+to pass the fault related arguments to the microops.
+
+After finishing setting the required parameters
+to execute microops stored in the ROM,
+now, it jumps to the stored ROM code pointed to by the label.
+This control flow transition is done by 
+updating _pcState memeber field defined in the SimpleThread class.
+When we look at the last three lines of code in the invoke function,
+we can find that it updates upc field of the pcState 
+as location of the ROM code.
+After that, by invoking tc->pcState(pcState)
+it update its member field _pcState to the new pcState
+that make the processor run from the updated micro pc address.
+
+However, this is just updating pcState member field of the ThreadContext,
+then who actually redirects the pipeline to 
+fetch the new instructions from the ROM
+not from the faulting instruction?
+Let's go back to the advancePC function
+that called the invoke function.
+
+```cpp
+673         fault->invoke(threadContexts[curThread], curStaticInst);
+674         thread->decoder.reset();
+```
+
+After the invoke function has been executed,
+it resets the decoder,
+which update decoder state as *ResetState*.
+To understand how the decoder reset the internals,
+let's look at the below code
+
+*gem5/src/arch/x86/decoder.cc*
+```cpp
+ 73 void
+ 74 Decoder::process()
+ 75 {
+ 76     //This function drives the decoder state machine.
+ 77
+ 78     //Some sanity checks. You shouldn't try to process more bytes if
+ 79     //there aren't any, and you shouldn't overwrite an already
+ 80     //decoder ExtMachInst.
+ 81     assert(!outOfBytes);
+ 82     assert(!instDone);
+ 83
+ 84     if (state == ResetState)
+ 85         state = doResetState();
+ 86     if (state == FromCacheState) {
+ 87         state = doFromCacheState();
+ 88     } else {
+ 89         instBytes->chunks.push_back(fetchChunk);
+ 90     }
+```
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*gem5/src/base/types.hh*
+```cpp
+136 /**
+137  * Address type
+138  * This will probably be moved somewhere else in the near future.
+139  * This should be at least as big as the biggest address width in use
+140  * in the system, which will probably be 64 bits.
+141  */
+142 typedef uint64_t Addr;
+143
+144 typedef uint16_t MicroPC;
+145
+146 static const MicroPC MicroPCRomBit = 1 << (sizeof(MicroPC) * 8 - 1);
+147
+148 static inline MicroPC
+149 romMicroPC(MicroPC upc)
+150 {
+151     return upc | MicroPCRomBit;
+152 }
+```
+
+*gem5/src/arch/x86/types.hh*
+```cpp
+ 51 namespace X86ISA
+ 52 {
+ 53     //This really determines how many bytes are passed to the decoder.
+ 54     typedef uint64_t MachInst;
+
+289     class PCState : public GenericISA::UPCState<MachInst>
+290     {
+291       protected:
+292         typedef GenericISA::UPCState<MachInst> Base;
+293
+294         uint8_t _size;
+295
+296       public:
+297         void
+298         set(Addr val)
+299         {
+300             Base::set(val);
+301             _size = 0;
+302         }
+303
+304         PCState() {}
+305         PCState(Addr val) { set(val); }
+306
+307         void
+308         setNPC(Addr val)
+309         {
+310             Base::setNPC(val);
+311             _size = 0;
+312         }
+313
+314         uint8_t size() const { return _size; }
+315         void size(uint8_t newSize) { _size = newSize; }
+316
+317         bool
+318         branching() const
+319         {
+320             return (this->npc() != this->pc() + size()) ||
+321                    (this->nupc() != this->upc() + 1);
+322         }
+323
+324         void
+325         advance()
+326         {
+327             Base::advance();
+328             _size = 0;
+329         }
+330
+331         void
+332         uEnd()
+333         {
+334             Base::uEnd();
+335             _size = 0;
+336         }
+337
+338         void
+339         serialize(CheckpointOut &cp) const
+340         {
+341             Base::serialize(cp);
+342             SERIALIZE_SCALAR(_size);
+343         }
+344
+345         void
+346         unserialize(CheckpointIn &cp)
+347         {
+348             Base::unserialize(cp);
+349             UNSERIALIZE_SCALAR(_size);
+350         }
+351     };
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+By the way, what is the *TheISA* namespace?
+When you grep with "namespace TheISA" 
+to find out files that define TheISA namespace,
+you can only finds namespace declaration with very few classes in it.
+Then where those fiedls of the TheISA namespace come from?
+To understand the TheISA:: namespace,
+we should look at the build files.
+
+*build/X86/config/the_isa.hh*
+```cpp
+  1 #ifndef __CONFIG_THE_ISA_HH__
+  2 #define __CONFIG_THE_ISA_HH__
+  3
+  4 #define ALPHA_ISA 1
+  5 #define ARM_ISA 2
+  6 #define MIPS_ISA 3
+  7 #define NULL_ISA 4
+  8 #define POWER_ISA 5
+  9 #define RISCV_ISA 6
+ 10 #define SPARC_ISA 7
+ 11 #define X86_ISA 8
+ 12
+ 13 enum class Arch {
+ 14   AlphaISA = ALPHA_ISA,
+ 15   ArmISA = ARM_ISA,
+ 16   MipsISA = MIPS_ISA,
+ 17   NullISA = NULL_ISA,
+ 18   PowerISA = POWER_ISA,
+ 19   RiscvISA = RISCV_ISA,
+ 20   SparcISA = SPARC_ISA,
+ 21   X86ISA = X86_ISA
+ 22 };
+ 23
+ 24 #define THE_ISA X86_ISA
+ 25 #define TheISA X86ISA
+ 26 #define THE_ISA_STR "x86"
+ 27
+ 28 #endif // __CONFIG_THE_ISA_HH__
+```
+Here, we can easily, find that TheISA is defined as X86ISA.
+Also when we look at the SConScript file,
+we can find python function names *makeTheISA* that 
+actually fills out content of config/the_isa.hh file
+with the corresponding GEM5 build configuration.
+Here because I compiled GEM5 with the X86 configuration,
+it defines the TheISA as X86ISA.
+
+Therefore, when the TheISA has been used on the cpu related files,
+it is not a actual namespace called "TheISA",
+but the architecture dependent ISA namespace
+defined as the TheISA in the config file.
+Consequently,
+when you encounter namespace TheISA,
+first check whether the config/the_isa.hh header file has been included;
+and when the answer is yes,
+then you have to look at the architecture dependent namespace 
+defined in the gem5/src/arch/YOUR_ARCHITECTURE directory.
+In my case, because I use the X86
+it should be X86ISA namespace.
+
+Now, let's go back to our mainline code advancePC.
+
+```cpp
+676         if (curStaticInst) {
+677             if (curStaticInst->isLastMicroop())
+678                 curMacroStaticInst = StaticInst::nullStaticInstPtr;
+679             TheISA::PCState pcState = thread->pcState();
+680             TheISA::advancePC(pcState, curStaticInst);
+681             thread->pcState(pcState);
+682         }
+```
+
+When the curStaticInst exist 
+and if the current instruction is not the last Microop,
+then it should advance its microPC.
+To do that, it invokes advancePC of the X86ISA.
+
+*gem5/src/arch/x86/insts/microop.hh*
+```cpp
+ 45 namespace X86ISA
+ 46 {
+126         void
+127         advancePC(PCState &pcState) const
+128         {
+129             if (flags[IsLastMicroop])
+130                 pcState.uEnd();
+131             else
+132                 pcState.uAdvance();
+133         }
+```
+When we look at the microop.hh file in the x86 directory,
+we can find that advancePC function is defined inside the namespace X86ISA.
+Therefore, the TheISA::advancePC function in line 680 of 
+simple/base.cc file
+invokes the above function.
+As we can infer from the name of the function 
+used in the X86ISA::advancePC,
+when it is lastMicroop, it ends microop.
+On the other hand, 
+it should advance its micro pc 
+which is done by pcState.uAdvance function call.
+

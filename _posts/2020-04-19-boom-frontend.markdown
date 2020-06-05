@@ -343,9 +343,6 @@ IMem response queue and BTB response queue.
 Because F3 stage consumes the two queues,
 it should set the ready signals of the queues
 before draining the data.
-The f3_imemresp and f3_btb_resp variables
-stores fetche packet and btb prediction 
-for the current fetch pc. 
 Then what operations are done on the data
 in the F3 stage? 
 
@@ -359,7 +356,6 @@ branch instruction can determine
 if the next fecth address should be redirected.
 However, only knowing the branch instruction is inlcuded in the fetch packet
 cannot determine the redirection.
-
 
 ```scala
 233   // round off to nearest fetch boundary
@@ -531,20 +527,30 @@ target address and taken/not-taken information
 of some branch instructions
 such as XXX
 
-The reason F3 stage requires branch related pre-decoded information is 
-branch target address and taken/not-taken information 
-are necessary to redirect the front-end pipeline.
-To determine redirection, first of all, 
-it should validate whether the branch has been predicted
-by BTB or BPD
-regardless of its validity about taken/not-taken.
-If the branch has been found,
-it should be redirected only when the branch is predicted as taken.
-Note that redirection is determined speculatively 
-because front-end cannot know 
-whether the branch will be actually taken or not taken 
-at the end of the execution pipeline. 
+However, 
+because pre-decode stage can only provide 
+branch information retrieved from static instruction bytes,
+it is hard to know
+the direction of the branch (taken/not-taken) and 
+target address at this moment.
+Those information can be retireved only 
+after reading the register and 
+executing instruction. 
+Therefore, 
+Boom architecture relies on the branch prediction.
 
+For branch predictior, 
+there are always tradeoff in between
+complexity and accuracy.
+The Boom Core tries to get the best of both worlds
+by adopting two branch predictors, BTB and BPD.
+The simplest version of branch predictor 
+is Next Line Predictor (NLP).
+NLP makes use of Bi-Modal table, BTB, Return Address Stack(RAS) 
+and simply represented as BTB.
+Complex but accurate version is Backing Predictor (BPD).
+BPD makes use of global branch history for prediction.
+Let's take a loot at how the BPD and BTB information are utilized in F3 stage.
 
 
 ```scala
@@ -586,6 +592,18 @@ at the end of the execution pipeline.
 350   val f3_btb_mask = Wire(UInt(fetchWidth.W))
 ```
 
+Compared to BTB response accessible in F2 stage,
+BPD response can be retireved after F3 stage 
+because BpdPredictionStage takes one more cycle
+to generate the prediction. 
+Also, compared to the BTB response,
+BPD response provides very limited branch information
+such as branch direction.
+Therefore, when the F3 stage follows BPD prediction,
+it should makes use of pre-decoded information 
+and BTB response 
+to figure out branch type and target address. 
+
 This is off-topic a bit, but 
 to understnad the implementation, we should understand how the 
 chisel convert one data type to the other conveniently.
@@ -601,16 +619,12 @@ For example, if the vector stores
 in descending order index
 then it will be tranformed as *b110.U*.
 The tranferred value is ANDed with *io.f3_bpd_resp.bits.takens*,
-which finds out predicted taken branch exist in the fetched packet
-based on the information provided by the Backing Predictor (BPD).
-Note that this data structure is different from the 
-*f3_btb_resp* dequeued item from the BTB response queue. 
+which finds out predicted taken branch exist in the fetched packet.
 
 
 ```scala
 135   val f3_valid        = q_f3_imemresp.io.deq.valid
 ...
-364
 365   when (f3_valid && f3_btb_resp.valid) {
 366     // btb made a prediction
 367     // Make a redirect request if:
@@ -647,22 +661,17 @@ Note that this data structure is different from the
 398     "[bpd_pipeline] mutually-exclusive signals firing")
 ```
 
-For branch predictior, there are always tradeoff in between
-complexity and accuracy.
-The Boom Core BTB and BPD design try to get the best of both worlds. 
-The simplest version of branch predictor adopted by the Boom core is Next Line Predictor (NLP).
-NLP makes use of Bi-Modal table, BTB, Return Address Stack(RAS) 
-and simply represented as BTB.
-Complex but accurate version is BPD.
-Basically, BPD makes use of global branch history for prediction.
-However,
-depending on the configuration of the Boom core, 
-it can be presented as different implementations.
-Because NLP is simple,
-when the prediction is avaiable from the NLP,
-it prefers prediction from the BTB.
-However, when the BTB prediction is unavailable,
-it consults the BPD.
+To determine redirection, first of all, 
+it should validate whether the branch has been predicted
+by BTB or BPD
+regardless of its validity about taken/not-taken.
+If the branch has been found,
+it should be redirected only when the branch is predicted as taken.
+Note that redirection is determined speculatively 
+because front-end cannot know 
+whether the branch will be actually taken or not taken 
+at the end of the execution pipeline. 
+
 
 
 ```scala

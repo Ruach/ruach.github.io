@@ -14,36 +14,36 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-locale: en-US
-title: Jaehyuk
-email: jhyuk.lee@outlook.com
-url: "http://ruach.github.io" # the base hostname & protocol for your site, e.g. http://example.com
-date_format: "%B %-d, %Y"
-read_time: # reading time estimates, e.g. true
-
-
-# Other social media
-disqus:
-  shortname: "jaehyuk"
-github_username:  ruach
 
 # Build settings
 remote_theme: "mmistakes/so-simple-theme"
 
-# Taxonomy pages
-
-# Search
-search_full_content: true
-
-# Collections
-collections:
-
+locale: en-US
+title: Jaehyuk
+email: jhyuk.lee@outlook.com
+url: "http://ruach.github.io" # the base hostname & protocol for your site, e.g. http://example.com
 
 plugins:
   - jekyll-seo-tag
   - jekyll-sitemap
   - jekyll-feed
   - jekyll-paginate
+
+google_fonts:
+  - name: "Source Sans Pro"
+    weights: "400,400i,700,700i"
+  - name: "Lora"
+    weights: "400,400i,700,700i"
+
+disqus:
+  shortname: "jaehyuk"
+github_username:  ruach
+
+mathjax:
+  enable: true
+
+search_full_content: true
+
 
 # Front Matter Defaults
 defaults:

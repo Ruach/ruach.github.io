@@ -3,8 +3,10 @@ layout: post
 titile: "Pagetable walking and pagefault handling in Gem5"
 categories: GEM5, TLB
 ---
+
 *gem5/src/arch/x86/isa/microops/ldstop.isa*
 ```cpp
+{% raw %}
 119 def template MicroLoadInitiateAcc {{
 120     Fault %(class_name)s::initiateAcc(ExecContext * xc,
 121             Trace::InstRecord * traceData) const
@@ -45,6 +47,7 @@ categories: GEM5, TLB
 156         return fault;
 157     }
 158 }};
+{% endraw %}
 ```
 
 *gem5/src/cpu/simple/timing.cc*

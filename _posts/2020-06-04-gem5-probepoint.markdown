@@ -164,3 +164,203 @@ categories: GEM5, probe
 ProbePointArg class provides notify method that delivers 
 notification to the registered listners for a probe 
 associated with this class instance.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*gem5/src/cpu/simple/base.cc*
+```cpp
+572 void
+573 BaseSimpleCPU::postExecute()
+574 {
+575     SimpleExecContext &t_info = *threadInfo[curThread];
+576     SimpleThread* thread = t_info.thread;
+577
+578     assert(curStaticInst);
+579
+580     TheISA::PCState pc = threadContexts[curThread]->pcState();
+581     Addr instAddr = pc.instAddr();
+582     if (FullSystem && thread->profile) {
+583         bool usermode = TheISA::inUserMode(threadContexts[curThread]);
+584         thread->profilePC = usermode ? 1 : instAddr;
+585         ProfileNode *node = thread->profile->consume(threadContexts[curThread],
+586                                                      curStaticInst);
+587         if (node)
+588             thread->profileNode = node;
+589     }
+590
+591     if (curStaticInst->isMemRef()) {
+592         t_info.numMemRefs++;
+593     }
+594
+595     if (curStaticInst->isLoad()) {
+596         ++t_info.numLoad;
+597     }
+598
+599     if (CPA::available()) {
+600         CPA::cpa()->swAutoBegin(threadContexts[curThread], pc.nextInstAddr());
+601     }
+602
+603     if (curStaticInst->isControl()) {
+604         ++t_info.numBranches;
+605     }
+606
+607     /* Power model statistics */
+608     //integer alu accesses
+609     if (curStaticInst->isInteger()){
+610         t_info.numIntAluAccesses++;
+611         t_info.numIntInsts++;
+612     }
+613
+614     //float alu accesses
+615     if (curStaticInst->isFloating()){
+616         t_info.numFpAluAccesses++;
+617         t_info.numFpInsts++;
+618     }
+619
+620     //vector alu accesses
+621     if (curStaticInst->isVector()){
+622         t_info.numVecAluAccesses++;
+623         t_info.numVecInsts++;
+624     }
+625
+626     //number of function calls/returns to get window accesses
+627     if (curStaticInst->isCall() || curStaticInst->isReturn()){
+628         t_info.numCallsReturns++;
+629     }
+630
+631     //the number of branch predictions that will be made
+632     if (curStaticInst->isCondCtrl()){
+633         t_info.numCondCtrlInsts++;
+634     }
+635
+636     //result bus acceses
+637     if (curStaticInst->isLoad()){
+638         t_info.numLoadInsts++;
+639     }
+640
+641     if (curStaticInst->isStore() || curStaticInst->isAtomic()){
+642         t_info.numStoreInsts++;
+643     }
+644     /* End power model statistics */
+645
+646     t_info.statExecutedInstType[curStaticInst->opClass()]++;
+647
+648     if (FullSystem)
+649         traceFunctions(instAddr);
+650
+651     if (traceData) {
+652         traceData->dump();
+653         delete traceData;
+654         traceData = NULL;
+655     }
+656
+657     // Call CPU instruction commit probes
+658     probeInstCommit(curStaticInst, instAddr);
+659 }
+```
+
+*gem5/src/cpu/simple/base.cc*
+```cpp
+572 void
+573 BaseSimpleCPU::postExecute()
+574 {
+575     SimpleExecContext &t_info = *threadInfo[curThread];
+576     SimpleThread* thread = t_info.thread;
+577
+578     assert(curStaticInst);
+579
+580     TheISA::PCState pc = threadContexts[curThread]->pcState();
+581     Addr instAddr = pc.instAddr();
+582     if (FullSystem && thread->profile) {
+583         bool usermode = TheISA::inUserMode(threadContexts[curThread]);
+584         thread->profilePC = usermode ? 1 : instAddr;
+585         ProfileNode *node = thread->profile->consume(threadContexts[curThread],
+586                                                      curStaticInst);
+587         if (node)
+588             thread->profileNode = node;
+589     }
+590
+591     if (curStaticInst->isMemRef()) {
+592         t_info.numMemRefs++;
+593     }
+594
+595     if (curStaticInst->isLoad()) {
+596         ++t_info.numLoad;
+597     }
+598
+599     if (CPA::available()) {
+600         CPA::cpa()->swAutoBegin(threadContexts[curThread], pc.nextInstAddr());
+601     }
+602
+603     if (curStaticInst->isControl()) {
+604         ++t_info.numBranches;
+605     }
+606
+607     /* Power model statistics */
+608     //integer alu accesses
+609     if (curStaticInst->isInteger()){
+610         t_info.numIntAluAccesses++;
+611         t_info.numIntInsts++;
+612     }
+613
+614     //float alu accesses
+615     if (curStaticInst->isFloating()){
+616         t_info.numFpAluAccesses++;
+617         t_info.numFpInsts++;
+618     }
+619
+620     //vector alu accesses
+621     if (curStaticInst->isVector()){
+622         t_info.numVecAluAccesses++;
+623         t_info.numVecInsts++;
+624     }
+625
+626     //number of function calls/returns to get window accesses
+627     if (curStaticInst->isCall() || curStaticInst->isReturn()){
+628         t_info.numCallsReturns++;
+629     }
+630
+631     //the number of branch predictions that will be made
+632     if (curStaticInst->isCondCtrl()){
+633         t_info.numCondCtrlInsts++;
+634     }
+635
+636     //result bus acceses
+637     if (curStaticInst->isLoad()){
+638         t_info.numLoadInsts++;
+639     }
+640
+641     if (curStaticInst->isStore() || curStaticInst->isAtomic()){
+642         t_info.numStoreInsts++;
+643     }
+644     /* End power model statistics */
+645
+646     t_info.statExecutedInstType[curStaticInst->opClass()]++;
+647
+648     if (FullSystem)
+649         traceFunctions(instAddr);
+650
+651     if (traceData) {
+652         traceData->dump();
+653         delete traceData;
+654         traceData = NULL;
+655     }
+656
+657     // Call CPU instruction commit probes
+658     probeInstCommit(curStaticInst, instAddr);
+659 }
+```

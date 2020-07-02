@@ -4,52 +4,6 @@ titile: "Pagetable walking and pagefault handling in Gem5"
 categories: GEM5, TLB
 ---
 
-*gem5/src/arch/x86/isa/microops/ldstop.isa*
-```cpp
-{% raw %}
-119 def template MicroLoadInitiateAcc {{
-120     Fault %(class_name)s::initiateAcc(ExecContext * xc,
-121             Trace::InstRecord * traceData) const
-122     {
-123         Fault fault = NoFault;
-124         Addr EA;
-125
-126         %(op_decl)s;
-127         %(op_rd)s;
-128         %(ea_code)s;
-129         DPRINTF(X86, "%s : %s: The address is %#x\n", instMnem, mnemonic, EA);
-130
-131         fault = initiateMemRead(xc, traceData, EA,
-132                                 %(memDataSize)s, memFlags);
-133
-134         return fault;
-135     }
-136 }};
-137
-138 def template MicroLoadCompleteAcc {{
-139     Fault %(class_name)s::completeAcc(PacketPtr pkt, ExecContext * xc,
-140                                       Trace::InstRecord * traceData) const
-141     {
-142         Fault fault = NoFault;
-143
-144         %(op_decl)s;
-145         %(op_rd)s;
-146
-147         getMem(pkt, Mem, dataSize, traceData);
-148
-149         %(code)s;
-150
-151         if(fault == NoFault)
-152         {
-153             %(op_wb)s;
-154         }
-155
-156         return fault;
-157     }
-158 }};
-{% endraw %}
-```
-
 *gem5/src/cpu/simple/timing.cc*
 ```cpp
  418 Fault
@@ -203,10 +157,11 @@ instantiated as a DataTranslation class instance.
 272 };
 ```
 
-Here finish function defined in DataTranslation re-invokes another finish function through the state member field.
-State field is initiated with the second parameter passed to the constructor of the DataTranslation class.
-When we look at the below code excerpted from the initiateMemRead function,
-we can easily know that WholeTranslationState instance has been passed to the DataTranslation instance.
+Here finish function defined in DataTranslation class
+re-invokes another finish function 
+through the state member field.
+State field is initiated with the second parameter 
+passed to the constructor of the DataTranslation class.
 
 ```cpp
  464         WholeTranslationState *state =
@@ -215,7 +170,14 @@ we can easily know that WholeTranslationState instance has been passed to the Da
  467             = new DataTranslation<TimingSimpleCPU *>(this, state);
 ```
 
-Now let's look at the WholeTranslationState class to figure out another finish function defined in there. 
+When we look at the below code 
+excerpted from the initiateMemRead function,
+we can easily know that
+WholeTranslationState instance has been passed 
+to the DataTranslation constructor.
+Therefore, state->finish invokes 
+WholeTranslationState::finish method. 
+Now let's look at the WholeTranslationState class.
 
 
 *gem5/src/cpu/translation.hh*
@@ -300,10 +262,12 @@ Now let's look at the WholeTranslationState class to figure out another finish f
 128         return outstanding == 0;
 129     }
 ```
+
 the finish function defined in WholeTranslationState class 
 just stores generated fault in its own buffer.
 Then who actually process the genereated fault?
-That is *xc->finishTranslation(state)* code in the finish function of DataTranslation class.
+That is *xc->finishTranslation(state)* code 
+in the finish function of DataTranslation class.
 Because DataTranslation class is declared as a template,
 the passed type ExecContextPtr will determine the type of member filed xc.
 
@@ -311,13 +275,17 @@ the passed type ExecContextPtr will determine the type of member filed xc.
  466         DataTranslation<TimingSimpleCPU *> *translation
  467             = new DataTranslation<TimingSimpleCPU *>(this, state);
 ```
-As shown in the code,
-DataTranslation instance is generated with TimingSimpleCPU class in the initiateMemRead.
-also note that the instance of TImingSimpleCPU is passed to the DataTranslation class constructor 
-and set the xs field of the created instance.
-Therefore, when the xc->finishTranslation(sate) is called above,
-it will invoke finishTranslation function defined in the TimingSimpleCPU.
-Let's look at the function.
+
+As shown in the initiateMemRead function,,
+DataTranslation instance is constructed with 
+TimingSimpleCPU class.
+As the DataTranslation is template class,
+the passed TimingSimpleCPU is used to declare 
+its member field *xs*.
+Therefore, 
+when the xc->finishTranslation(sate) is called,
+it will invoke TimingSimpleCPU::finishTranslation function.
+Let's look at that function.
 
 ```cpp
  627 void
@@ -345,7 +313,9 @@ Let's look at the function.
  649     delete state;
  650 }
 ```
-it ends up ivnoking translationFault function with the fault previously stored in the buffer of the state.
+
+it ends up ivnoking translationFault function 
+with the fault previously stored in the buffer of the state.
 
 ```cpp
  361 void
@@ -367,7 +337,8 @@ it ends up ivnoking translationFault function with the fault previously stored i
  377     advanceInst(fault);
  378 }
 ```
-translateFault function defined in the TimingSimpleCPU invokes postExecute.
+
+The translateFault function invokes postExecute.
 After the poseExecute has been called, 
 it will invoke advanceInst instruction with the generated fault.
 By looking at the function argument,
@@ -375,7 +346,7 @@ we can know that advanceInst function actually deal with the fault.
 postExecute function doesn't invoke any meaningful function to proceed pipeline.
 It updates stat of the processor such as 
 power model, load instruction counter, etc.
-Therefore, let's jump into the advanceInst function.
+Therefore, let's jump into the *advanceInst* function.
 
 *gem5/src/cpu/simple/timing.cc*
 ```cpp
@@ -474,14 +445,22 @@ which actually controls the PC register of the core.
 The advancePC function updates current PC of the cpu context in general.
 However, depending on the current CPU state,
 whether the fault has been raised or not,
-it choose different path to update the PC.
+it chooses different path to update the PC.
 When the fault has been raised, 
 it calls the invoke function referenced by the fault object.
-On the other hand, as usually taken path,
-it updates micropc of the processor
-to execute the current insturction represented by the curStaticInst field. 
 
-Then let's take a look at how the fault can be handled by the invoke function.
+On the other hand, as usually taken path,
+when the fault has not been raised during current instruction execution,
+it updates micropc of the processor to the next instruction.
+For updating the PC,
+it makes use of current instruction information
+represented by the curStaticInst field and 
+invokes advancePC function defined in the x86 namespace (line 680).
+
+Then let's take a look at
+how the fault can be handled by the invoke function
+defined in the fault instance. 
+
 *gem5/srch/arch/x86/faults.cc*
 ```cpp
  53 namespace X86ISA
@@ -528,27 +507,44 @@ Then let's take a look at how the fault can be handled by the invoke function.
  94         tc->pcState(pcState);
  95     }
 ```
-gem5 provides base interface for every faults defined in the x86 architecture.
-x86 provides different types of events that can intervene the normal execution flow,
+To look at the behavior of the invoke function of the fault,
+we have to look at the fault related classes first.
+GEM5 provides base interface for every faults 
+defined in the x86 architecture.
+x86 provides different types of events 
+that can intervene the execution flow,
 which are fault, abort, trap, interrupts. 
+
 All those events inherit from the base x86 fault class *X86FaultBase*
 which provides general interfaces and semantics of the x86 fault events.
-Because currently, we are looking at general semantics of x86 fault,
-let's take a look at invoke function provided by X86FaultBase class. 
+let's take a look at the invoke function in X86FaultBase class. 
 But note that depending on type of events,
-different classes inheriting the X86FaultBase can override invoke function
+different classes inheriting the X86FaultBase 
+can override invoke function
 to define their own semantics of fault events. 
+For example, PageFault class inherits *X86FaultBase* class 
+and overrides *invoke* function to add 
+its own pagefault related semantics 
+before invoking the root fault handling *invoke* function 
+provided by the X86FaultBase class.
 
-Basically, invoke function makes the processor 
+Basically, 
+invoke function makes the processor 
 jump to the pre-defined microcode function
-that actually implements basic semantics of x86 fault,
-which defines what processor registers should be stored to where
-and 
-where the control flow should be transferred after register storing.
+that actually implements basic semantics of x86 fault.
+The ROM code implementes general behavior of the processor
+when the fault is detected by the processor.
+For example,
+it stores context of the processor at the time of fault happens
+and transfer the control flow of the processor to the designated 
+fault handler represented by the IDTR register in x86.
 
-To jump to the pre-defined function,
-it makes use of ROM labels that statically stores sequence of x86 microops.
-All the available ROM labels are defined in the RomLabels namespace as show in the below.
+To jump to the pre-defined ROM function,
+it makes use of ROM labels 
+that statically stores sequence of x86 microops.
+All the available ROM labels are defined 
+in the RomLabels namespace 
+as show in the below.
 
 *gem5/build/X86/arch/x86/generated/decoder-ns.hh.inc*
 ```cpp
@@ -585,22 +581,29 @@ All the available ROM labels are defined in the RomLabels namespace as show in t
  4617 const static MicroPC extern_label_jmpFarWork = 192;
  4618 }
 ```
+
 Because we are investigating general x86-64 faults,
 we will take a look at the ROM label named *label_longModeInterrupt*
-which is referenced when the processor runs as longmode with no software interrupt.
-After it selects the ROM label depnding on the processor state,
-it sets the registers to pass two basic arguments
-interrupt number and PC address 
- to the selected microcode function.
-Additional, when the interrupt pass the error code,
-then it pass that code also.
+which denotes situation where the processor runs as longmode,
+and generated fault is not software interrupt. 
+After it selects the ROM label 
+depnding on the processor state,
+it sets the registers to pass two basic arguments,
+*interrupt number* and *PC address* by default.
+Additionaly, 
+when the interrupt makes use of error code,
+it should also be passed to the microcode
 
-To pass the arguments, 
+To pass the arguments to the microcode world, 
 it invokes setIntRegs function defined in the threadcontext. 
-threadcontext used here is instance of SimpleThread class defined in cpu/simple_thread.hh
-When you use the o3 out-of-order cpu model, then you have to look at O3ThreadContext class.
-Both classes inheirt ThreadContext class which provide generic interface 
-for different CPU models. 
+*Threadcontext* is instance of SimpleThread class 
+defined in cpu/simple_thread.hh
+(When you use the o3 out-of-order cpu model, 
+you have to look at O3ThreadContext class).
+Regardless of your processor model (o3 or simple)
+both classes inherit ThreadContext class 
+which provide generic register context and 
+interface for manipulating the registers. 
 
 *gem5/src/cpu/simple_thread.hh*
 ```cpp
@@ -634,38 +637,144 @@ for different CPU models.
 484         setIntRegFlat(flatIndex, val);
 485     }
 ```
-As shown in the above class definition,
-it declares ISA dependent registers as its member field. 
-*TheISA* defined symbol will be translated to 
-architecture specific namespace depending on the architecture
+
+Although *SimpleThread* class can be seen as 
+providing generic registers regardless of architectures, 
+it declares ISA dependent registers. 
+The magic is *TheISA* symbol. 
+*TheISA* symbol will be translated to 
+architecture specific namespace 
+depending on the architecture
 that the Gem5 has been compiled to.
-And the setIntReg function just stores
-the data to the intRegs array located by the index. 
-Note that setIntReg array contains not only the architecture registers 
+Let's little bit detour and figure out how *TheISA* namespace works.
+
+When you don't know what is the *TheISA* namesapce,
+you may want to grep "namespace TheISA"
+to find out files that define TheISA namespace.
+However, unfortunately,
+you can only find very few places
+where the *TheISA* namespace has been declared
+with a handful of member functions.
+
+Then where those functions and variables of the TheISA namespace come from?
+To understand the TheISA:: namespace,
+we should look at the build files not the source file.
+
+*build/X86/config/the_isa.hh*
+```cpp
+  1 #ifndef __CONFIG_THE_ISA_HH__
+  2 #define __CONFIG_THE_ISA_HH__
+  3
+  4 #define ALPHA_ISA 1
+  5 #define ARM_ISA 2
+  6 #define MIPS_ISA 3
+  7 #define NULL_ISA 4
+  8 #define POWER_ISA 5
+  9 #define RISCV_ISA 6
+ 10 #define SPARC_ISA 7
+ 11 #define X86_ISA 8
+ 12
+ 13 enum class Arch {
+ 14   AlphaISA = ALPHA_ISA,
+ 15   ArmISA = ARM_ISA,
+ 16   MipsISA = MIPS_ISA,
+ 17   NullISA = NULL_ISA,
+ 18   PowerISA = POWER_ISA,
+ 19   RiscvISA = RISCV_ISA,
+ 20   SparcISA = SPARC_ISA,
+ 21   X86ISA = X86_ISA
+ 22 };
+ 23
+ 24 #define THE_ISA X86_ISA
+ 25 #define TheISA X86ISA
+ 26 #define THE_ISA_STR "x86"
+ 27
+ 28 #endif // __CONFIG_THE_ISA_HH__
+```
+
+Here, we can easily find that 
+TheISA is defined as X86ISA.
+Also when we look at the SConScript file,
+we can find python function names *makeTheISA* that
+actually fills out content of config/the_isa.hh file.
+Here, because I compiled GEM5 with the X86 configuration,
+it defines the *TheISA* as *X86ISA*.
+
+Therefore, when the TheISA has been used on the cpu related files,
+it is not a actual namespace called "TheISA",
+but the architecture dependent ISA namespace.
+Consequently,
+when you encounter namespace TheISA,
+first check whether the config/the_isa.hh header file has been included
+in your target source file;
+and when the answer is yes,
+you have to look at the architecture dependent namespace
+defined in the gem5/src/arch/YOUR_ARCHITECTURE directory.
+In my case, because I use the X86
+it should be X86ISA namespace.
+
+Now let's go back to SimpleThread class.
+In addition to the architecture specific register context,
+it provides *setIntReg* function.
+It allows the processor to store the data 
+on intRegs array located by the index. 
+
+```cpp
+477     void
+478     setIntReg(RegIndex reg_idx, RegVal val) override
+479     {
+480         int flatIndex = isa->flattenIntIndex(reg_idx);
+481         assert(flatIndex < TheISA::NumIntRegs);
+482         DPRINTF(IntRegs, "Setting int reg %d (%d) to %#x.\n",
+483                 reg_idx, flatIndex, val);
+484         setIntRegFlat(flatIndex, val);
+485     }
+
+618     void
+619     setIntRegFlat(RegIndex idx, RegVal val) override
+620     {
+621         intRegs[idx] = val;
+622     }
+```
+Note that the val is stored in the intRegs array 
+through the unified interface *setIntReg* function.
+The IntRegs contains 
+not only the architecture registers 
 such as rsi,rdi,rcx in x86,
 but also the integer type micro-registers 
-used by the microops.
+used only by the microops.
 
-Because x86 in GEM5 defines 16 Integer registers available to the microops,
+Because x86 in GEM5 defines 
+16 Integer registers available to the microops,
 (look at gem5/src/arch/x86/x86_traits.hh) 
-it can pass up to 16 Integer value through setIntReg function.
-As shown in the above code, micro register 1,7, and 15 has been used 
+it can pass up to 16 Integer value 
+to the microcode
+through the setIntReg function.
+As shown in the invoke function,
+micro register 1,7, and 15 has been used 
 to pass the fault related arguments to the microops.
 
 After finishing setting the required parameters
-to execute microops stored in the ROM,
-now, it jumps to the stored ROM code pointed to by the label.
+now, it jumps to the stored ROM code 
+pointed to by the label.
 This control flow transition is done by 
-updating _pcState memeber field defined in the SimpleThread class.
+updating *_pcState* memeber field 
+of the SimpleThread class.
+
 When we look at the last three lines of code in the invoke function,
 we can find that it updates upc field of the pcState 
 as location of the ROM code.
-After that, by invoking tc->pcState(pcState)
-it update its member field _pcState to the new pcState
-that make the processor run from the updated micro pc address.
+After that, 
+by invoking tc->pcState(pcState),
+it update its member field _pcState 
+to a new pcState,
+which makes the processor run 
+from the updated micro pc address.
 
-However, this is just updating pcState member field of the ThreadContext,
-then who actually redirects the pipeline to 
+However, note that 
+this function just updates 
+_pcState member field of the ThreadContex.
+Then who actually redirects the pipeline to 
 fetch the new instructions from the ROM
 not from the faulting instruction?
 Let's go back to the advancePC function
@@ -708,6 +817,92 @@ let's look at the below code
 
 
  
+
+Now let's go back to the *advanceInst* function again
+(sorry for going back and forth)
+After returning from the advancePC instruction,
+it checks status of the current processor.
+When the processor is not in idle state, 
+it reschedules fetchEvent
+to be executed again after stall ticks.
+
+*gem5/src/cpu/simple/timing.cc*
+```cpp
+
+ 742     if (fault != NoFault) {
+ 743         DPRINTF(SimpleCPU, "Fault occured. Handling the fault\n");
+ 744
+ 745         advancePC(fault);
+ 746
+ 747         // A syscall fault could suspend this CPU (e.g., futex_wait)
+ 748         // If the _status is not Idle, schedule an event to fetch the next
+ 749         // instruction after 'stall' ticks.
+ 750         // If the cpu has been suspended (i.e., _status == Idle), another
+ 751         // cpu will wake this cpu up later.
+ 752         if (_status != Idle) {
+ 753             DPRINTF(SimpleCPU, "Scheduling fetch event after the Fault\n");
+ 754
+ 755             Tick stall = dynamic_pointer_cast<SyscallRetryFault>(fault) ?
+ 756                          clockEdge(syscallRetryLatency) : clockEdge();
+ 757             reschedule(fetchEvent, stall, true);
+ 758             _status = Faulting;
+ 759         }
+ 760
+ 761         return;
+ 762     }
+```
+*fetchEvent* is defined as a EventFunctionWrapper type 
+used for registering event in GEM5.
+Also, the fetchEvent is initiated by the constructor 
+of the TimingSimpleCPU class 
+to invoke fetch() function.
+Therefore, after the stall ticks passed,
+it invokes fetch() function defined in the TimingSimpleCPU class.
+
+
+```cpp
+ 653 void
+ 654 TimingSimpleCPU::fetch()
+ 655 {
+ 656     // Change thread if multi-threaded
+ 657     swapActiveThread();
+ 658
+ 659     SimpleExecContext &t_info = *threadInfo[curThread];
+ 660     SimpleThread* thread = t_info.thread;
+ 661
+ 662     DPRINTF(SimpleCPU, "Fetch\n");
+ 663
+ 664     if (!curStaticInst || !curStaticInst->isDelayedCommit()) {
+ 665         checkForInterrupts();
+ 666         checkPcEventQueue();
+ 667     }
+ 668
+ 669     // We must have just got suspended by a PC event
+ 670     if (_status == Idle)
+ 671         return;
+ 672
+ 673     TheISA::PCState pcState = thread->pcState();
+ 674     bool needToFetch = !isRomMicroPC(pcState.microPC()) &&
+ 675                        !curMacroStaticInst;
+ 676
+ 677     if (needToFetch) {
+ 678         _status = BaseSimpleCPU::Running;
+ 679         RequestPtr ifetch_req = std::make_shared<Request>();
+ 680         ifetch_req->taskId(taskId());
+ 681         ifetch_req->setContext(thread->contextId());
+ 682         setupFetchRequest(ifetch_req);
+ 683         DPRINTF(SimpleCPU, "Translating address %#x\n", ifetch_req->getVaddr());
+ 684         thread->itb->translateTiming(ifetch_req, thread->getTC(),
+ 685                 &fetchTranslation, BaseTLB::Execute);
+ 686     } else {
+ 687         _status = IcacheWaitResponse;
+ 688         completeIfetch(NULL);
+ 689
+ 690         updateCycleCounts();
+ 691         updateCycleCounters(BaseCPU::CPU_STATE_ON);
+ 692     }
+ 693 }
+```
 
 
 
@@ -830,66 +1025,6 @@ let's look at the below code
 
 
 
-
-By the way, what is the *TheISA* namespace?
-When you grep with "namespace TheISA" 
-to find out files that define TheISA namespace,
-you can only finds namespace declaration with very few classes in it.
-Then where those fiedls of the TheISA namespace come from?
-To understand the TheISA:: namespace,
-we should look at the build files.
-
-*build/X86/config/the_isa.hh*
-```cpp
-  1 #ifndef __CONFIG_THE_ISA_HH__
-  2 #define __CONFIG_THE_ISA_HH__
-  3
-  4 #define ALPHA_ISA 1
-  5 #define ARM_ISA 2
-  6 #define MIPS_ISA 3
-  7 #define NULL_ISA 4
-  8 #define POWER_ISA 5
-  9 #define RISCV_ISA 6
- 10 #define SPARC_ISA 7
- 11 #define X86_ISA 8
- 12
- 13 enum class Arch {
- 14   AlphaISA = ALPHA_ISA,
- 15   ArmISA = ARM_ISA,
- 16   MipsISA = MIPS_ISA,
- 17   NullISA = NULL_ISA,
- 18   PowerISA = POWER_ISA,
- 19   RiscvISA = RISCV_ISA,
- 20   SparcISA = SPARC_ISA,
- 21   X86ISA = X86_ISA
- 22 };
- 23
- 24 #define THE_ISA X86_ISA
- 25 #define TheISA X86ISA
- 26 #define THE_ISA_STR "x86"
- 27
- 28 #endif // __CONFIG_THE_ISA_HH__
-```
-Here, we can easily, find that TheISA is defined as X86ISA.
-Also when we look at the SConScript file,
-we can find python function names *makeTheISA* that 
-actually fills out content of config/the_isa.hh file
-with the corresponding GEM5 build configuration.
-Here because I compiled GEM5 with the X86 configuration,
-it defines the TheISA as X86ISA.
-
-Therefore, when the TheISA has been used on the cpu related files,
-it is not a actual namespace called "TheISA",
-but the architecture dependent ISA namespace
-defined as the TheISA in the config file.
-Consequently,
-when you encounter namespace TheISA,
-first check whether the config/the_isa.hh header file has been included;
-and when the answer is yes,
-then you have to look at the architecture dependent namespace 
-defined in the gem5/src/arch/YOUR_ARCHITECTURE directory.
-In my case, because I use the X86
-it should be X86ISA namespace.
 
 Now, let's go back to our mainline code advancePC.
 

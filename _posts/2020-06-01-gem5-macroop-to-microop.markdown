@@ -25,130 +25,9 @@ internal behavior of one macro instruction.
 Therefore, understanding how each microop works 
 is same as understanding basic block of processor.
 
-*gem5/src/arch/x86/isa/microops/ldstop.isa*
-```python
-417 let {{
-418
-419     # Make these empty strings so that concatenating onto
-420     # them will always work.
-421     header_output = ""
-422     decoder_output = ""
-423     exec_output = ""
-424
-425     segmentEAExpr = \
-426         'bits(scale * Index + Base + disp, addressSize * 8 - 1, 0);'
-427
-428     calculateEA = 'EA = SegBase + ' + segmentEAExpr
-429
-430     def defineMicroLoadOp(mnemonic, code, bigCode='',
-431                           mem_flags="0", big=True, nonSpec=False,
-432                           implicitStack=False):
-433         global header_output
-434         global decoder_output
-435         global exec_output
-436         global microopClasses
-437         Name = mnemonic
-438         name = mnemonic.lower()
-439
-440         # Build up the all register version of this micro op
-441         iops = [InstObjParams(name, Name, 'X86ISA::LdStOp',
-442                               { "code": code,
-443                                 "ea_code": calculateEA,
-444                                 "memDataSize": "dataSize" })]
-445         if big:
-446             iops += [InstObjParams(name, Name + "Big", 'X86ISA::LdStOp',
-447                                    { "code": bigCode,
-448                                      "ea_code": calculateEA,
-449                                      "memDataSize": "dataSize" })]
-450         for iop in iops:
-451             header_output += MicroLdStOpDeclare.subst(iop)
-452             decoder_output += MicroLdStOpConstructor.subst(iop)
-453             exec_output += MicroLoadExecute.subst(iop)
-454             exec_output += MicroLoadInitiateAcc.subst(iop)
-455             exec_output += MicroLoadCompleteAcc.subst(iop)
-456
-457         if implicitStack:
-458             # For instructions that implicitly access the stack, the address
-459             # size is the same as the stack segment pointer size, not the
-460             # address size if specified by the instruction prefix
-461             addressSize = "env.stackSize"
-462         else:
-463             addressSize = "env.addressSize"
-464
-465         base = LdStOp
-466         if big:
-467             base = BigLdStOp
-468         class LoadOp(base):
-469             def __init__(self, data, segment, addr, disp = 0,
-470                     dataSize="env.dataSize",
-471                     addressSize=addressSize,
-472                     atCPL0=False, prefetch=False, nonSpec=nonSpec,
-473                     implicitStack=implicitStack, uncacheable=False):
-474                 super(LoadOp, self).__init__(data, segment, addr,
-475                         disp, dataSize, addressSize, mem_flags,
-476                         atCPL0, prefetch, nonSpec, implicitStack, uncacheable)
-477                 self.className = Name
-478                 self.mnemonic = name
-479
-480         microopClasses[name] = LoadOp
-```
-When we look at the *isa file*,
-there are two distinct code blocks.
-First of all, 
-there are several python-like functions 
-that can be used inside the let block 
-to help microop generation.
-Note that the *isa* format file makes use of phython-like 
-domain specific language.
-The *let* block contains actual microops definition,
-and it generates the actual C++ code 
-that defines classes of each different instruction.
 
-
-By making use of the defined function *defineMicroLoadOp*,
-each load/store microops can be instatiated.
-Let's take a look at the left part of the let block.
-
-```python
-482     defineMicroLoadOp('Ld', 'Data = merge(Data, Mem, dataSize);',
-483                             'Data = Mem & mask(dataSize * 8);')
-484     defineMicroLoadOp('Ldis', 'Data = merge(Data, Mem, dataSize);',
-485                               'Data = Mem & mask(dataSize * 8);',
-486                                implicitStack=True)
-487     defineMicroLoadOp('Ldst', 'Data = merge(Data, Mem, dataSize);',
-488                               'Data = Mem & mask(dataSize * 8);',
-489                       '(StoreCheck << FlagShift)')
-490     defineMicroLoadOp('Ldstl', 'Data = merge(Data, Mem, dataSize);',
-491                                'Data = Mem & mask(dataSize * 8);',
-492                       '(StoreCheck << FlagShift) | Request::LOCKED_RMW',
-493                       nonSpec=True)
-```
-
-
-*gem5/src/arch/x86/isa/microops/ldstop.isa*
-```cpp
 {% raw %}
-119 def template MicroLoadInitiateAcc {{
-120     Fault %(class_name)s::initiateAcc(ExecContext * xc,
-121             Trace::InstRecord * traceData) const
-122     {
-123         Fault fault = NoFault;
-124         Addr EA;
-125
-126         %(op_decl)s;
-127         %(op_rd)s;
-128         %(ea_code)s;
-129         DPRINTF(X86, "%s : %s: The address is %#x\n", instMnem, mnemonic, EA);
-130
-131         fault = initiateMemRead(xc, traceData, EA,
-132                                 %(memDataSize)s, memFlags);
-133
-134         return fault;
-135     }
-136 }};
 {% endraw %}
-
-
 
 
 To understand how the macroop can be translated into the microops
@@ -537,7 +416,8 @@ and the retrieved class is stored as symbol of parser.
 And the following eval statement(133-134)
 instantiates microop class object.
 
-Note that statement.params variable is passed to eval 
+###Different parameter can be fed to one microop instruction
+Note that *statement.params* variable is passed to eval 
 to set required argument of instantiating microop object.
 This argument contains all the microop operands 
 following a microop mnemonic in the microop assembly. 
@@ -547,6 +427,55 @@ Also it can optionally set other operands such as prefetch.
 For detail parameter corresponding to sepcific microop,
 take a look at the associated microop class such as LdStOp.
 
+For example, 
+for two ld microops used in different macroops
+can have different microop operands.
+For ld microop operation,
+LdStOP class is used to generate Ld microop class and 
+it receives prefetch as its parameter.
+Because most of the ld doesn't belong to prefetch, 
+it sets prefetch as false by default.
+However, by passing the prefetch memory flag as operand of Ld,
+different Ld objects can be created,
+and they read memory with different semantics.
+
+*gem5/arch/x86/isa/insts/general_purpose/cache_and_memory_management.py*
+```python
+ 39 def macroop PREFETCH_M
+ 40 {
+ 41     ld t0, seg, sib, disp, dataSize=1, prefetch=True
+ 42 };
+```
+*gem5/arch/x86/isa/insts/general_purpose/data_transfer/move.py*
+```python
+ 67 def macroop MOV_R_M {
+ 68     ld reg, seg, sib, disp
+ 69 };
+```
+*gem5/arch/x86/isa/microops/ldstop.idsa*
+```python
+294 let {{
+295     class LdStOp(X86Microop):
+296         def __init__(self, data, segment, addr, disp,
+297                 dataSize, addressSize, baseFlags, atCPL0, prefetch, nonSpec,
+298                 implicitStack, uncacheable):
+299             self.data = data
+300             [self.scale, self.index, self.base] = addr
+301             self.disp = disp
+302             self.segment = segment
+303             self.dataSize = dataSize
+304             self.addressSize = addressSize
+305             self.memFlags = baseFlags
+306             if atCPL0:
+307                 self.memFlags += " | (CPL0FlagBit << FlagShift)"
+308             self.instFlags = ""
+309             if prefetch:
+310                 self.memFlags += " | Request::PREFETCH"
+311                 self.instFlags += " | (1ULL << StaticInst::IsDataPrefetch)"
+```
+
+
+###What class object is used for microop class generation?
 One might expects that generated microop object
 is instantiated from a class 
 representing current microop mnemonic (microop opcode) such as Ld.
@@ -570,7 +499,7 @@ After parsing and adding microops to the macroop object,
 the finalized macroop object should be inserted 
 to the *parser.macroops* dictionary attribute.
 
-###Who actually translates the parsed macroop to classes?
+##Who actually translates the parsed macroop to classes?
 Now we have parsed macroop objects.
 However, when we look at the generated file 
 as a result of GEM5 compilation,
@@ -669,9 +598,10 @@ our python dictionary containing macroop objects
 As shown in the above code,
 *genMacroop* function retrieves macroop class 
 associated with a name of macroop
-and invokes *getDeclaration & getDefinition* function.
+and invokes *getDeclaration & getDefinition* functions.
 Those two functions are defined in the X86Macroop class.
 
+###templates are used to generate classes automatically
 ```python
 205         def getDefinition(self, env):
 206             #FIXME This first parameter should be the mnemonic. I need to
@@ -736,17 +666,20 @@ of the macroop class, so
 we are going to focus on *getDefinition* function.
 The goal of getDefinition function is 
 generating definition of corresponding macroop.
+
 The definition of the macroop class 
 can be retrieved by the 
-*MacroopConstructor and MacroDisassembly template*.
+*MacroopConstructor and MacroDisassembly template* (line 260-261).
 Therefore, getDefinition prepares 
 necessary parameters required to substitute the templates.
 
+###microop object instantiation code in macroop class
 *alloc_microops* field is one of the most important parameter 
 to retrieve actual definition of macroop.
 It contains microop definitions that comprise one macroop.
 Note that those microop definitions comprising the macroop 
 already have been parsed and saved by the MicroAssembler parser. 
+
 Because we already know the corresponding microop classes associated with a macroop,
 what we have to do is generating statement to instantiate a new microop object.
 The getAllocator function invoked through microop not the macroop,
@@ -771,14 +704,22 @@ of *LdStOp* class.
 334                 "memFlags" : self.memFlags}
 335             return allocator
 
-Each getAllocator function creates python doc string 
+By the way, we need class definition of Ld not the LdStOp class!
+Then why we need to look at LdStOp class?
+Because whenever *defineMicroLoadOp* is invoked with specific microop name such as ld,
+it generates LoadOp class associated with that microop.
+Also because LoadOp inherits from LdStOp
+that provides generic class for load store operation,
+we have to look at LdStOp to understand how the microop classes can be generated automatically.
+
+To support automatic class generation,
+each getAllocator function in LdStOp creates 
+python doc string 
 that consists of CPP microop object instantiation code.
 Because Ld microop is associated with LdStOp class,
 it ends up instantiating Ld class object.
 
-After setting up required parameter,
-it finally generates the CPP code by making use of two templates.
-
+###macroop class generation with microop allocations
 ```python
  79 // Basic instruction class declaration template.
 100 def template MacroDisassembly {{
@@ -815,6 +756,11 @@ it finally generates the CPP code by making use of two templates.
 131         }
 132 }};
 ```
+As shown in the above code,
+MacroConstructor generates actual macroop class definition.
+%(alloc_microops)s is substituted by the microop class instances 
+retrieved by the getAllocator method.
+
 
 
 

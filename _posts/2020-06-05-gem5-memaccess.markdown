@@ -153,7 +153,8 @@ to handle result of memory access.
  997 }
 ```
 It seems that it doesn't handle the received packet.
-However, it makes use of tickEvent to handle the recevied packet from the Dcache!
+However, it schedules tickEvent  
+to process the recevied packet.
 
 ```cpp
  999 void

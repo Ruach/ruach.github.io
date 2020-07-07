@@ -1,6 +1,6 @@
 ---
 layout: post
-titile: "Microops in GEM5"
+titile: "Macroop to Microops"
 categories: GEM5, Microops
 ---
 
@@ -242,6 +242,10 @@ The X86Macroop class is defined in gem5/src/arch/x86/isa/macroop.isa file.
 contains pair of
 microop mnemonic string and 
 class that represent it. 
+This dictionary is very important in 
+retrieving the micro instructions 
+consisting of a macro instruction.
+Let's first look at how the microop dictionary can be generated.
 
 *gem5/src/arch/x86/isa/microops/ldstop.isa*
 ```python
@@ -304,8 +308,14 @@ belongs to load operation category.
 Note that 
 the line 468 defines LoadOp class.
 Whenever the defineMicroLoadOp is called,
-a pair of LoadOp class reference and its name, the name of microop,
+a pair of LoadOp class reference and the name of microop
 is stored in the *microopClasses* dictionary.
+Note that microopClasses is a variable passed to
+previous initialization of MicroAssembler class.
+Also retrieved LoadOp classes
+can vary from each other because 
+it is defined with different mnemonic and class name
+corresponding to one microop definition. 
 
 ```python
 482     defineMicroLoadOp('Ld', 'Data = merge(Data, Mem, dataSize);',
@@ -323,21 +333,22 @@ is stored in the *microopClasses* dictionary.
 494
 495     defineMicroLoadOp('Ldfp', code='FpData_uqw = Mem', big = False)
 ```
+
 As a result, 
 the above invocations of definedMicroLoadOp function
-push LoadOp class and their corresponding microop name pair 
+result in storing <LoadOp class, microop name> pairs
 on the microopClasses. 
 By providing this dictionary,
 parser can know 
 which class type should be instantiated 
-when a particular microop has been encountered during parsing.
+when a particular microop has been encountered during macroop parsing.
 
-Before we jump into the next step,
-let's take a look at the LoadOp class as an example 
-to understand 
-how the microop classes look like.
-Note that LoadOp class inherits from the base class LdStOp
-defined in the same file 
+Before we delve into the parser to look at how one macroop can be translated to multiple microops,
+let's take a look at the *LoadOp* class as an example 
+to understand microop classes.
+Because LoadOp class inherits from the base class LdStOp
+when it is not a big code,
+we will take a look at *LdStOp* class.
 
 ```python
 295     class LdStOp(X86Microop):
@@ -382,30 +393,20 @@ defined in the same file
 334                 "memFlags" : self.memFlags}
 335             return allocator
 ```
+Because LdStOp class supports memory load operation,
+it requires memory address, flags representing privilege operation,
+prefetch indicator to support memory prefetch.
+Also, to support various cache policy, 
+it can have uncacheable parameter. 
 
-
-
-
-
-
-
-
-```python
-498     def assemble(self, asm):
-499         self.parser.parse(asm, lexer=self.lexer)
-500         macroops = self.parser.macroops
-501         self.parser.macroops = {}
-502         return macroops
-```
-
+##Start to parse macroops with MicroAssembler
+Then when actually MicroAssembler starts to parse macroops?
 After instantiating MicroAssembler instance,
 when *assemble* function is invoked,
-it feeds input file (asm) to the MicroAssembler
-with defined tokenizer.
+it starts to parse asm file with defined tokenizer.
 Note that *self.lexer* is an alternative tokenizer
 defined in micro_asm.py file.
 
-Then where the actual microcode description comes from?
 *gem5/src/arch/x86/isa/microasm.isa*
 ```python
 222     macroopDict = assembler.assemble(microcode)
@@ -414,13 +415,16 @@ Then where the actual microcode description comes from?
 225     header_output += mainRom.getDeclaration()
 226 }};
 ```
+
 We can find that *microcode* variable is passed 
 to the assemble function.
-microcode variable contains ISA descriptions 
+The microcode variable contains ISA descriptions of macroops 
 collected from each isa file located in isa/insts directory. 
 For each instruction category, 
-__init__.py iterates every isa file belong to that category
-and collects microcode description.
+__init__.py in corresponding category directory 
+iterates every isa files in that directory
+and collects
+it collects microcode description that consists of macroop.
 
 *gem5/src/arch/x86/isa/insts/general_purpose/data_transfer/__init__.py*
  38 categories = ["conditional_move",
@@ -433,9 +437,9 @@ and collects microcode description.
  45     exec "import %s as cat" % category
  46     microcode += cat.microcode
 
-Then how the collected ISA descriptions
-can be actually parsed?
-To understand it,
+###Context-free grammar of Macroop 
+MicroAssembler class makes use of Python-Lex-Yacc(PLY)
+to parse the macroops,
 we have to look at context-free grammar that defines
 semantics of the grammar.
 
@@ -461,28 +465,31 @@ semantics of the grammar.
 368     t[0] = block
 ```
 
-When the *def macroop* block is encountered during the assemble,
+When the *def macroop* block is encountered during parsing,
 it invokes one of *p_macroop_def* function
 depending on the format of macroop block.
-Because macroop block can be formated in different ways
-corresponding context free grammar exactly matching with
-a macroop block will be invoked. 
-Currently, 
+Because macroop block can be formated in different ways,
+corresponding context free grammar 
+exactly matching with a macroop block will be invoked. 
+In this case
 we are looking at *def macroop MOV_R_MI* block,
 *p_macroop_def_1* function will be invoked. 
+because its context free grammar matches with MOV_R_MI definition.
 
-The most important token of the current grammar rule is the *block*.
+###The handle_statement parses description of macroop
+The most important token of this grammar rule is the *block*.
 The block token contains string 
 composed of sequence of microop instructions
 which actually defines semantic of macroop.
-The statement is extracted from the block token
+Each statement is retrieved from the block token
 and processed by the *handle_statement* function
+(line 359-360).
 
 Also, note that handle_statement takes macroop object
 that microops are belong to.
 To make it short,
-the handler_statement function
-parses the statements and creates microops objects that comprise of macroop.
+the handler_statement function parses the statements 
+and creates microops objects that comprise of macroop.
 And the generated objects are added to the macroop object as a result. 
 
 ```python 
@@ -524,53 +531,53 @@ And the generated objects are added to the macroop object as a result.
 161         raise Exception, "Didn't recognize the type of statement", statement
 ```
 As shown in the line 130-131,
-parser.symbol attribute stores dictionary 
-that maps string to python class reference 
-for initiating the microop instance.
-To store a associated microop class,
-it makes use of mnemonic field of the statement 
-which represents opcode of the microop.
+microop dictionary is used to retrieve a class 
+associated with current microop mnemonic,
+and the retrieved class is stored as symbol of parser.
+And the following eval statement(133-134)
+instantiates microop class object.
 
-After generating the dictionary entry,
-it instantiates microop class object 
-by invoking eval.
-The eval in line 133-134
-return the class instance associated with the microop
-generated together with the operands.
-Note that the retrieved class is not the 
-exact microop class that matches with 
-current mnemonic (microop opcode),
-and the exact matching class will be automatically 
-generated by the GEM5.
-For example, when current microop is ld,
-then associated template class, LoadOp class is used.
+Note that statement.params variable is passed to eval 
+to set required argument of instantiating microop object.
+This argument contains all the microop operands 
+following a microop mnemonic in the microop assembly. 
+For example, it contains data, segment, displacement, etc 
+required for calculating memory address to read.
+Also it can optionally set other operands such as prefetch.
+For detail parameter corresponding to sepcific microop,
+take a look at the associated microop class such as LdStOp.
 
-Now, we have a microop object generated as a result of statement parsing.
-The generated objects are added to the macroop object 
+One might expects that generated microop object
+is instantiated from a class 
+representing current microop mnemonic (microop opcode) such as Ld.
+However, 
+you can easily find that 
+it is general class associated with that group of microop
+not exactly matching with that microop mnemonic.
+For example, if microop is ld,
+associated template class, LoadOp class is used.
+
+Now, 
+we have a microop object 
+generated as a result of statement parsing.
+The generated objects are added to the macroop object container 
 through the *add_microop* method of *X86Microop* class
 (line 144).
-This process should be iterated number of statement times 
-to parse microops comprising of the macroop 
-and generate corresponding microops objects. 
+
+This procedure should be iterated number of statement times 
+to parse microops comprising of the macroop.
 After parsing and adding microops to the macroop object,
 the finalized macroop object should be inserted 
-to the *parser.macroops* dictionary attribute.. 
+to the *parser.macroops* dictionary attribute.
 
-MicroAssembler should iterate
-all the macroops defined for the x86 architecture,
-and all those macroop descriptions are passed to it
-through the microcode argument passed to the assemble function
-as we've seen. 
-
-After finishing iterations,
-all the macroop objects are stored in the parser.macroops dictionary,
-and by returning this,
-MicroAssembler finish parsing.
+###Who actually translates the parsed macroop to classes?
+Now we have parsed macroop objects.
 However, when we look at the generated file 
 as a result of GEM5 compilation,
 we can find that each generated macroop class 
-includes microop invocations.
-Then which code helsp GEM5 to automatically generate below c++ code?
+includes microop class objects.
+Then which code automatically generates below 
+class representing MOV_R_MI macroop? 
 
 *gem5/build/X86/arch/x86/generated/decoder-ns.cc.inc*
 ```python
@@ -630,13 +637,12 @@ Then which code helsp GEM5 to automatically generate below c++ code?
 ```
 (Although above code looks terrible, 
 it has been generated automatically 
-as a result of parsing)
+as a result of parsing macroop description)
 
 To figure out how the cpp classes are automatically generated,
 we should look at the place that makes use of 
 our python dictionary containing macroop objects 
-*macroopDict* because it needs reference 
-define and declare each class.
+*macroopDict*.
 
 *gem5/src/arch/x86/isa/macroop.isa*
 ```python
@@ -661,26 +667,12 @@ define and declare each class.
 351 }};
 ```
 As shown in the above code,
-it first retrieves macroop class that associated with a name of macroop,
-and invokes getDeclaration & getDefinition function.
-Those two functions are defined in the X86Macroop class
-which we have seen 
-to look add_microop function 
-to add parsed microops to a macroop object.
+*genMacroop* function retrieves macroop class 
+associated with a name of macroop
+and invokes *getDeclaration & getDefinition* function.
+Those two functions are defined in the X86Macroop class.
 
 ```python
-193         def getDeclaration(self):
-194             #FIXME This first parameter should be the mnemonic. I need to
-195             #write some code which pulls that out
-196             declareLabels = ""
-197             for (label, microop) in self.labels.items():
-198                 declareLabels += "const static uint64_t label_%s = %d;\n" \
-199                                   % (label, microop.micropc)
-200             iop = InstObjParams(self.getMnemonic(), self.name, "Macroop",
-201                     {"code" : "",
-202                      "declareLabels" : declareLabels
-203                     })
-204             return MacroDeclare.subst(iop);
 205         def getDefinition(self, env):
 206             #FIXME This first parameter should be the mnemonic. I need to
 207             #write some code which pulls that out
@@ -740,23 +732,29 @@ to add parsed microops to a macroop object.
 261                    MacroDisassembly.subst(iop);
 ```
 We have only interest in a function that generates definition
-of the macroop class, so we are going to focus on *getDefinition* function.
-Most of the first part of the getDefinition function is generating flag 
-associated with each microop.
-After the flag is generated, 
-actual microcode allocation will be done 
-by the *getAllocator* function (line 236-238).
-Note that getAllocator function is invoked through the microop not the macroop.
-Therefore, to look at which getAllocator function will be invoked,
-we have to look at microop classes not the macroop.
-Also, because different microop classes have different getAllocator implementation,
-we should pinpoint a class that is instanticated by the current macroop.
+of the macroop class, so 
+we are going to focus on *getDefinition* function.
+The goal of getDefinition function is 
+generating definition of corresponding macroop.
+The definition of the macroop class 
+can be retrieved by the 
+*MacroopConstructor and MacroDisassembly template*.
+Therefore, getDefinition prepares 
+necessary parameters required to substitute the templates.
 
-Here, we only have interest in mov operation,
+*alloc_microops* field is one of the most important parameter 
+to retrieve actual definition of macroop.
+It contains microop definitions that comprise one macroop.
+Note that those microop definitions comprising the macroop 
+already have been parsed and saved by the MicroAssembler parser. 
+Because we already know the corresponding microop classes associated with a macroop,
+what we have to do is generating statement to instantiate a new microop object.
+The getAllocator function invoked through microop not the macroop,
+generates CPP statement that instantiate microop class object.
+
+Here, we only have interest in Load operation,
 we are going to look at getAllocator function
-defined in *LdStOp* class.
-The reason we are looking at LdStOp is 
-LoadOp class associated with load related microop inherits from LdStOp class.
+of *LdStOp* class.
 
 322         def getAllocator(self, microFlags):
 323             allocator = '''new %(class_name)s(machInst, macrocodeBlock,
@@ -773,8 +771,50 @@ LoadOp class associated with load related microop inherits from LdStOp class.
 334                 "memFlags" : self.memFlags}
 335             return allocator
 
-getAllocator function creates doc string that contains 
-microop object instantiation code 
+Each getAllocator function creates python doc string 
+that consists of CPP microop object instantiation code.
+Because Ld microop is associated with LdStOp class,
+it ends up instantiating Ld class object.
+
+After setting up required parameter,
+it finally generates the CPP code by making use of two templates.
+
+```python
+ 79 // Basic instruction class declaration template.
+100 def template MacroDisassembly {{
+101     std::string
+102     X86Macroop::%(class_name)s::generateDisassembly(Addr pc,
+103             const SymbolTable *symtab) const
+104     {
+105         std::stringstream out;
+106         out << mnemonic << "\t";
+107
+108         int regSize = %(regSize)s;
+109         %(disassembly)s
+110         // Shut up gcc.
+111         regSize = regSize;
+112         return out.str();
+113     }
+114 }};
+115
+116 // Basic instruction class constructor template.
+117 def template MacroConstructor {{
+118         X86Macroop::%(class_name)s::%(class_name)s(
+119                 ExtMachInst machInst, EmulEnv _env)
+120             : %(base_class)s("%(mnemonic)s", machInst, %(num_microops)s, _env)
+121         {
+122             %(adjust_env)s;
+123             %(adjust_imm)s;
+124             %(adjust_disp)s;
+125             %(init_env)s;
+126             %(constructor)s;
+127             const char *macrocodeBlock = "%(class_name)s";
+128             //alloc_microops is the code that sets up the microops
+129             //array in the parent class.
+130             %(alloc_microops)s;
+131         }
+132 }};
+```
 
 
 

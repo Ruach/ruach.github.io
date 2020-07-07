@@ -149,6 +149,8 @@ categories: GEM5, Microops
 
 
 
+### execute: modify ExecContext based on instruction
+```python
  90 def template MicroLoadExecute {{
  91     Fault %(class_name)s::execute(ExecContext *xc,
  92           Trace::InstRecord *traceData) const
@@ -177,6 +179,7 @@ categories: GEM5, Microops
 115         return fault;
 116     }
 117 }};
+```
 
 
 *exec-ns.cc.inc*
@@ -224,85 +227,332 @@ categories: GEM5, Microops
 19141         return fault;
 19142     }
 ```
+*gem5/src/arch/x86/memhelpers.hh*
+```python
+106 static Fault
+107 readMemAtomic(ExecContext *xc, Trace::InstRecord *traceData, Addr addr,
+108               uint64_t &mem, unsigned dataSize, Request::Flags flags)
+109 {
+110     memset(&mem, 0, sizeof(mem));
+111     Fault fault = xc->readMem(addr, (uint8_t *)&mem, dataSize, flags);
+112     if (fault == NoFault) {
+113         // If LE to LE, this is a nop, if LE to BE, the actual data ends up
+114         // in the right place because the LSBs where at the low addresses on
+115         // access. This doesn't work for BE guests.
+116         mem = letoh(mem);
+117         if (traceData)
+118             traceData->setData(mem);
+119     }
+120     return fault;
+121 }
+```
 
-As shown in the above code, 
-defineMicroLoadOp method generates each microop implementation.
-However, we don't know how the microop instruction assembly are translated to 
-actual microcode implementation invocation.
 
-17353     const MicroPC X86ISA::MicrocodeRom::numMicroops = 209;
-17354
-17355     X86ISA::MicrocodeRom::MicrocodeRom()
-17356     {
-17357         using namespace RomLabels;
-17358         genFuncs = new GenFunc[numMicroops];
-17359         genFuncs[0] = generate_Sll_0;
-17360 genFuncs[1] = generate_Ld_1;
-17361 genFuncs[2] = generate_Ld_2;
-17362 genFuncs[3] = generate_Chks_3;
-17363 genFuncs[4] = generate_Srl_4;
-17364 genFuncs[5] = generate_And_5;
-17365 genFuncs[6] = generate_AndFlags_6;
-17366 genFuncs[7] = generate_MicroBranchFlags_7;
-17367 genFuncs[8] = generate_Ld_8;
-17368 genFuncs[9] = generate_MicroBranch_9;
-17369 genFuncs[10] = generate_Ld_10;
-17370 genFuncs[11] = generate_Chks_11;
-17371 genFuncs[12] = generate_Wrdl_12;
-17372 genFuncs[13] = generate_Wrdh_13;
+```cpp
+437     Fault
+438     readMem(Addr addr, uint8_t *data, unsigned int size,
+439             Request::Flags flags,
+440             const std::vector<bool>& byte_enable = std::vector<bool>())
+441         override
+442     {
+443         assert(byte_enable.empty() || byte_enable.size() == size);
+444         return cpu->readMem(addr, data, size, flags, byte_enable);
+445     }
+```
 
-15375             StaticInstPtr
-15376             generate_Ld_123(StaticInstPtr curMacroop)
-15377             {
-15378                 static const char *macrocodeBlock = romMnemonic;
-15379                 static ExtMachInst dummyExtMachInst;
-15380                 static const EmulEnv dummyEmulEnv(0, 0, 1, 1, 1);
-15381                 Macroop * macroop = dynamic_cast<Macroop *>(curMacroop.get());
-15382                 const ExtMachInst &machInst =
-15383                     macroop ? macroop->getExtMachInst() : dummyExtMachInst;
-15384                 const EmulEnv &env =
-15385                     macroop ? macroop->getEmulEnv() : dummyEmulEnv;
-15386                 // env may not be used in the microop's constructor.
-15387                 InstRegIndex reg(env.reg);
-15388                 reg = reg;
-15389                 using namespace RomLabels;
-15390                 return
-15391                 (8 >= 4) ?
-15392                     (StaticInstPtr)(new LdBig(machInst,
-15393                         macrocodeBlock, (1ULL << StaticInst::IsMicroop) | (1ULL << StaticInst::IsDelayedCommit), 1, InstRegIndex(NUM_INTREGS+0),
-15394                         InstRegIndex(NUM_INTREGS+4), 8, InstRegIndex(SYS_SEGMENT_REG_IDTR), InstRegIndex(NUM_INTREGS+2),
-15395                         8, 8, 0 | (CPL0FlagBit << FlagShift) | (machInst.legacy.addr ? (AddrSizeFlagBit << FlagShift) : 0))) :
-15396                     (StaticInstPtr)(new Ld(machInst,
-15397                         macrocodeBlock, (1ULL << StaticInst::IsMicroop) | (1ULL << StaticInst::IsDelayedCommit), 1, InstRegIndex(NUM_INTREGS+0),
-15398                         InstRegIndex(NUM_INTREGS+4), 8, InstRegIndex(SYS_SEGMENT_REG_IDTR), InstRegIndex(NUM_INTREGS+2),
-15399                         8, 8, 0 | (CPL0FlagBit << FlagShift) | (machInst.legacy.addr ? (AddrSizeFlagBit << FlagShift) : 0)))
-15400             ;
-15401             }
-15402
-15403             StaticInstPtr
-15404             generate_Ld_124(StaticInstPtr curMacroop)
-15405             {
-15406                 static const char *macrocodeBlock = romMnemonic;
-15407                 static ExtMachInst dummyExtMachInst;
-15408                 static const EmulEnv dummyEmulEnv(0, 0, 1, 1, 1);
-15409                 Macroop * macroop = dynamic_cast<Macroop *>(curMacroop.get());
-15410                 const ExtMachInst &machInst =
-15411                     macroop ? macroop->getExtMachInst() : dummyExtMachInst;
-15412                 const EmulEnv &env =
-15413                     macroop ? macroop->getEmulEnv() : dummyEmulEnv;
-15414                 // env may not be used in the microop's constructor.
-15415                 InstRegIndex reg(env.reg);
-15416                 reg = reg;
-15417                 using namespace RomLabels;
-15418                 return
-15419                 (8 >= 4) ?
-15420                     (StaticInstPtr)(new LdBig(machInst,
-15421                         macrocodeBlock, (1ULL << StaticInst::IsMicroop) | (1ULL << StaticInst::IsDelayedCommit), 1, InstRegIndex(NUM_INTREGS+0),
-15422                         InstRegIndex(NUM_INTREGS+4), 0, InstRegIndex(SYS_SEGMENT_REG_IDTR), InstRegIndex(NUM_INTREGS+4),
-15423                         8, 8, 0 | (CPL0FlagBit << FlagShift) | (machInst.legacy.addr ? (AddrSizeFlagBit << FlagShift) : 0))) :
-15424                     (StaticInstPtr)(new Ld(machInst,
-15425                         macrocodeBlock, (1ULL << StaticInst::IsMicroop) | (1ULL << StaticInst::IsDelayedCommit), 1, InstRegIndex(NUM_INTREGS+0),
-15426                         InstRegIndex(NUM_INTREGS+4), 0, InstRegIndex(SYS_SEGMENT_REG_IDTR), InstRegIndex(NUM_INTREGS+4),
-15427                         8, 8, 0 | (CPL0FlagBit << FlagShift) | (machInst.legacy.addr ? (AddrSizeFlagBit << FlagShift) : 0)))
-15428             ;
-15429             }
+\xxx it actually read memory by making use of physical address?
+
+
+###InitiateAcc: send memory reference
+```python
+119 def template MicroLoadInitiateAcc {{
+120     Fault %(class_name)s::initiateAcc(ExecContext * xc,
+121             Trace::InstRecord * traceData) const
+122     {
+123         Fault fault = NoFault;
+124         Addr EA;
+125
+126         %(op_decl)s;
+127         %(op_rd)s;
+128         %(ea_code)s;
+129         DPRINTF(X86, "%s : %s: The address is %#x\n", instMnem, mnemonic, EA);
+130
+131         fault = initiateMemRead(xc, traceData, EA,
+132                                 %(memDataSize)s, memFlags);
+133
+134         return fault;
+135     }
+136 }};
+137
+```
+```cpp
+19144     Fault Ld::initiateAcc(ExecContext * xc,
+19145             Trace::InstRecord * traceData) const
+19146     {
+19147         Fault fault = NoFault;
+19148         Addr EA;
+19149
+19150         uint64_t Index = 0;
+19151 uint64_t Base = 0;
+19152 uint64_t SegBase = 0;
+19153 ;
+19154         Index = xc->readIntRegOperand(this, 0);
+19155 Base = xc->readIntRegOperand(this, 1);
+19156 SegBase = xc->readMiscRegOperand(this, 3);
+19157 ;
+19158         EA = SegBase + bits(scale * Index + Base + disp, addressSize * 8 - 1, 0);;
+19159         DPRINTF(X86, "%s : %s: The address is %#x\n", instMnem, mnemonic, EA);
+19160
+19161         fault = initiateMemRead(xc, traceData, EA,
+19162                                 dataSize, memFlags);
+19163
+19164         return fault;
+19165     }
+```
+For memory operation, initiateAcc is the most important function
+that actually initiate memory access. 
+initiateAcc invokes initiateMemRead function, and
+each CPU class overrides initiateMemRead method.
+
+*gem5/src/cpu/simple/timing.cc*
+```cpp
+ 418 Fault
+ 419 TimingSimpleCPU::initiateMemRead(Addr addr, unsigned size,
+ 420                                  Request::Flags flags,
+ 421                                  const std::vector<bool>& byte_enable)
+ 422 {
+ 423     SimpleExecContext &t_info = *threadInfo[curThread];
+ 424     SimpleThread* thread = t_info.thread;
+ 425
+ 426     Fault fault;
+ 427     const int asid = 0;
+ 428     const Addr pc = thread->instAddr();
+ 429     unsigned block_size = cacheLineSize();
+ 430     BaseTLB::Mode mode = BaseTLB::Read;
+ 431
+ 432     if (traceData)
+ 433         traceData->setMem(addr, size, flags);
+ 434
+ 435     RequestPtr req = std::make_shared<Request>(
+ 436         asid, addr, size, flags, dataMasterId(), pc,
+ 437         thread->contextId());
+ 438     if (!byte_enable.empty()) {
+ 439         req->setByteEnable(byte_enable);
+ 440     }
+ 441
+ 442     req->taskId(taskId());
+ 443
+ 444     Addr split_addr = roundDown(addr + size - 1, block_size);
+ 445     assert(split_addr <= addr || split_addr - addr < block_size);
+ 446
+ 447     _status = DTBWaitResponse;
+ 448     if (split_addr > addr) {
+ 449         RequestPtr req1, req2;
+ 450         assert(!req->isLLSC() && !req->isSwap());
+ 451         req->splitOnVaddr(split_addr, req1, req2);
+ 452
+ 453         WholeTranslationState *state =
+ 454             new WholeTranslationState(req, req1, req2, new uint8_t[size],
+ 455                                       NULL, mode);
+ 456         DataTranslation<TimingSimpleCPU *> *trans1 =
+ 457             new DataTranslation<TimingSimpleCPU *>(this, state, 0);
+ 458         DataTranslation<TimingSimpleCPU *> *trans2 =
+ 459             new DataTranslation<TimingSimpleCPU *>(this, state, 1);
+ 460
+ 461         thread->dtb->translateTiming(req1, thread->getTC(), trans1, mode);
+ 462         thread->dtb->translateTiming(req2, thread->getTC(), trans2, mode);
+ 463     } else {
+ 464         WholeTranslationState *state =
+ 465             new WholeTranslationState(req, new uint8_t[size], NULL, mode);
+ 466         DataTranslation<TimingSimpleCPU *> *translation
+ 467             = new DataTranslation<TimingSimpleCPU *>(this, state);
+ 468         thread->dtb->translateTiming(req, thread->getTC(), translation, mode);
+ 469     }
+ 470
+ 471     return NoFault;
+ 472 }
+```
+This function first handles split memory access 
+that needs two memory access requests.
+When the memory address is not aligned, and 
+the access crosses the memory block boundary,
+then it should be handled with two separate memory requests.
+Otherwise, it invokes translateTiming function defined in data tlb object(dtb).
+
+
+###completeAcc:execute memory instruction
+```python
+138 def template MicroLoadCompleteAcc {{
+139     Fault %(class_name)s::completeAcc(PacketPtr pkt, ExecContext * xc,
+140                                       Trace::InstRecord * traceData) const
+141     {
+142         Fault fault = NoFault;
+143
+144         %(op_decl)s;
+145         %(op_rd)s;
+146
+147         getMem(pkt, Mem, dataSize, traceData);
+148
+149         %(code)s;
+150
+151         if(fault == NoFault)
+152         {
+153             %(op_wb)s;
+154         }
+155
+156         return fault;
+157     }
+158 }};
+```
+
+```cpp
+19167     Fault Ld::completeAcc(PacketPtr pkt, ExecContext * xc,
+19168                                       Trace::InstRecord * traceData) const
+19169     {
+19170         Fault fault = NoFault;
+19171
+19172         uint64_t Data = 0;
+19173 uint64_t Mem;
+19174 ;
+19175         Data = xc->readIntRegOperand(this, 2);
+19176 ;
+19177
+19178         getMem(pkt, Mem, dataSize, traceData);
+19179
+19180         Data = merge(Data, Mem, dataSize);;
+19181
+19182         if(fault == NoFault)
+19183         {
+19184
+19185
+19186         {
+19187             uint64_t final_val = Data;
+19188             xc->setIntRegOperand(this, 0, final_val);
+19189
+19190             if (traceData) { traceData->setData(final_val); }
+19191         };
+19192         }
+19193
+19194         return fault;
+19195     }
+```
+completeAcc function receives the pkt as its parameter.
+pkt contains the actual data read from the memory,
+so getMem function reads the proper amount of the data 
+from the pkt data structure.
+Because memory operation reads 64bytes of data at once 
+it should be properly feed to the pipeline depending on the data read size.
+
+Then who makes use of those automatically generated functions of microop?
+Each CPU model makes use of the generated methods differently,
+so we are going to look at simple/timing cpu model
+which is simple one cycle cpu.
+
+Because simple cpu model is one cycle CPU model,
+it doesn't implement multiple pipeline stages.
+Although it has no pipeline stages,
+entire execution process can be represented as 
+three separate functions: fetch and advanceInst.
+
+```cpp
+ 775 void
+ 776 TimingSimpleCPU::completeIfetch(PacketPtr pkt)
+ 777 {
+ 778     SimpleExecContext& t_info = *threadInfo[curThread];
+ 779
+ 780     DPRINTF(SimpleCPU, "Complete ICache Fetch for addr %#x\n", pkt ?
+ 781             pkt->getAddr() : 0);
+ 782
+ 783     // received a response from the icache: execute the received
+ 784     // instruction
+ 785     assert(!pkt || !pkt->isError());
+ 786     assert(_status == IcacheWaitResponse);
+ 787
+ 788     _status = BaseSimpleCPU::Running;
+ 789
+ 790     updateCycleCounts();
+ 791     updateCycleCounters(BaseCPU::CPU_STATE_ON);
+ 792
+ 793     if (pkt)
+ 794         pkt->req->setAccessLatency();
+ 795
+ 796
+ 797     preExecute();
+ 798     if (curStaticInst && curStaticInst->isMemRef()) {
+ 799         // load or store: just send to dcache
+ 800         Fault fault = curStaticInst->initiateAcc(&t_info, traceData);
+ 801
+ 802         // If we're not running now the instruction will complete in a dcache
+ 803         // response callback or the instruction faulted and has started an
+ 804         // ifetch
+ 805         if (_status == BaseSimpleCPU::Running) {
+ 806             if (fault != NoFault && traceData) {
+ 807                 // If there was a fault, we shouldn't trace this instruction.
+ 808                 delete traceData;
+ 809                 traceData = NULL;
+ 810             }
+ 811
+ 812             postExecute();
+ 813             // @todo remove me after debugging with legion done
+ 814             if (curStaticInst && (!curStaticInst->isMicroop() ||
+ 815                         curStaticInst->isFirstMicroop()))
+ 816                 instCnt++;
+ 817             advanceInst(fault);
+ 818         }
+ 819     } else if (curStaticInst) {
+ 820         // non-memory instruction: execute completely now
+ 821         Fault fault = curStaticInst->execute(&t_info, traceData);
+ 822
+ 823         // keep an instruction count
+ 824         if (fault == NoFault)
+ 825             countInst();
+ 826         else if (traceData && !DTRACE(ExecFaulting)) {
+ 827             delete traceData;
+ 828             traceData = NULL;
+ 829         }
+ 830
+ 831         postExecute();
+ 832         // @todo remove me after debugging with legion done
+ 833         if (curStaticInst && (!curStaticInst->isMicroop() ||
+ 834                 curStaticInst->isFirstMicroop()))
+ 835             instCnt++;
+ 836         advanceInst(fault);
+ 837     } else {
+ 838         advanceInst(NoFault);
+ 839     }
+ 840
+ 841     if (pkt) {
+ 842         delete pkt;
+ 843     }
+ 844 }
+```
+When we look at the fetch function of the simple cpu,
+we can easily find that it invokes completeIfetch function
+when the next instruction is ready to be executed,
+which means next instruction has been fetched from the memory.
+completeIfetch instruction consists of four parts:
+preExecute, instruction execution, postExecute, and advanceInst.
+
+###preExecute: decode instruction and predict branch
+
+
+
+###Instruction execution: execute decoded microop instruction
+For memory operation (line 798-819),
+it invokes initiateAcc method of current microop 
+represented by the curStaticInst.
+As we have seen before,
+for each load/store microop, it defines initiateAcc function,
+for example, for Ld, it defines Ld::initiateAcc.
+
+Otherwise, for non-memory instruction,
+it invokes execute method of microop instead of initiateAcc.
+
+
+
+
+
+
+###postExecute: manage statistics related with execution
+
+###adnvanceInst: start to fetch next instruction

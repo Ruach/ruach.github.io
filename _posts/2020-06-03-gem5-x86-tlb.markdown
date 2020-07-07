@@ -3,7 +3,7 @@ layout: post
 titile: "Pagetable walking and pagefault handling in Gem5"
 categories: GEM5, TLB
 ---
-
+#TLB access 
 *gem5/src/cpu/simple/timing.cc*
 ```cpp
  418 Fault
@@ -80,13 +80,200 @@ categories: GEM5, TLB
 453         translation->markDelayed();
 454 }
 ```
+translateTiming starts translation process by invoking TLB::translate function.
+Depending on the TLB status,
+translate function fetch data from the TLB or memory by
 
-After walking the pagetable, 
-it invokes the finish function defined in the translation object.
-Then where is the translation object? 
-It has been passed by the cpu and 
-instantiated as a DataTranslation class instance.
 
+```cpp
+341         // If paging is enabled, do the translation.
+342         if (m5Reg.paging) {
+343             DPRINTF(TLB, "Paging enabled.\n");
+344             // The vaddr already has the segment base applied.
+345             TlbEntry *entry = lookup(vaddr);
+346             if (mode == Read) {
+347                 rdAccesses++;
+348             } else {
+349                 wrAccesses++;
+350             }
+351             if (!entry) {
+352                 DPRINTF(TLB, "Handling a TLB miss for "
+353                         "address %#x at pc %#x.\n",
+354                         vaddr, tc->instAddr());
+355                 if (mode == Read) {
+356                     rdMisses++;
+357                 } else {
+358                     wrMisses++;
+359                 }
+360                 if (FullSystem) {
+361                     Fault fault = walker->start(tc, translation, req, mode);
+362                     if (timing || fault != NoFault) {
+363                         // This gets ignored in atomic mode.
+364                         delayedResponse = true;
+365                         return fault;
+366                     }
+367                     entry = lookup(vaddr);
+368                     assert(entry);
+369                 } else {
+370                     Process *p = tc->getProcessPtr();
+371                     const EmulationPageTable::Entry *pte =
+372                         p->pTable->lookup(vaddr);
+373                     if (!pte && mode != Execute) {
+374                         // Check if we just need to grow the stack.
+375                         if (p->fixupStackFault(vaddr)) {
+376                             // If we did, lookup the entry for the new page.
+377                             pte = p->pTable->lookup(vaddr);
+378                         }
+379                     }
+380                     if (!pte) {
+381                         return std::make_shared<PageFault>(vaddr, true, mode,
+382                                                            true, false);
+383                     } else {
+384                         Addr alignedVaddr = p->pTable->pageAlign(vaddr);
+385                         DPRINTF(TLB, "Mapping %#x to %#x\n", alignedVaddr,
+386                                 pte->paddr);
+387                         entry = insert(alignedVaddr, TlbEntry(
+388                                 p->pTable->pid(), alignedVaddr, pte->paddr,
+389                                 pte->flags & EmulationPageTable::Uncacheable,
+390                                 pte->flags & EmulationPageTable::ReadOnly
+391                                 ));
+392                     }
+393                     DPRINTF(TLB, "Miss was serviced.\n");
+394                 }
+395             }
+```
+translate function first ask TLB to find 
+whether the required translation entry has been brough to cache (line 345)
+When the TLB entry is not found,
+it starts to traverse pagetable to get virtual to physical translation (line 351-395)
+Because we have interest in fullsystem emulation,
+we are going to take a look at line 360-369.
+When GEM5 executes in fullsystem mode, and TLB miss happens,
+it actually traverse the pagetable with pagetable_walker (line 361).
+
+*gem5/src/arch/x86/pagetable_walker.cc*
+```cpp
+ 71 Fault
+ 72 Walker::start(ThreadContext * _tc, BaseTLB::Translation *_translation,
+ 73               const RequestPtr &_req, BaseTLB::Mode _mode)
+ 74 {
+ 75     // TODO: in timing mode, instead of blocking when there are other
+ 76     // outstanding requests, see if this request can be coalesced with
+ 77     // another one (i.e. either coalesce or start walk)
+ 78     WalkerState * newState = new WalkerState(this, _translation, _req);
+ 79     newState->initState(_tc, _mode, sys->isTimingMode());
+ 80     if (currStates.size()) {
+ 81         assert(newState->isTiming());
+ 82         DPRINTF(PageTableWalker, "Walks in progress: %d\n", currStates.size());
+ 83         currStates.push_back(newState);
+ 84         return NoFault;
+ 85     } else {
+ 86         currStates.push_back(newState);
+ 87         Fault fault = newState->startWalk();
+ 88         if (!newState->isTiming()) {
+ 89             currStates.pop_front();
+ 90             delete newState;
+ 91         }
+ 92         return fault;
+ 93     }
+ 94 }
+```
+
+
+```cpp
+229 Fault
+230 Walker::WalkerState::startWalk()
+231 {
+232     Fault fault = NoFault;
+233     assert(!started);
+234     started = true;
+235     setupWalk(req->getVaddr());
+236     if (timing) {
+237         nextState = state;
+238         state = Waiting;
+239         timingFault = NoFault;
+240         sendPackets();
+241     } else {
+242         do {
+243             walker->port.sendAtomic(read);
+244             PacketPtr write = NULL;
+245             fault = stepWalk(write);
+246             assert(fault == NoFault || read == NULL);
+247             state = nextState;
+248             nextState = Ready;
+249             if (write)
+250                 walker->port.sendAtomic(write);
+251         } while (read);
+252         state = Ready;
+253         nextState = Waiting;
+254     }
+255     return fault;
+256 }
+
+```
+
+```cpp
+397             DPRINTF(TLB, "Entry found with paddr %#x, "
+398                     "doing protection checks.\n", entry->paddr);
+399             // Do paging protection checks.
+400             bool inUser = (m5Reg.cpl == 3 &&
+401                     !(flags & (CPL0FlagBit << FlagShift)));
+402             CR0 cr0 = tc->readMiscRegNoEffect(MISCREG_CR0);
+403             bool badWrite = (!entry->writable && (inUser || cr0.wp));
+404             if ((inUser && !entry->user) || (mode == Write && badWrite)) {
+405                 // The page must have been present to get into the TLB in
+406                 // the first place. We'll assume the reserved bits are
+407                 // fine even though we're not checking them.
+408                 return std::make_shared<PageFault>(vaddr, true, mode, inUser,
+409                                                    false);
+410             }
+411             if (storeCheck && badWrite) {
+412                 // This would fault if this were a write, so return a page
+413                 // fault that reflects that happening.
+414                 return std::make_shared<PageFault>(vaddr, true, Write, inUser,
+415                                                    false);
+416             }
+417
+418             Addr paddr = entry->paddr | (vaddr & mask(entry->logBytes));
+419             DPRINTF(TLB, "Translated %#x -> %#x.\n", vaddr, paddr);
+420             req->setPaddr(paddr);
+421             if (entry->uncacheable)
+422                 req->setFlags(Request::UNCACHEABLE | Request::STRICT_ORDER);
+423         } else {
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Page fault handling and memory access
+After the translation has been finished,
+whether it has been done by TLB hit or page table walking,
+it invokes the finish function through a translation object.
+let's go back to initiateMemRead function again
+to look at what is the translation object.
+
+```cpp
+ 464         WholeTranslationState *state =
+ 465             new WholeTranslationState(req, new uint8_t[size], NULL, mode);
+ 466         DataTranslation<TimingSimpleCPU *> *translation
+ 467             = new DataTranslation<TimingSimpleCPU *>(this, state);
+ 468         thread->dtb->translateTiming(req, thread->getTC(), translation, mode);
+```
+
+At line 464-468, we can easily find that 
+it is object of *DataTranslation* class.
 
 *gem5/src/cpu/translation.hh*
 ```cpp
@@ -159,26 +346,15 @@ instantiated as a DataTranslation class instance.
 
 Here finish function defined in DataTranslation class
 re-invokes another finish function 
-through the state member field.
-State field is initiated with the second parameter 
-passed to the constructor of the DataTranslation class.
+through the state member field (line 257).
+Also after invoking finish function,
+it invokes xc->finishTranslation method.
 
-```cpp
- 464         WholeTranslationState *state =
- 465             new WholeTranslationState(req, new uint8_t[size], NULL, mode);
- 466         DataTranslation<TimingSimpleCPU *> *translation
- 467             = new DataTranslation<TimingSimpleCPU *>(this, state);
-```
-
-When we look at the below code 
-excerpted from the initiateMemRead function,
-we can easily know that
-WholeTranslationState instance has been passed 
-to the DataTranslation constructor.
-Therefore, state->finish invokes 
+When we look at the initiateMemRead function again,
+*WholeTranslationState* instance is passed 
+to the DataTranslation constructor as state parameter.
+Therefore, state->finish of the DataTranslation invokes 
 WholeTranslationState::finish method. 
-Now let's look at the WholeTranslationState class.
-
 
 *gem5/src/cpu/translation.hh*
 ```cpp
@@ -262,30 +438,31 @@ Now let's look at the WholeTranslationState class.
 128         return outstanding == 0;
 129     }
 ```
+Note that translate function can return fault as a result of address translation.
+When there exists meaningful fault,
+the finish function of WholeTranslationState
+stores generated fault on its buffer
+(line 117).
 
-the finish function defined in WholeTranslationState class 
-just stores generated fault in its own buffer.
-Then who actually process the genereated fault?
-That is *xc->finishTranslation(state)* code 
-in the finish function of DataTranslation class.
-Because DataTranslation class is declared as a template,
-the passed type ExecContextPtr will determine the type of member filed xc.
+After the fault has been stored,
+*xc->finishTranslation(state)* function
+actually process the genereated fault.
+To understand details, 
+we have to first look at what is the xc variable.
+Because DataTranslation class is declared as a template class and 
+xc declared as template type,
+it will be an instance of template type class.
 
 ```cpp
  466         DataTranslation<TimingSimpleCPU *> *translation
  467             = new DataTranslation<TimingSimpleCPU *>(this, state);
 ```
 
-As shown in the initiateMemRead function,,
-DataTranslation instance is constructed with 
-TimingSimpleCPU class.
-As the DataTranslation is template class,
-the passed TimingSimpleCPU is used to declare 
-its member field *xs*.
+Because translation has been declared with DataTranslation<TimingSimpleCPU>,
+xc variable is declared as an instance of TimingSimpleCpu.
 Therefore, 
 when the xc->finishTranslation(sate) is called,
 it will invoke TimingSimpleCPU::finishTranslation function.
-Let's look at that function.
 
 ```cpp
  627 void
@@ -314,8 +491,12 @@ Let's look at that function.
  650 }
 ```
 
-it ends up ivnoking translationFault function 
-with the fault previously stored in the buffer of the state.
+it ends up ivnoking *translationFault* function
+with the fault previously stored in the buffer of the state (line 638).
+As shown before, state instance stores the generated fault 
+as a result of translation in its buffer.
+And the stored fault will be retrieved
+as a result of state->getFault method invocation.
 
 ```cpp
  361 void

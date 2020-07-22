@@ -3,6 +3,7 @@ layout: post
 titile: "Microops in GEM5"
 categories: GEM5, Microops
 ---
+```python
 430     def defineMicroLoadOp(mnemonic, code, bigCode='',
 431                           mem_flags="0", big=True, nonSpec=False,
 432                           implicitStack=False):
@@ -54,8 +55,105 @@ categories: GEM5, Microops
 478                 self.mnemonic = name
 479
 480         microopClasses[name] = LoadOp
+```
+To automatically generate microop classes, 
+we need some data structure that describes 
+semantic of microop that we have interest.
+For that meta-data,
+it makes use of InstObjParams class 
+that requires microop mnemonic, code defining the microop, and arguments of it.
 
+*gem5/src/arch/isa_parser.py*
+```python
+1413 class InstObjParams(object):
+1414     def __init__(self, parser, mnem, class_name, base_class = '',
+1415                  snippets = {}, opt_args = []):
+1416         self.mnemonic = mnem
+1417         self.class_name = class_name
+1418         self.base_class = base_class
+1419         if not isinstance(snippets, dict):
+1420             snippets = {'code' : snippets}
+1421         compositeCode = ' '.join(map(str, snippets.values()))
+1422         self.snippets = snippets
+1423
+1424         self.operands = OperandList(parser, compositeCode)
+1425
+1426         # The header of the constructor declares the variables to be used
+1427         # in the body of the constructor.
+1428         header = ''
+1429         header += '\n\t_numSrcRegs = 0;'
+1430         header += '\n\t_numDestRegs = 0;'
+1431         header += '\n\t_numFPDestRegs = 0;'
+1432         header += '\n\t_numVecDestRegs = 0;'
+1433         header += '\n\t_numVecElemDestRegs = 0;'
+1434         header += '\n\t_numVecPredDestRegs = 0;'
+1435         header += '\n\t_numIntDestRegs = 0;'
+1436         header += '\n\t_numCCDestRegs = 0;'
+1437
+1438         self.constructor = header + \
+1439                            self.operands.concatAttrStrings('constructor')
+1440
+1441         self.flags = self.operands.concatAttrLists('flags')
+1442
+1443         self.op_class = None
+1444
+1445         # Optional arguments are assumed to be either StaticInst flags
+1446         # or an OpClass value.  To avoid having to import a complete
+1447         # list of these values to match against, we do it ad-hoc
+1448         # with regexps.
+1449         for oa in opt_args:
+1450             if instFlagRE.match(oa):
+1451                 self.flags.append(oa)
+1452             elif opClassRE.match(oa):
+1453                 self.op_class = oa
+1454             else:
+1455                 error('InstObjParams: optional arg "%s" not recognized '
+1456                       'as StaticInst::Flag or OpClass.' % oa)
+1457
+1458         # Make a basic guess on the operand class if not set.
+1459         # These are good enough for most cases.
+1460         if not self.op_class:
+1461             if 'IsStore' in self.flags:
+1462                 # The order matters here: 'IsFloating' and 'IsInteger' are
+1463                 # usually set in FP instructions because of the base
+1464                 # register
+1465                 if 'IsFloating' in self.flags:
+1466                     self.op_class = 'FloatMemWriteOp'
+1467                 else:
+1468                     self.op_class = 'MemWriteOp'
+1469             elif 'IsLoad' in self.flags or 'IsPrefetch' in self.flags:
+1470                 # The order matters here: 'IsFloating' and 'IsInteger' are
+1471                 # usually set in FP instructions because of the base
+1472                 # register
+1473                 if 'IsFloating' in self.flags:
+1474                     self.op_class = 'FloatMemReadOp'
+1475                 else:
+1476                     self.op_class = 'MemReadOp'
+1477             elif 'IsFloating' in self.flags:
+1478                 self.op_class = 'FloatAddOp'
+1479             elif 'IsVector' in self.flags:
+1480                 self.op_class = 'SimdAddOp'
+1481             else:
+1482                 self.op_class = 'IntAluOp'
+1483
+1484         # add flag initialization to contructor here to include
+1485         # any flags added via opt_args
+1486         self.constructor += makeFlagConstructor(self.flags)
+1487
+1488         # if 'IsFloating' is set, add call to the FP enable check
+1489         # function (which should be provided by isa_desc via a declare)
+1490         # if 'IsVector' is set, add call to the Vector enable check
+1491         # function (which should be provided by isa_desc via a declare)
+1492         if 'IsFloating' in self.flags:
+1493             self.fp_enable_check = 'fault = checkFpEnableFault(xc);'
+1494         elif 'IsVector' in self.flags:
+1495             self.fp_enable_check = 'fault = checkVecEnableFault(xc);'
+1496         else:
+1497             self.fp_enable_check = ''
+```
 
+##Microop class declaration
+```python
 222 def template MicroLdStOpDeclare {{
 223     class %(class_name)s : public %(base_class)s
 224     {
@@ -93,7 +191,7 @@ categories: GEM5, Microops
 3599     };
 ```
 
-
+##Microop class constructor generation
 260 def template MicroLdStOpConstructor {{
 261     %(class_name)s::%(class_name)s(
 262             ExtMachInst machInst, const char * instMnem, uint64_t setFlags,
@@ -148,7 +246,7 @@ categories: GEM5, Microops
 
 
 
-
+##Method generation required for basic load operation
 ### execute: modify ExecContext based on instruction
 ```python
  90 def template MicroLoadExecute {{
@@ -180,7 +278,11 @@ categories: GEM5, Microops
 116     }
 117 }};
 ```
-
+Currently, we have a automatically generated class definition and its constructor.
+However, it cannot make any change to the micro architecture state,
+which means we need a method that defines semantic of a microop.
+One of the important method is execute that actually change the architecture state
+represented by *ExecContext*.
 
 *exec-ns.cc.inc*
 ```cpp
@@ -248,7 +350,71 @@ categories: GEM5, Microops
 ```
 
 
+*gem5/src/cpu/exec_context.hh*
 ```cpp
+ 57 /**
+ 58  * The ExecContext is an abstract base class the provides the
+ 59  * interface used by the ISA to manipulate the state of the CPU model.
+ 60  *
+ 61  * Register accessor methods in this class typically provide the index
+ 62  * of the instruction's operand (e.g., 0 or 1), not the architectural
+ 63  * register index, to simplify the implementation of register
+ 64  * renaming.  The architectural register index can be found by
+ 65  * indexing into the instruction's own operand index table.
+ 66  *
+ 67  * @note The methods in this class typically take a raw pointer to the
+ 68  * StaticInst is provided instead of a ref-counted StaticInstPtr to
+ 69  * reduce overhead as an argument. This is fine as long as the
+ 70  * implementation doesn't copy the pointer into any long-term storage
+ 71  * (which is pretty hard to imagine they would have reason to do).
+ 72  */
+ 73 class ExecContext {
+ 74   public:
+ 75     typedef TheISA::PCState PCState;
+ 76
+ 77     using VecRegContainer = TheISA::VecRegContainer;
+ 78     using VecElem = TheISA::VecElem;
+ 79     using VecPredRegContainer = TheISA::VecPredRegContainer;
+```
+As mentioned in the comment,
+*ExecContext* class is an abstract base class
+used to manipulate state of the CPU model. 
+Therefore, each CPU model provides concrete interface 
+that can actually updates CPU context.
+
+As an example, let's take a loot at simeple cpu model.
+
+*gem5/src/cpu/simple/exec_context.hh*
+```cpp
+ 61 class SimpleExecContext : public ExecContext {
+ 62   protected:
+ 63     using VecRegContainer = TheISA::VecRegContainer;
+ 64     using VecElem = TheISA::VecElem;
+ 65
+ 66   public:
+ 67     BaseSimpleCPU *cpu;
+ 68     SimpleThread* thread;
+ 69
+ 70     // This is the offset from the current pc that fetch should be performed
+ 71     Addr fetchOffset;
+ 72     // This flag says to stay at the current pc. This is useful for
+ 73     // instructions which go beyond MachInst boundaries.
+ 74     bool stayAtPC;
+ 75
+ 76     // Branch prediction
+ 77     TheISA::PCState predPC;
+ 78
+ 79     /** PER-THREAD STATS */
+ 80
+ 81     // Number of simulated instructions
+ 82     Counter numInst;
+ 83     Stats::Scalar numInsts;
+ 84     Counter numOp;
+ 85     Stats::Scalar numOps;
+ 86
+ 87     // Number of integer alu accesses
+ 88     Stats::Scalar numIntAluAccesses;
+...
 437     Fault
 438     readMem(Addr addr, uint8_t *data, unsigned int size,
 439             Request::Flags flags,
@@ -259,9 +425,14 @@ categories: GEM5, Microops
 444         return cpu->readMem(addr, data, size, flags, byte_enable);
 445     }
 ```
-
-\xxx it actually read memory by making use of physical address?
-
+As shown in the line 437-445,
+readMem method is overridden by *SimpleExecContext* class
+inherited from ExecContext abstract class.
+However, because it is an interface class,
+actual memory read operation is done by the CPU class.
+However, for timing CPU, 
+it doesn't make use of execute,
+but other autogenerated method to executed ld microop.
 
 ###InitiateAcc: send memory reference
 ```python
@@ -285,6 +456,16 @@ categories: GEM5, Microops
 136 }};
 137
 ```
+
+All the template code is required to generate load address.
+And the generated address is used by initiateMemRead method
+to actually access the memory. 
+Note that this method receive ExecContext which is a interface to CPU module
+and the generated logical address EA.
+Also, memory flags such as prefetch are delivered to the memory module.
+Remember that memflags are passed to the class 
+when it is constructed. 
+
 ```cpp
 19144     Fault Ld::initiateAcc(ExecContext * xc,
 19145             Trace::InstRecord * traceData) const
@@ -313,6 +494,39 @@ For memory operation, initiateAcc is the most important function
 that actually initiate memory access. 
 initiateAcc invokes initiateMemRead function, and
 each CPU class overrides initiateMemRead method.
+Before we take a look at the detail implementation,
+we have to understand that 
+all the CPU specific functions are invoked 
+through the interface ExecContext class.
+
+*gem5/src/arch/x86/memhelpers.hh*
+```cpp
+ 45 /// Initiate a read from memory in timing mode.
+ 46 static Fault
+ 47 initiateMemRead(ExecContext *xc, Trace::InstRecord *traceData, Addr addr,
+ 48                 unsigned dataSize, Request::Flags flags)
+ 49 {
+ 50     return xc->initiateMemRead(addr, dataSize, flags);
+ 51 }
+```
+initiateMemRead helper function defined in x86 arch directory
+invokes actual initiateMemRead function
+through the ExecContext interface.
+
+*gem5/src/cpu/simple/exec_context.hh*
+```cpp
+447     Fault
+448     initiateMemRead(Addr addr, unsigned int size,
+449                     Request::Flags flags,
+450                     const std::vector<bool>& byte_enable = std::vector<bool>())
+451         override
+452     {
+453         assert(byte_enable.empty() || byte_enable.size() == size);
+454         return cpu->initiateMemRead(addr, size, flags, byte_enable);
+455     }
+```
+Because we have interest in timing cpu model,
+let's figure how the timing cpu model implements initiateMemRead.
 
 *gem5/src/cpu/simple/timing.cc*
 ```cpp
@@ -378,9 +592,14 @@ When the memory address is not aligned, and
 the access crosses the memory block boundary,
 then it should be handled with two separate memory requests.
 Otherwise, it invokes translateTiming function defined in data tlb object(dtb).
+Note that initiateMemRead doesn't actually bring the data from the memory to cache.
+It first check the tlb for virtual to physical mapping, and 
+if the mapping doesn't exist,
+it initiate translation request to TLB
 
 
-###completeAcc:execute memory instruction
+
+###completeAcc: execute memory instruction and bring the data
 ```python
 138 def template MicroLoadCompleteAcc {{
 139     Fault %(class_name)s::completeAcc(PacketPtr pkt, ExecContext * xc,
@@ -443,6 +662,7 @@ from the pkt data structure.
 Because memory operation reads 64bytes of data at once 
 it should be properly feed to the pipeline depending on the data read size.
 
+#CPU pipeline: fetch-decode-execute
 Then who makes use of those automatically generated functions of microop?
 Each CPU model makes use of the generated methods differently,
 so we are going to look at simple/timing cpu model
@@ -452,7 +672,91 @@ Because simple cpu model is one cycle CPU model,
 it doesn't implement multiple pipeline stages.
 Although it has no pipeline stages,
 entire execution process can be represented as 
-three separate functions: fetch and advanceInst.
+three separate functions.
+
+
+###fetch
+*gem5/src/cpu/simple/timing.cc*
+```cpp
+ 653 void
+ 654 TimingSimpleCPU::fetch()
+ 655 {
+ 656     // Change thread if multi-threaded
+ 657     swapActiveThread();
+ 658
+ 659     SimpleExecContext &t_info = *threadInfo[curThread];
+ 660     SimpleThread* thread = t_info.thread;
+ 661
+ 662     DPRINTF(SimpleCPU, "Fetch\n");
+ 663
+ 664     if (!curStaticInst || !curStaticInst->isDelayedCommit()) {
+ 665         checkForInterrupts();
+ 666         checkPcEventQueue();
+ 667     }
+ 668
+ 669     // We must have just got suspended by a PC event
+ 670     if (_status == Idle)
+ 671         return;
+ 672
+ 673     TheISA::PCState pcState = thread->pcState();
+ 674     bool needToFetch = !isRomMicroPC(pcState.microPC()) &&
+ 675                        !curMacroStaticInst;
+ 676
+ 677     if (needToFetch) {
+ 678         _status = BaseSimpleCPU::Running;
+ 679         RequestPtr ifetch_req = std::make_shared<Request>();
+ 680         ifetch_req->taskId(taskId());
+ 681         ifetch_req->setContext(thread->contextId());
+ 682         setupFetchRequest(ifetch_req);
+ 683         DPRINTF(SimpleCPU, "Translating address %#x\n", ifetch_req->getVaddr());
+ 684         thread->itb->translateTiming(ifetch_req, thread->getTC(),
+ 685                 &fetchTranslation, BaseTLB::Execute);
+ 686     } else {
+ 687         _status = IcacheWaitResponse;
+ 688         completeIfetch(NULL);
+ 689
+ 690         updateCycleCounts();
+ 691         updateCycleCounters(BaseCPU::CPU_STATE_ON);
+ 692     }
+ 693 }
+```
+###decode
+Processor can decode the memory blocks as instruction
+after the memory has been fetched from the cache or memory.
+Because timing simple CPU assume memory access takes more than single cycle,
+it wants to be notified
+when the requested memory block has been brought to the processor.
+
+```cpp
+ 846 void
+ 847 TimingSimpleCPU::IcachePort::ITickEvent::process()
+ 848 {                                                                                                                                                                                                                                                                                     849     cpu->completeIfetch(pkt);
+ 850 }
+ 851
+ 852 bool
+ 853 TimingSimpleCPU::IcachePort::recvTimingResp(PacketPtr pkt)
+ 854 {
+ 855     DPRINTF(SimpleCPU, "Received fetch response %#x\n", pkt->getAddr());
+ 856     // we should only ever see one response per cycle since we only
+ 857     // issue a new request once this response is sunk
+ 858     assert(!tickEvent.scheduled());
+ 859     // delay processing of returned data until next CPU clock edge
+ 860     tickEvent.schedule(pkt, cpu->clockEdge());
+ 861
+ 862     return true;
+ 863 }
+```
+
+As a processor is connected to a memory subsystem through the bus,
+bus should be programmed to invoke a function
+that can handle the fetched instruction, *completeIfetch*.
+When IcachePort receive response from 
+memory subsystem, 
+it schedule event with received packet.
+Because it is scheduled to fire at right next cycle, 
+it ends up invoking completeIfetch function of the TimingSimpleCPU.
+
+
 
 ```cpp
  775 void
@@ -526,12 +830,108 @@ three separate functions: fetch and advanceInst.
  843     }
  844 }
 ```
-When we look at the fetch function of the simple cpu,
-we can easily find that it invokes completeIfetch function
-when the next instruction is ready to be executed,
-which means next instruction has been fetched from the memory.
-completeIfetch instruction consists of four parts:
+CompleteIfetch instruction consists of four parts:
 preExecute, instruction execution, postExecute, and advanceInst.
+By the way, although we cannot see any decoding logic
+it makes use of curStaticInst to execute fetched instruction.
+Who decodes the fetched packet and generate curStaticInst?
+that is a *preExecute* function.
+
+*gem5/src/cpu/simple/base.cc*
+```cpp
+481 void
+482 BaseSimpleCPU::preExecute()
+483 {
+484     SimpleExecContext &t_info = *threadInfo[curThread];
+485     SimpleThread* thread = t_info.thread;
+486
+487     // maintain $r0 semantics
+488     thread->setIntReg(ZeroReg, 0);
+489 #if THE_ISA == ALPHA_ISA
+490     thread->setFloatReg(ZeroReg, 0);
+491 #endif // ALPHA_ISA
+492
+493     // resets predicates
+494     t_info.setPredicate(true);
+495     t_info.setMemAccPredicate(true);
+496
+497     // check for instruction-count-based events
+498     thread->comInstEventQueue.serviceEvents(t_info.numInst);
+499
+500     // decode the instruction
+501     TheISA::PCState pcState = thread->pcState();
+502
+503     if (isRomMicroPC(pcState.microPC())) {
+504         t_info.stayAtPC = false;
+505         curStaticInst = microcodeRom.fetchMicroop(pcState.microPC(),
+506                                                   curMacroStaticInst);
+507     } else if (!curMacroStaticInst) {
+508         //We're not in the middle of a macro instruction
+509         StaticInstPtr instPtr = NULL;
+510
+511         TheISA::Decoder *decoder = &(thread->decoder);
+512
+513         //Predecode, ie bundle up an ExtMachInst
+514         //If more fetch data is needed, pass it in.
+515         Addr fetchPC = (pcState.instAddr() & PCMask) + t_info.fetchOffset;
+516         //if (decoder->needMoreBytes())
+517             decoder->moreBytes(pcState, fetchPC, inst);
+518         //else
+519         //    decoder->process();
+520
+521         //Decode an instruction if one is ready. Otherwise, we'll have to
+522         //fetch beyond the MachInst at the current pc.
+523         instPtr = decoder->decode(pcState);
+524         if (instPtr) {
+525             t_info.stayAtPC = false;
+526             thread->pcState(pcState);
+527         } else {
+528             t_info.stayAtPC = true;
+529             t_info.fetchOffset += sizeof(MachInst);
+530         }
+531
+532         //If we decoded an instruction and it's microcoded, start pulling
+533         //out micro ops
+534         if (instPtr && instPtr->isMacroop()) {
+535             curMacroStaticInst = instPtr;
+536             curStaticInst =
+537                 curMacroStaticInst->fetchMicroop(pcState.microPC());
+538         } else {
+539             curStaticInst = instPtr;
+540         }
+541     } else {
+542         //Read the next micro op from the macro op
+543         curStaticInst = curMacroStaticInst->fetchMicroop(pcState.microPC());
+544     }
+545
+546     //If we decoded an instruction this "tick", record information about it.
+547     if (curStaticInst) {
+548 #if TRACING_ON
+549         traceData = tracer->getInstRecord(curTick(), thread->getTC(),
+550                 curStaticInst, thread->pcState(), curMacroStaticInst);
+551
+552         DPRINTF(Decode,"Decode: Decoded %s instruction: %#x\n",
+553                 curStaticInst->getName(), curStaticInst->machInst);
+554 #endif // TRACING_ON
+555     }
+556
+557     if (branchPred && curStaticInst &&
+558         curStaticInst->isControl()) {
+559         // Use a fake sequence number since we only have one
+560         // instruction in flight at the same time.
+561         const InstSeqNum cur_sn(0);
+562         t_info.predPC = thread->pcState();
+563         const bool predict_taken(
+564             branchPred->predict(curStaticInst, cur_sn, t_info.predPC,
+565                                 curThread));
+566
+567         if (predict_taken)
+568             ++t_info.numPredictedBranches;
+569     }
+570 }
+```
+
+###execute
 
 ###preExecute: decode instruction and predict branch
 
@@ -539,17 +939,15 @@ preExecute, instruction execution, postExecute, and advanceInst.
 
 ###Instruction execution: execute decoded microop instruction
 For memory operation (line 798-819),
-it invokes initiateAcc method of current microop 
-represented by the curStaticInst.
+it invokes *initiateAcc* method of current microop 
+represented by the curStaticInst (line 800).
 As we have seen before,
 for each load/store microop, it defines initiateAcc function,
 for example, for Ld, it defines Ld::initiateAcc.
 
 Otherwise, for non-memory instruction,
-it invokes execute method of microop instead of initiateAcc.
-
-
-
+it invokes *execute* method of microop 
+instead of initiateAcc.
 
 
 

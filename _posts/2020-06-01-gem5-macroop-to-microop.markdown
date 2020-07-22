@@ -128,6 +128,19 @@ Let's first look at how the microop dictionary can be generated.
 
 *gem5/src/arch/x86/isa/microops/ldstop.isa*
 ```python
+417 let {{
+418
+419     # Make these empty strings so that concatenating onto
+420     # them will always work.
+421     header_output = ""
+422     decoder_output = ""
+423     exec_output = ""
+424
+425     segmentEAExpr = \
+426         'bits(scale * Index + Base + disp, addressSize * 8 - 1, 0);'
+427
+428     calculateEA = 'EA = SegBase + ' + segmentEAExpr
+429
 430     def defineMicroLoadOp(mnemonic, code, bigCode='',
 431                           mem_flags="0", big=True, nonSpec=False,
 432                           implicitStack=False):
@@ -184,13 +197,26 @@ Inside a let block,
 *defineMicroLoadOp* provides a template method
 which can be utilized for generating microops 
 belongs to load operation category.
-Note that 
+When we look at the lines 441-449,
+it generates iops which contains 
+brieft definition of microop instruction. 
+For example, it contains microop instruction mnemonic, code,
+bigCode when it requires microop that can process larget operand, etc.
+
+After generating iop list,
+from line450-455 it automatically generates CPP code.
+The template method invoked with defined iop 
+substitute some string part of the template 
+and define class definition of microop in CPP format. 
+
+Also, note that 
 the line 468 defines LoadOp class.
 Whenever the defineMicroLoadOp is called,
 a pair of LoadOp class reference and the name of microop
 is stored in the *microopClasses* dictionary.
-Note that microopClasses is a variable passed to
+The microopClasses is a variable passed to
 previous initialization of MicroAssembler class.
+
 Also retrieved LoadOp classes
 can vary from each other because 
 it is defined with different mnemonic and class name

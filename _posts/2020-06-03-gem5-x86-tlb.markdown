@@ -70,32 +70,6 @@ that we have interest in.
 367                     entry = lookup(vaddr);
 368                     assert(entry);
 369                 } else {
-370                     Process *p = tc->getProcessPtr();
-371                     const EmulationPageTable::Entry *pte =
-372                         p->pTable->lookup(vaddr);
-373                     if (!pte && mode != Execute) {
-374                         // Check if we just need to grow the stack.
-375                         if (p->fixupStackFault(vaddr)) {
-376                             // If we did, lookup the entry for the new page.
-377                             pte = p->pTable->lookup(vaddr);
-378                         }
-379                     }
-380                     if (!pte) {
-381                         return std::make_shared<PageFault>(vaddr, true, mode,
-382                                                            true, false);
-383                     } else {
-384                         Addr alignedVaddr = p->pTable->pageAlign(vaddr);
-385                         DPRINTF(TLB, "Mapping %#x to %#x\n", alignedVaddr,
-386                                 pte->paddr);
-387                         entry = insert(alignedVaddr, TlbEntry(
-388                                 p->pTable->pid(), alignedVaddr, pte->paddr,
-389                                 pte->flags & EmulationPageTable::Uncacheable,
-390                                 pte->flags & EmulationPageTable::ReadOnly
-391                                 ));
-392                     }
-393                     DPRINTF(TLB, "Miss was serviced.\n");
-394                 }
-395             }
 ```
 
 translate function first ask TLB to find 
@@ -141,6 +115,21 @@ to access memory properly.
  94 }
 ```
 
+Because page table walking takes more than one cycle, 
+it makes a *WalkerState* 
+that manage page table walking *per request*.
+Note that currStates maintains all the outstanding requests as a list.
+
+If non-resolved misse exist,
+it just pushes current state to the list and wait
+until previous request will be resolved.
+When outstanding request is resolved,
+pending requests are going to be processed one by one.
+
+When it is a first request, 
+which means no other outstanding requests are under service,
+it should push newly generated state (line86)
+and invokes *startWalk* function through the created state.
 
 *gem5/src/arch/x86/pagetable_walker.cc*
 ```cpp
@@ -172,8 +161,548 @@ to access memory properly.
 254     }
 255     return fault;
 256 }
-
 ```
+Even though startWalk doesn't receive any function argument,
+note that all the required fields such as req and flags
+are contained in the WalkerState class instance
+that has been used for invoking startWalk function.
+The main purpose of this function is 
+send request to the cache or memory 
+to read the memory,
+which actually read the page-table residing in the memory.
+This memory reqeust results in page table access,
+and virtual to physical page mapping can be retrieved. 
+
+```cpp
+661 void
+662 Walker::WalkerState::sendPackets()
+663 {
+664     //If we're already waiting for the port to become available, just return.
+665     if (retrying)
+666         return;
+667
+668     //Reads always have priority
+669     if (read) {
+670         PacketPtr pkt = read;
+671         read = NULL;
+672         inflight++;
+673         if (!walker->sendTiming(this, pkt)) {
+674             retrying = true;
+675             read = pkt;
+676             inflight--;
+677             return;
+678         }
+679     }
+680     //Send off as many of the writes as we can.
+681     while (writes.size()) {
+682         PacketPtr write = writes.back();
+683         writes.pop_back();
+684         inflight++;
+685         if (!walker->sendTiming(this, write)) {
+686             retrying = true;
+687             writes.push_back(write);
+688             inflight--;
+689             return;
+690         }
+691     }
+692 }
+```
+When you look at the *sendPackets* function,
+you can easily find a familiar function name *sendTiming*
+which sends page table access request packet to the 
+memory sub-system (e.g., cache, memory).
+One important thing to note is
+it prioritize read request compared to writes.
+
+###Page table access packet creation
+By the way, 
+inside the sendPackets function,
+you cannot see any packet creation in there.
+However, you can find that sendTiming function receives
+*pkt* as its parameter.
+Where the pkt comes from?
+*setupWalk* function in startWalk function 
+sets up request packet. 
+
+```cpp
+551 void
+552 Walker::WalkerState::setupWalk(Addr vaddr)
+553 {
+554     VAddr addr = vaddr;
+555     CR3 cr3 = tc->readMiscRegNoEffect(MISCREG_CR3);
+556     // Check if we're in long mode or not
+557     Efer efer = tc->readMiscRegNoEffect(MISCREG_EFER);
+558     dataSize = 8;
+559     Addr topAddr;
+560     if (efer.lma) {
+561         // Do long mode.
+562         state = LongPML4;
+563         topAddr = (cr3.longPdtb << 12) + addr.longl4 * dataSize;
+564         enableNX = efer.nxe;
+565     } else {
+566         // We're in some flavor of legacy mode.
+567         CR4 cr4 = tc->readMiscRegNoEffect(MISCREG_CR4);
+568         if (cr4.pae) {
+569             // Do legacy PAE.
+570             state = PAEPDP;
+571             topAddr = (cr3.paePdtb << 5) + addr.pael3 * dataSize;
+572             enableNX = efer.nxe;
+573         } else {
+574             dataSize = 4;
+575             topAddr = (cr3.pdtb << 12) + addr.norml2 * dataSize;
+576             if (cr4.pse) {
+577                 // Do legacy PSE.
+578                 state = PSEPD;
+579             } else {
+580                 // Do legacy non PSE.
+581                 state = PD;
+582             }
+583             enableNX = false;
+584         }
+585     }
+586
+587     nextState = Ready;
+588     entry.vaddr = vaddr;
+589
+590     Request::Flags flags = Request::PHYSICAL;
+591     if (cr3.pcd)
+592         flags.set(Request::UNCACHEABLE);
+593
+594     RequestPtr request = std::make_shared<Request>(
+595         topAddr, dataSize, flags, walker->masterId);
+596
+597     read = new Packet(request, MemCmd::ReadReq);
+598     read->allocate();
+599 }
+```
+
+Now *sendTiming* function can have access to the packet,
+so it can send the request packet to the memory sub-system through the port.
+Before it send the request, 
+it creates another state called *WalkerSenderState*.
+This state variable is required 
+when walker handles memory packet 
+returned from the memory sub-system
+as a result of page table access.
+
+```cpp
+156 bool Walker::sendTiming(WalkerState* sendingState, PacketPtr pkt)
+157 {
+158     WalkerSenderState* walker_state = new WalkerSenderState(sendingState);
+159     pkt->pushSenderState(walker_state);
+160     if (port.sendTimingReq(pkt)) {
+161         return true;
+162     } else {
+163         // undo the adding of the sender state and delete it, as we
+164         // will do it again the next time we attempt to send it
+165         pkt->popSenderState();
+166         delete walker_state;
+167         return false;
+168     }
+169
+170 }
+```
+
+##Handling page table access result
+```cpp
+104 bool
+105 Walker::WalkerPort::recvTimingResp(PacketPtr pkt)
+106 {
+107     return walker->recvTimingResp(pkt);
+108 }
+109
+110 bool
+111 Walker::recvTimingResp(PacketPtr pkt)
+112 {
+113     WalkerSenderState * senderState =
+114         dynamic_cast<WalkerSenderState *>(pkt->popSenderState());
+115     WalkerState * senderWalk = senderState->senderWalk;
+116     bool walkComplete = senderWalk->recvPacket(pkt);
+117     delete senderState;
+118     if (walkComplete) {
+119         std::list<WalkerState *>::iterator iter;
+120         for (iter = currStates.begin(); iter != currStates.end(); iter++) {
+121             WalkerState * walkerState = *(iter);
+122             if (walkerState == senderWalk) {
+123                 iter = currStates.erase(iter);
+124                 break;
+125             }
+126         }
+127         delete senderWalk;
+128         // Since we block requests when another is outstanding, we
+129         // need to check if there is a waiting request to be serviced
+130         if (currStates.size() && !startWalkWrapperEvent.scheduled())
+131             // delay sending any new requests until we are finished
+132             // with the responses
+133             schedule(startWalkWrapperEvent, clockEdge());
+134     }
+135     return true;
+136 }
+```
+
+When memory sub-system successfully handled the page table access reuqest,
+then pagetable_walker receives the result packet through the port.
+When the packet arrives, 
+port connecting pagetable_walker and memory sub-system
+invokes recvTimingResp function of the walker.
+
+As we've seen before,
+WalkerSenderState wraps up 
+the walker instance (*WalkerState*) used to send
+page tabe access request associated with currently received result.
+Retrieved WalkerState instance is used to handle received packet
+by calling *recvPacket* function.
+
+```cpp
+602 bool
+603 Walker::WalkerState::recvPacket(PacketPtr pkt)
+604 {
+605     assert(pkt->isResponse());
+606     assert(inflight);
+607     assert(state == Waiting);
+608     inflight--;
+609     if (squashed) {
+610         // if were were squashed, return true once inflight is zero and
+611         // this WalkerState will be freed there.
+612         return (inflight == 0);
+613     }
+614     if (pkt->isRead()) {
+615         // should not have a pending read it we also had one outstanding
+616         assert(!read);
+617
+618         // @todo someone should pay for this
+619         pkt->headerDelay = pkt->payloadDelay = 0;
+620
+621         state = nextState;
+622         nextState = Ready;
+623         PacketPtr write = NULL;
+624         read = pkt;
+625         timingFault = stepWalk(write);
+626         state = Waiting;
+627         assert(timingFault == NoFault || read == NULL);
+628         if (write) {
+629             writes.push_back(write);
+630         }
+631         sendPackets();
+632     } else {
+633         sendPackets();
+634     }
+635     if (inflight == 0 && read == NULL && writes.size() == 0) {
+636         state = Ready;
+637         nextState = Waiting;
+638         if (timingFault == NoFault) {
+639             /*
+640              * Finish the translation. Now that we know the right entry is
+641              * in the TLB, this should work with no memory accesses.
+642              * There could be new faults unrelated to the table walk like
+643              * permissions violations, so we'll need the return value as
+644              * well.
+645              */
+646             bool delayedResponse;
+647             Fault fault = walker->tlb->translate(req, tc, NULL, mode,
+648                                                  delayedResponse, true);
+649             assert(!delayedResponse);
+650             // Let the CPU continue.
+651             translation->finish(fault, req, tc, mode);
+652         } else {
+653             // There was a fault during the walk. Let the CPU know.
+654             translation->finish(timingFault, req, tc, mode);
+655         }
+656         return true;
+657     }
+658
+659     return false;
+660 }
+```
+Because the recvPacket function has been invoked 
+because of memory read 
+614-634 will be executed. 
+There are some functions that we don't know,
+but it finally invokes sendPackets function.
+Wait why sendPacket once again in receive function?
+
+##Page table walking is not a single memory access
+X86 makes use of multiple levels of page tables,
+when TLB miss happens,
+it needs to walk multiple pages step by step.
+Therefore, just making single request and receive 
+cannot resolve virtual to physical address translation.
+
+For the previous recvPacket function,
+it has been invoked 
+as a result of first memory access 
+caused by first level page table.
+Therefore, the received packet contains 
+next level page table information 
+not the Page table entry which actually contains
+physical address mapped to the virtual address. 
+
+Therefore, to acquire the laste level page table entry,
+it needs additional memory accesses
+which can be handled by *stepWalk* function.
+
+
+```cpp
+282 Fault
+283 Walker::WalkerState::stepWalk(PacketPtr &write)
+284 {
+285     assert(state != Ready && state != Waiting);
+286     Fault fault = NoFault;
+287     write = NULL;
+288     PageTableEntry pte;
+289     if (dataSize == 8)
+290         pte = read->getLE<uint64_t>();
+291     else
+292         pte = read->getLE<uint32_t>();
+293     VAddr vaddr = entry.vaddr;
+294     bool uncacheable = pte.pcd;
+295     Addr nextRead = 0;
+296     bool doWrite = false;
+297     bool doTLBInsert = false;
+298     bool doEndWalk = false;
+299     bool badNX = pte.nx && mode == BaseTLB::Execute && enableNX;
+300     switch(state) {
+301       case LongPML4:
+302         DPRINTF(PageTableWalker,
+303                 "Got long mode PML4 entry %#016x.\n", (uint64_t)pte);
+304         nextRead = ((uint64_t)pte & (mask(40) << 12)) + vaddr.longl3 * dataSize;
+305         doWrite = !pte.a;
+306         pte.a = 1;
+307         entry.writable = pte.w;
+308         entry.user = pte.u;
+309         if (badNX || !pte.p) {
+310             doEndWalk = true;
+311             fault = pageFault(pte.p);
+312             break;
+313         }
+314         entry.noExec = pte.nx;
+315         nextState = LongPDP;
+316         break;
+317       case LongPDP:
+318         DPRINTF(PageTableWalker,
+319                 "Got long mode PDP entry %#016x.\n", (uint64_t)pte);
+320         nextRead = ((uint64_t)pte & (mask(40) << 12)) + vaddr.longl2 * dataSize;
+321         doWrite = !pte.a;
+322         pte.a = 1;
+323         entry.writable = entry.writable && pte.w;
+324         entry.user = entry.user && pte.u;
+325         if (badNX || !pte.p) {
+326             doEndWalk = true;
+327             fault = pageFault(pte.p);
+328             break;
+329         }
+330         nextState = LongPD;
+331         break;
+332       case LongPD:
+333         DPRINTF(PageTableWalker,
+334                 "Got long mode PD entry %#016x.\n", (uint64_t)pte);
+335         doWrite = !pte.a;
+336         pte.a = 1;
+337         entry.writable = entry.writable && pte.w;
+338         entry.user = entry.user && pte.u;
+339         if (badNX || !pte.p) {
+340             doEndWalk = true;
+341             fault = pageFault(pte.p);
+342             break;
+343         }
+344         if (!pte.ps) {
+345             // 4 KB page
+346             entry.logBytes = 12;
+347             nextRead =
+348                 ((uint64_t)pte & (mask(40) << 12)) + vaddr.longl1 * dataSize;
+349             nextState = LongPTE;
+350             break;
+351         } else {
+352             // 2 MB page
+353             entry.logBytes = 21;
+354             entry.paddr = (uint64_t)pte & (mask(31) << 21);
+355             entry.uncacheable = uncacheable;
+356             entry.global = pte.g;
+357             entry.patBit = bits(pte, 12);
+358             entry.vaddr = entry.vaddr & ~((2 * (1 << 20)) - 1);
+359             doTLBInsert = true;
+360             doEndWalk = true;
+361             break;
+362         }
+363       case LongPTE:
+364         DPRINTF(PageTableWalker,
+365                 "Got long mode PTE entry %#016x.\n", (uint64_t)pte);
+366         doWrite = !pte.a;
+367         pte.a = 1;
+368         entry.writable = entry.writable && pte.w;
+369         entry.user = entry.user && pte.u;
+370         if (badNX || !pte.p) {
+371             doEndWalk = true;
+372             fault = pageFault(pte.p);
+373             break;
+374         }
+375         entry.paddr = (uint64_t)pte & (mask(40) << 12);
+376         entry.uncacheable = uncacheable;
+377         entry.global = pte.g;
+378         entry.patBit = bits(pte, 12);
+379         entry.vaddr = entry.vaddr & ~((4 * (1 << 10)) - 1);
+380         doTLBInsert = true;
+381         doEndWalk = true;
+382         break;
+383       case PAEPDP:
+384         DPRINTF(PageTableWalker,
+385                 "Got legacy mode PAE PDP entry %#08x.\n", (uint32_t)pte);
+386         nextRead = ((uint64_t)pte & (mask(40) << 12)) + vaddr.pael2 * dataSize;
+387         if (!pte.p) {
+388             doEndWalk = true;
+389             fault = pageFault(pte.p);
+390             break;
+391         }
+392         nextState = PAEPD;
+393         break;
+394       case PAEPD:
+395         DPRINTF(PageTableWalker,
+396                 "Got legacy mode PAE PD entry %#08x.\n", (uint32_t)pte);
+397         doWrite = !pte.a;
+398         pte.a = 1;
+399         entry.writable = pte.w;
+400         entry.user = pte.u;
+401         if (badNX || !pte.p) {
+402             doEndWalk = true;
+403             fault = pageFault(pte.p);
+404             break;
+405         }
+406         if (!pte.ps) {
+407             // 4 KB page
+408             entry.logBytes = 12;
+409             nextRead = ((uint64_t)pte & (mask(40) << 12)) + vaddr.pael1 * dataSize;
+410             nextState = PAEPTE;
+411             break;
+412         } else {
+413             // 2 MB page
+414             entry.logBytes = 21;
+415             entry.paddr = (uint64_t)pte & (mask(31) << 21);
+416             entry.uncacheable = uncacheable;
+417             entry.global = pte.g;
+418             entry.patBit = bits(pte, 12);
+419             entry.vaddr = entry.vaddr & ~((2 * (1 << 20)) - 1);
+420             doTLBInsert = true;
+421             doEndWalk = true;
+422             break;
+443         break;
+444       case PSEPD:                                                                                                                                                                                                                                                                     445         DPRINTF(PageTableWalker,
+446                 "Got legacy mode PSE PD entry %#08x.\n", (uint32_t)pte);
+447         doWrite = !pte.a;
+448         pte.a = 1;
+449         entry.writable = pte.w;
+450         entry.user = pte.u;
+451         if (!pte.p) {
+452             doEndWalk = true;
+453             fault = pageFault(pte.p);
+454             break;
+455         }
+456         if (!pte.ps) {
+457             // 4 KB page
+458             entry.logBytes = 12;
+459             nextRead =
+460                 ((uint64_t)pte & (mask(20) << 12)) + vaddr.norml2 * dataSize;
+461             nextState = PTE;
+462             break;
+463         } else {
+464             // 4 MB page
+465             entry.logBytes = 21;
+466             entry.paddr = bits(pte, 20, 13) << 32 | bits(pte, 31, 22) << 22;
+467             entry.uncacheable = uncacheable;
+468             entry.global = pte.g;
+469             entry.patBit = bits(pte, 12);
+470             entry.vaddr = entry.vaddr & ~((4 * (1 << 20)) - 1);
+471             doTLBInsert = true;
+472             doEndWalk = true;
+473             break;
+474         }
+475       case PD:
+476         DPRINTF(PageTableWalker,
+477                 "Got legacy mode PD entry %#08x.\n", (uint32_t)pte);
+478         doWrite = !pte.a;
+479         pte.a = 1;
+480         entry.writable = pte.w;
+481         entry.user = pte.u;
+482         if (!pte.p) {
+483             doEndWalk = true;
+484             fault = pageFault(pte.p);
+485             break;
+486         }
+487         // 4 KB page
+488         entry.logBytes = 12;
+489         nextRead = ((uint64_t)pte & (mask(20) << 12)) + vaddr.norml2 * dataSize;
+490         nextState = PTE;
+491         break;
+492       case PTE:
+493         DPRINTF(PageTableWalker,
+494                 "Got legacy mode PTE entry %#08x.\n", (uint32_t)pte);
+495         doWrite = !pte.a;
+496         pte.a = 1;
+497         entry.writable = pte.w;
+498         entry.user = pte.u;
+499         if (!pte.p) {
+500             doEndWalk = true;
+501             fault = pageFault(pte.p);
+502             break;
+503         }
+504         entry.paddr = (uint64_t)pte & (mask(20) << 12);
+505         entry.uncacheable = uncacheable;
+506         entry.global = pte.g;
+507         entry.patBit = bits(pte, 7);
+508         entry.vaddr = entry.vaddr & ~((4 * (1 << 10)) - 1);
+509         doTLBInsert = true;
+510         doEndWalk = true;
+511         break;
+512       default:
+513         panic("Unknown page table walker state %d!\n");
+514     }
+515     if (doEndWalk) {
+516         if (doTLBInsert)
+517             if (!functional)
+518                 walker->tlb->insert(entry.vaddr, entry, tc);
+519         endWalk();
+520     } else {
+521         PacketPtr oldRead = read;
+522         //If we didn't return, we're setting up another read.
+523         Request::Flags flags = oldRead->req->getFlags();
+524         flags.set(Request::UNCACHEABLE, uncacheable);
+525         RequestPtr request = std::make_shared<Request>(
+526             nextRead, oldRead->getSize(), flags, walker->masterId);
+527         read = new Packet(request, MemCmd::ReadReq);
+528         read->allocate();
+529         // If we need to write, adjust the read packet to write the modified
+530         // value back to memory.
+531         if (doWrite) {
+532             write = oldRead;
+533             write->setLE<uint64_t>(pte);
+534             write->cmd = MemCmd::WriteReq;
+535         } else {
+536             write = NULL;
+537             delete oldRead;
+538         }
+539     }
+540     return fault;
+541 }
+```
+Even though it is very long function,
+depending on the current state
+representing levels of the page table 
+accessed by the received packet,
+next level page table address is calculated.
+Because we are here because of accessing PML4,
+line 301-316 will be executed.
+Also, the next state is set as next level of page table PDP.
+
+After setting fields associated with current page table level,
+it generates another read packet (Line 520-539), and
+sendPackets function sends the generated read packet.
+These sending and receiving steps are repeated until the final PTE is read.
+
+When PTE is read from the memory sub-system,
+it sets the doEndWalk flag and doTLBInsert flag
+When the flags are set,
+new TLB entry is inserted to the TLB module (line 515-520).
+
+
 
 *gem5/src/arch/x86/tlb.cc*
 ```cpp
@@ -208,7 +737,23 @@ to access memory properly.
 
 
 
-#Page fault handling and memory access
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#Finish TLB translation
 *gem5/src/arch/x86/tlb.cc*
 ```cpp
 441 void
@@ -1150,6 +1695,16 @@ it invokes fetch() function defined in the TimingSimpleCPU class.
  668
  669     // We must have just got suspended by a PC event
  670     if (_status == Idle)
+Even though startWalk doesn't receive any function argument,
+note that all the required fields such as req and flags
+are contained in the WalkerState class instance
+that has been used for invoking startWalk function.
+The main purpose of this function is 
+send request to the cache or memory 
+to read the memory,
+which actually read the page-table residing in the memory.
+This memory reqeust results in page table access,
+and virtual to physical page mapping can be retrieved. 
  671         return;
  672
  673     TheISA::PCState pcState = thread->pcState();

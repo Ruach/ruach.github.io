@@ -56,12 +56,35 @@ categories: GEM5, Microops
 479
 480         microopClasses[name] = LoadOp
 ```
+Inside a let block,
+*defineMicroLoadOp* provides a template method
+used for defining microops
+belong to load operation category.
+
 To automatically generate microop classes, 
 we need some data structure that describes 
 semantic of microop that we have interest.
 For that meta-data,
 it makes use of InstObjParams class 
 that requires microop mnemonic, code defining the microop, and arguments of it.
+When we look at the lines 441-449,
+it adds the meta-data of each microop to *iops* list.
+
+After generating iop list,
+code at line 450-455
+automatically generates CPP code.
+The template method called with the iop
+substitutes some string part of the template
+and defines class definition of microop in CPP format.
+
+Also, note that
+the line 468 defines LoadOp class.
+Whenever the defineMicroLoadOp is called,
+a pair of LoadOp class reference and the name of microop
+is stored in the *microopClasses* dictionary.
+The microopClasses is a variable passed to
+previous initialization of MicroAssembler class.
+
 
 *gem5/src/arch/isa_parser.py*
 ```python
@@ -463,8 +486,8 @@ to actually access the memory.
 Note that this method receive ExecContext which is a interface to CPU module
 and the generated logical address EA.
 Also, memory flags such as prefetch are delivered to the memory module.
-Remember that memflags are passed to the class 
-when it is constructed. 
+Remember that *memFlags* are passed to the class 
+when the microop is constructed. 
 
 ```cpp
 19144     Fault Ld::initiateAcc(ExecContext * xc,
@@ -509,6 +532,7 @@ through the interface ExecContext class.
  50     return xc->initiateMemRead(addr, dataSize, flags);
  51 }
 ```
+
 initiateMemRead helper function defined in x86 arch directory
 invokes actual initiateMemRead function
 through the ExecContext interface.

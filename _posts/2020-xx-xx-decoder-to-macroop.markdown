@@ -835,7 +835,14 @@ different type of operands can be used (memory, regs).
 
 as shown in line 151-159,
 when one macroop operand tag has B tag,
-it sets register retrieved from the opcode of macrop, InstRegIndex.
+its destination register is retrieved by the InstRegIndex,
+which means register is defined by opcode's bottom bits and REX prefix.
+The reason we makes use of env.addReg is,
+at the time of macroop definition,
+its microop cannot know which register is used by the program.
+Therefore, microop refer the unknown register as *reg* operand,
+and let parser symbol define *reg* to *env.reg* map
+to allow the microop access proper register.
 
 ##EmulEnv class 
 *gem5/src/arch/x86/isa/macroop.isa*
@@ -865,7 +872,8 @@ it sets register retrieved from the opcode of macrop, InstRegIndex.
 287
 288         def getAllocator(self):
 289             if self.size == 'b':
-290                 self.dataSize = 1
+290     
+            self.dataSize = 1
 291             elif self.size == 'd':
 292                 self.dataSize = 4
 293             #This is for "double plus" which is normally a double word unless
@@ -911,7 +919,6 @@ addReg function, member function of EmulEnv class,
 adds register index on the environmental class itself temporarily.
 At most, it can stores two register indicies for one macroop,
 which can be retrieved by reg and regm field respectively.
-Then when the stored register indicies are used? 
 
 
 ###finally generate the macroop function 

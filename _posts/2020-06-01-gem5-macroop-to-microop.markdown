@@ -536,11 +536,9 @@ For microop ld,
 associated template class,
 LoadOp class is used instead of Ld.
 
-This is because 
-parser.microops is a *microopClasses* 
-passed to MicroAssembler instance creation.
-Please refer XXX to understand 
-what is the microopClasses dictionary.
+Importantly,
+note that the microop class is a python class
+not a CPP class.
 
 ###Different parameter can be fed to one microop instruction
 Following *eval* statement(133-134)
@@ -559,8 +557,7 @@ For example,
 takes t1, imm, dataSize=asz as its operand.
 
 Before the eval is executed,
-microop's operands are formatted as a string
-that contains all operands required for instantiating microop object.
+microop's operands are formatted as a string.
 However, because eval takes parser.symbol as its 
 local mapping dictionary, 
 the string operands are translated into 
@@ -606,8 +603,7 @@ of corresponding microop class.
 133
 134     microopClasses["limm"] = LimmOp
 ```
-
-Note that it requires three operands,
+Note that LimmOp python class requires three operands,
 and actual microcode of MOV_R_MI feeds 
 three operands when the limm microop is used.
 
@@ -616,7 +612,7 @@ When we talked about microop's operand translation
 that retrieves a code statement from the string,
 I didn't talk about how the translation happens.
 
-As I mentioned already, 
+As I mentioned before, 
 parser.symbols is a dictionary 
 that maps specific string to cpp code statement.
 Here, the string argument of microop is 
@@ -710,16 +706,18 @@ in the parser.macroops dictionary
 
 
 
-#How the CPP formatted classes of macroop are generated? 
+#How the CPP formatted classes of macroop are generated from python classes? 
 Now we have parsed macroop containers and 
 its microops objects consisting of each macroop.
 Note that we only have *python* dictionary 
 that contains all macroop containers.
+Also note that microops belongs to one macroop container 
+are also python class instances not the cpp class.
+
 However, when we look at the generated file 
-we can find 
-automatically generated CPP class of each macroop
-as a result of GEM5 compilation,
-Let's take a example MOV_R_MI class.
+we can find that 
+GEM5 automatically generates CPP classes for each macroop.
+Let's take a look at example MOV_R_MI class.
 
 *gem5/build/X86/arch/x86/generated/decoder-ns.cc.inc*
 ```python
@@ -781,11 +779,12 @@ Let's take a example MOV_R_MI class.
 it has been generated automatically 
 as a result of parsing macroop description)
 
-After the macroop parse through the *assemble* function,
-we only had a macroop containers 
-stored in macroop dictionary.
-How the above cpp class could be generated from there?
-Let's take a look at the place where
+Because we only know that 
+we already generate python based macroop containers
+defining MOV_R_MI,
+we can infer that generated CPP class may be retrieved from there.
+Therefore,
+let's take a look at the place where
 the generated macroop containers *macroopDict* is used.
 
 *gem5/src/arch/x86/isa/macroop.isa*
@@ -816,7 +815,7 @@ As shown in the above code,
 macroop container associated with a name of macroop.
 It invokes *getDeclaration*, *getDefinition*, and *getAllocator* functions
 through the retrieved macroop container.
-Note that retrieved container is an instance of *X86Macroop* python class.
+Note that retrieved container is an instance of *X86Macroop python class*.
 
 ###getDefinition of macroop container: generate class definition automatically
 *gem5/src/arch/x86/isa/macroop.isa*
@@ -890,13 +889,15 @@ The goal of getDefinition function is
 generating definition of corresponding macroop.
 
 As we've seen before in assemble function,
-all microops 
+all python microop classes
 consisting of this macroop 
-were added to the container.
-And this microops are maintained in *self.microops*
+were added to associated macroop container.
+And this microop classes are maintained in *self.microops*.
+
 Because one macroop can consist of multiple microops,
-each microop object instance should be iterated 
-one by one to initiate corresponding microop class instance
+each microop python class should be iterated 
+one by one to invoke 
+CPP microop class corresponding to current python microop class
 (Line 210-239)
 
 Each microop class instance generation code is retrieved
@@ -908,12 +909,7 @@ the generated code is stored to allocMicroops variable.
 The *getAllocator* function 
 invoked through microop not the macroop,
 generates CPP statement 
-that instantiate microop class object.
-
-Because we already have the corresponding microop classes 
-associated with a macroop as a result of assemble,
-what we have to do is 
-traversing microops and invoking getAllocator function.
+that instantiate CPP microop class object.
 
 Because we have interest in Limm microcode of MOV_R_MI macroop,
 we are going to look at getAllocator function
@@ -948,25 +944,29 @@ The getAllocator function in LimmOp creates
 python doc string, *allocString* 
 that consists of CPP formatted
 microop object instantiation code (line 117-125).
+Note that these statements instantiate CPP classes of microop.
 
-However, it contains unfinished part 
-that should be replaced by proper string
+However, the string contains unfinished part 
+that should be replaced by proper ones
 (line 126-131).
 Most of the substituted part is excerpted from the 
-microop class field, but 
-only the microFlags are passed from as an argument of getAllocator.
-This flag indicates property of microop 
-such as whether it is the first or last microop of macroop.
+python microop class fields.
+When the LimmOp python class instance is generated,
+it sets *className* as Limm.
+Therefore, there should be Limm CPP class that can be instantiated.
+For the details,
+please refer XXX
 
 ###Finalize Macroop class definition with template sbustitution 
 Although microop constructions code is the most important part of 
-generating definition of macroop in the getDefinition function,
-it needs other parts of macroop class should be translated into cpp code.
+generating CPP class definition of macroop,
+the generated CPP macroop class requires other part to be filled out by 
+the getDefinition function,
 
 Because every macroop in X86 is defined through
 replacing some part of MacroConstructor template,
 each macroop should prepare its own substitution string 
-that can retrieve class definition 
+that can retrieve CPP class definition 
 of corresponding macroop.
 
 This macroop dependent substitution string is prepared as 
@@ -975,7 +975,7 @@ After it prepares substitution string,
 by replacing 
 *MacroopConstructor* and *MacroDisassembly* template,
 it can generate CPP formatted full macroop class definition
-(Line 260-261),
+(Line 260-261).
 
 
 *gem5/src/arch/x86/isa/macroop.isa*

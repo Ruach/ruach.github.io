@@ -3,26 +3,22 @@ layout: post
 titile: "Microops in GEM5"
 categories: GEM5, Microops
 ---
-GEM5 requires user to implement bottom line interface functions
-to help execution of one instruction
-depending on instruction type.
-In this posting, we are going to take a look at
-those bottom lines implmentation
-of the load instruction in x86 architecture.
-Also, we will briefly go through
-how the instruction is fetched and executed
-using those interfaces.
+As we've seen in the macroop to microop parsing,
+each microop invocation in macrocode definition
+can be interpreted python class
+associated with that microop.
+From the retrieved python microop,
+it can further retrieve automatically generated CPP class
+that are actually instantiated by 
+CPP macroop class.
 
-Because we have interest on load instructions,
-let's take a look at microops defined for
-load/store instruction.
-Note that the defined microop instructions are not
-x86 macro instructions that are exposed to the user
-as an ISA such as ld,st,mov instructions.
-A sequence of defined microops can define
-internal behavior of one macro instruction.
-Therefore, understanding how each microop works
-is same as understanding basic block of processor.
+In this posting, we will take a look at ld microop as example.
+First of all,
+let's start from the python microop class associated with ld.
+Because there are multiple microops 
+that need to access memory for load opeartion,
+*defineMicroLoadOp* function provides a general way 
+to define load related microops.
 
 *gem5/src/arch/x86/isa/microops/ldstop.isa*
 ```python
@@ -91,22 +87,55 @@ is same as understanding basic block of processor.
 478                 self.mnemonic = name
 479
 480         microopClasses[name] = LoadOp
+481
+482     defineMicroLoadOp('Ld', 'Data = merge(Data, Mem, dataSize);',
+483                             'Data = Mem & mask(dataSize * 8);')
 {% endraw %}
 ```
-Inside a let block,
-*defineMicroLoadOp* provides a template method
-used for defining microops
-belong to load operation category.
 
-To automatically generate microop classes, 
-we need some data structure describing
-semantic of microop.
+###python microop class generation
+Note that Ld microop is also defined through the defineMicroLoadOp (line 482).
+Then how the defineMicroLoadOp generates load related microops?
+As we've seen in the previous posting,
+each microop can be represned by corresponding python class.
+Line 468-480 defines LoadOp class
+bounded to one microop.
+Note that each LoadOP class of different microop 
+will contain different className and mnemonic (line 477-478).
+
+And the generated python class is 
+stored in the *microopClasses* dictionary.
+Remeber that this microopClasses dictionary is used 
+by the MicroAssembler to parse macroops 
+because it consists of various microops.
+
+###cpp microop class generation
+Not only the python microop class,
+but also the cpp microop class is defined by the defineMicroLoadOp function.
+Compared to python microop class,
+CPP microop class is automatically generated 
+by using a template and proper substitution.
+
+Although the same templates are used 
+to retrieve different microop classes in cpp format,
+it needs some data structure describing
+semantic of different microop
+that actually generates difference in the automatically generated cpp class. 
+
+For that data structure describing one specific microop,
 It makes use of InstObjParams class 
 that requires microop mnemonic, 
 code defining the microop, 
 and arguments of it.
 When we look at the lines 441-449,
-it adds the meta-data of each microop to *iops* list.
+it generates InstObjParams instance 
+by making use of defineMicroLoadOp's operands.
+
+Note that each invocation of defineMicroLoadOp 
+should have different operands,
+and it results in different InstObjParams creation.
+Also this different InstObjParams result in 
+different microop class generation in CPP.
 
 After generating iop list,
 code at line 450-455
@@ -116,44 +145,6 @@ substitutes some string part of the template
 and defines class definition and header of microop 
 in CPP format.
  
-Line 468-480 defines LoadOp classe
-associated with each microop class.
-Note that each class definition
-is defined with different mnemonic and class name
-corresponding to one microop definition.
-
-For load/store microops 
-multiple LoadOp classes are derived and 
-stored in the *microopClasses* dictionary 
-as a result.
-
-
-```python
-482     defineMicroLoadOp('Ld', 'Data = merge(Data, Mem, dataSize);',
-483                             'Data = Mem & mask(dataSize * 8);')
-484     defineMicroLoadOp('Ldis', 'Data = merge(Data, Mem, dataSize);',
-485                               'Data = Mem & mask(dataSize * 8);',
-486                                implicitStack=True)
-487     defineMicroLoadOp('Ldst', 'Data = merge(Data, Mem, dataSize);',
-488                               'Data = Mem & mask(dataSize * 8);',
-489                       '(StoreCheck << FlagShift)')
-490     defineMicroLoadOp('Ldstl', 'Data = merge(Data, Mem, dataSize);',
-491                                'Data = Mem & mask(dataSize * 8);',
-492                       '(StoreCheck << FlagShift) | Request::LOCKED_RMW',
-493                       nonSpec=True)
-494
-495     defineMicroLoadOp('Ldfp', code='FpData_uqw = Mem', big = False)
-```
-The above invocations of definedMicroLoadOp function
-result in storing <LoadOp class, microop name> pairs
-on the microopClasses.
-Remember that 
-the microopClasses is a variable passed to
-initialization of MicroAssembler class.
-to let parser can initiate 
-particular microop consisting of macroop.
-
-
 ###InstObjParams
 *gem5/src/arch/isa_parser.py*
 ```python

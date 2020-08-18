@@ -643,7 +643,6 @@ generates code that invokes proper variants of macroop.
 266         return genMacroop(Name, env)
 ```
 
-
 As you can see on the above code,
 depending on operand type of a macroop
 and its tag field,
@@ -716,9 +715,10 @@ executed when switch doesn't meet any satisfiable condition.
 ```
 
 When M flag has been set for the macroop operand,
-it passes one condition and associated function to doSplitDecode function,
-which maps doBadInstDecode to condition 3.
-And one important default block and function,
+it passes one condition and associated function 
+to doSplitDecode function,
+which maps doBadInstDecode to switch case 3.
+Also, it passes default block and function,
 *doRipRelativeDecode*.
 
 ```python
@@ -738,7 +738,7 @@ And one important default block and function,
  82
  83         blocks = OutputBlocks()
  84         blocks.append(normBlocks)
- 85         blocks.append(ripBlocks)                                                                                                                                                                                                                                                     86
+ 86
  87         blocks.decode_block = '''
  88         if(machInst.modRM.mod == 0 &&
  89           machInst.modRM.rm == 5 &&
@@ -748,21 +748,20 @@ And one important default block and function,
  93         { %s }''' % \
  94          (ripBlocks.decode_block, normBlocks.decode_block)
  95         return blocks
+ 96 }};
 ```
 
-This function generates codeblock 
-when switch condition doesn't satisfy and falls thorugh to the default.
+This function generates codeblocks
+when default case should run.
 As shown in the above code,
-two specializeInst function are called 
+two *specializeInst* function are called 
 to generate code which can invoke *X_M and X_P*
 macroop functions.
 
+As a result of decode statement generation,
+it automatically generates below code statements.
 
-
-
-
-
-*gem5/build/X86/arch/x86/generated/decode-method.cc*
+*gem5/build/X86/arch/x86/generated/decode-method.cc.inc*
 ```cpp
 10228                 case 0x5:
 10229                   // Inst::PREFETCH((['Mb'], {}))
@@ -791,7 +790,164 @@ macroop functions.
 10252                   break;
 ```
 
+###Register parsing
+Also, note that specializeInst function parse macroop
+and set which register is used for the macroop.
+To parse register from instruction bytes,
+we need two things: 
+the index of operand registers and method to add register.
 
+First of all, 
+because x86 makes use of three parts of instruction bytes
+to figure out register operands 
+used for that instruction,
+we need macros to get those register operands.
+
+120     ModRMRegIndex = "(MODRM_REG | (REX_R << 3))"
+121     ModRMRMIndex = "(MODRM_RM | (REX_B << 3))"
+122     InstRegIndex = "(OPCODE_OP_BOTTOM3 | (REX_B << 3))"
+
+As shown on the above,
+because x86_64 makes use of instruction opcode,
+MODRG bit and REX prefix,
+bit operation with those fields 
+can retrieve the index of the operand registers. 
+
+After operand register indicies are known,
+depending on the macroop invocations (depending on its operands),
+parsed register is added to the env variable.
+This is because for one macroop invocation,
+depending on its invocation,
+different type of operands can be used (memory, regs).
+
+```python
+151             elif opType.tag == "B":
+152                 # This refers to registers whose index is encoded as part of the opcode
+153                 env.addToDisassembly(
+154                         "printReg(out, InstRegIndex(%s), regSize);\n" %
+155                                                                   InstRegIndex)
+156
+157                 Name += "_R"
+158
+159                 env.addReg(InstRegIndex)
+160             elif opType.tag == "M":
+```
+
+as shown in line 151-159,
+when one macroop operand tag has B tag,
+it sets register retrieved from the opcode of macrop, InstRegIndex.
+
+##EmulEnv class 
+*gem5/src/arch/x86/isa/macroop.isa*
+```python
+265     class EmulEnv(object):
+266         def __init__(self):
+267             self.reg = "0"
+268             self.regUsed = False
+269             self.regm = "0"
+270             self.regmUsed = False
+271             self.seg = "SEGMENT_REG_DS"
+272             self.size = None
+273             self.addressSize = "ADDRSIZE"
+274             self.dataSize = "OPSIZE"
+275             self.stackSize = "STACKSIZE"
+276             self.doModRM = False
+277             self.disassembly = ""
+278             self.firstArgument = True
+279             self.useStackSize = False
+280             self.memoryInst = False
+281
+282         def addToDisassembly(self, code):
+283             if not self.firstArgument:
+284                 self.disassembly += "out << \", \";\n"
+285             self.firstArgument = False
+286             self.disassembly += code
+287
+288         def getAllocator(self):
+289             if self.size == 'b':
+290                 self.dataSize = 1
+291             elif self.size == 'd':
+292                 self.dataSize = 4
+293             #This is for "double plus" which is normally a double word unless
+294             #the REX W bit is set, in which case it's a quad word. It's used
+295             #for some SSE instructions.
+296             elif self.size == 'dp':
+297                 self.dataSize = "(REX_W ? 8 : 4)"
+298             elif self.size == 'q':
+299                 self.dataSize = 8
+300             elif self.size == 'v':
+301                 self.dataSize = "OPSIZE"
+302             elif self.size == 'w':
+303                 self.dataSize = 2
+304             elif self.size == 'z':
+305                 self.dataSize = "((OPSIZE == 8) ? 4 : OPSIZE)"
+306             elif self.size:
+307                 raise Exception, "Unrecognized size type %s!" % self.size
+308             return '''EmulEnv(%(reg)s,
+309                               %(regm)s,
+310                               %(dataSize)s,
+311                               %(addressSize)s,
+312                               %(stackSize)s)''' % \
+313                 self.__dict__
+314
+315         def addReg(self, reg):
+316             if not self.regUsed:
+317                 self.reg = reg
+318                 self.regUsed = True
+319             elif not self.regmUsed:
+320                 self.regm = reg
+321                 self.regmUsed = True
+322             else:
+323                 raise Exception, "EmulEnv is out of register specialization spots."
+324         def setSize(self, size):
+325             if not self.size:
+326                 self.size = size
+327             else:
+328                 if self.size != size:
+329                     raise Exception, "Conflicting register sizes %s and %s!" %\
+330                         (self.size, size)
+```
+addReg function, member function of EmulEnv class,
+adds register index on the environmental class itself temporarily.
+At most, it can stores two register indicies for one macroop,
+which can be retrieved by reg and regm field respectively.
+Then when the stored register indicies are used? 
+
+
+###finally generate the macroop function 
+After passing through the long conditional statements in the specializeInst function,
+it finally invokes *genMacroop* function.
+
+```python
+333 let {{
+334     doModRMString = "env.doModRM(machInst);\n"
+335     noModRMString = "env.setSeg(machInst);\n"
+336     def genMacroop(Name, env):
+337         blocks = OutputBlocks()
+338         if not Name in macroopDict:
+339             raise Exception, "Unrecognized instruction: %s" % Name
+340         macroop = macroopDict[Name]
+341         if not macroop.declared:
+342             if env.doModRM:
+343                 macroop.initEnv = doModRMString
+344             else:
+345                 macroop.initEnv = noModRMString
+346             blocks.header_output = macroop.getDeclaration()
+347             blocks.decoder_output = macroop.getDefinition(env)
+348             macroop.declared = True
+349         blocks.decode_block = "return %s;\n" % macroop.getAllocator(env)
+350
+351         return blocks                                                                                                                                                                                                                                                                 352 }};
+```
+Remeber that specializeInst function retruns a code blocks,
+and the generated code blocks are used to initialize 
+corresponding code section of one macroop operation.
+Therefore, the genMacroop function generates 
+code required for each part of the macroop creation.
+
+Because we already know the name of the detailed implementation of macroop
+(parsed depending on its operands),
+it can generate specific macroop implementation.
 
 
 

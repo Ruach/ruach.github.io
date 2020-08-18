@@ -23,7 +23,7 @@ categories: GEM5, TLB
 454 }
 ```
 
-translateTiming starts translation
+*translateTiming* starts translation
 by invoking TLB::translate function.
 Depending on the TLB status,
 translate function fetch data from the TLB or memory.
@@ -79,14 +79,16 @@ it starts to traverse pagetable
 to get virtual to physical translation (line 351-395)
 Because we have interest in fullsystem emulation,
 we are going to take a look at line 360-369.
+
 When GEM5 executes in fullsystem mode, and TLB miss happens,
-it actually traverse the pagetable with pagetable_walker (line 361).
+it traverses the pagetable with pagetable_walker (line 361).
 Note that req parameter has been passed because 
 it contains all the required parameter such as address, flags 
 to access memory properly.
 
 
 ##Page table walking: acutal memory access
+###WalkerState per request
 *gem5/src/arch/x86/pagetable_walker.cc*
 ```cpp
  71 Fault
@@ -117,20 +119,29 @@ to access memory properly.
 
 Because page table walking takes more than one cycle, 
 it makes a *WalkerState* 
-that manage page table walking *per request*.
-Note that currStates maintains all the outstanding requests as a list.
+that manages page table walking *per request*.
+Note that *currStates* maintains 
+all the outstanding requests as a list.
 
-If non-resolved misse exist,
+If non-resolved miss exists,
 it just pushes current state to the list and wait
-until previous request will be resolved.
+until previous request will be resolved (line 80-84).
 When outstanding request is resolved,
 pending requests are going to be processed one by one.
 
-When it is a first request, 
+When it is the first request (line 85-92), 
 which means no other outstanding requests are under service,
-it should push newly generated state (line86)
+it should push newly generated state 
 and invokes *startWalk* function through the created state.
+Remember that each state is created per request.
 
+If startWalk finish walking, and it is timing CPU,
+then it doesn't need to remove current state 
+from the currStates list 
+because one stage of timing CPU model removes 
+current state from the list. 
+
+###startWalk handles page table walking request
 *gem5/src/arch/x86/pagetable_walker.cc*
 ```cpp
 229 Fault
@@ -162,17 +173,28 @@ and invokes *startWalk* function through the created state.
 255     return fault;
 256 }
 ```
-Even though startWalk doesn't receive any function argument,
-note that all the required fields such as req and flags
-are contained in the WalkerState class instance
-that has been used for invoking startWalk function.
+
 The main purpose of this function is 
-send request to the cache or memory 
+sending request to cache or memory 
 to read the memory,
 which actually read the page-table residing in the memory.
 This memory reqeust results in page table access,
 and virtual to physical page mapping can be retrieved. 
 
+If current CPU is timing, 
+then it access page tables step by step 
+depdning on current state.
+And *sendPackets* function send 
+page table access request to the memory-subsystem.
+
+Note that 
+even though startWalk doesn't receive any function argument,
+all the required fields such as req and flags
+are contained in the WalkerState class instance itself
+that has been used for invoking startWalk function.
+
+
+###multi-level page table walking process = multiple packets
 ```cpp
 661 void
 662 Walker::WalkerState::sendPackets()
@@ -207,22 +229,34 @@ and virtual to physical page mapping can be retrieved.
 691     }
 692 }
 ```
+Because modern processor makes use of multi-level page tables,
+timing CPU cannot acccess all of them once,
+which incurs severe performance overhead. 
+Therefore, TLB accesses are done by multi stages
+where each stage access one level of page table.
+
+Because pagetable_walker doesn't have memory,
+but does have memory-subsystem maintaining acutal page-tables,
+it should send packet to the memory-subsystem every stage 
+to access one level of page table.
+
 When you look at the *sendPackets* function,
 you can easily find a familiar function name *sendTiming*
 which sends page table access request packet to the 
 memory sub-system (e.g., cache, memory).
-One important thing to note is
+One thing to note is
 it prioritize read request compared to writes.
 
-###Page table access packet creation
+###Initial page table access packet creation
 By the way, 
 inside the sendPackets function,
 you cannot see any packet creation in there.
 However, you can find that sendTiming function receives
 *pkt* as its parameter.
+
 Where the pkt comes from?
 *setupWalk* function in startWalk function 
-sets up request packet. 
+sets up request packet initiating page table accesses. 
 
 ```cpp
 551 void
@@ -276,12 +310,13 @@ sets up request packet.
 599 }
 ```
 
+###SendTiming function: sends request and save current state
 Now *sendTiming* function can have access to the packet,
 so it can send the request packet to the memory sub-system through the port.
-Before it send the request, 
+Note that 
 it creates another state called *WalkerSenderState*.
 This state variable is required 
-when walker handles memory packet 
+when pagetable walker handles memory packet 
 returned from the memory sub-system
 as a result of page table access.
 
@@ -303,7 +338,13 @@ as a result of page table access.
 170 }
 ```
 
-##Handling page table access result
+##Handling return packet from memory sub-system
+When memory sub-system successfully handled the page table access reuqest,
+pagetable_walker receives the result packet through the port.
+When the packet arrives, 
+port connecting pagetable_walker and memory sub-system
+invokes recvTimingResp function of the walker.
+
 ```cpp
 104 bool
 105 Walker::WalkerPort::recvTimingResp(PacketPtr pkt)
@@ -340,17 +381,15 @@ as a result of page table access.
 136 }
 ```
 
-When memory sub-system successfully handled the page table access reuqest,
-then pagetable_walker receives the result packet through the port.
-When the packet arrives, 
-port connecting pagetable_walker and memory sub-system
-invokes recvTimingResp function of the walker.
-
 As we've seen before,
 WalkerSenderState wraps up 
-the walker instance (*WalkerState*) used to send
-page tabe access request associated with currently received result.
-Retrieved WalkerState instance is used to handle received packet
+the walker instance (*WalkerState*) 
+which has been used 
+to send page tabe access request 
+associated with currently received packet.
+
+###recvPacket handles received packet and send another packet for next stage
+Retrieved WalkerState instance handles received packet
 by calling *recvPacket* function.
 
 ```cpp
@@ -418,28 +457,27 @@ Because the recvPacket function has been invoked
 because of memory read 
 614-634 will be executed. 
 There are some functions that we don't know,
-but it finally invokes sendPackets function.
-Wait why sendPacket once again in receive function?
+but it finally invokes *sendPackets* function again.
+Wait why sendPackets once again in receive function?
 
-##Page table walking is not a single memory access
-X86 makes use of multiple levels of page tables,
-when TLB miss happens,
-it needs to walk multiple pages step by step.
-Therefore, just making single request and receive 
-cannot resolve virtual to physical address translation.
-
-For the previous recvPacket function,
-it has been invoked 
+###Page table walking is not a single memory access
+Regarding to the firstly received packet 
+from memory sub-system,
+it has been delivered to the pagetable_walker
 as a result of first memory access 
-caused by first level page table.
+to the first level page table.
+
 Therefore, the received packet contains 
 next level page table information 
 not the Page table entry which actually contains
-physical address mapped to the virtual address. 
+physical address to virtual address mapping. 
 
-Therefore, to acquire the laste level page table entry,
-it needs additional memory accesses
-which can be handled by *stepWalk* function.
+Therefore, to acquire the last level page table entry,
+it needs additional memory accesses,
+and it results in invoking another sendPackets.
+As we generated initiating packet with the help of setupWalk,
+access packets to further page table layers 
+are prepared by *stepWalk* function.
 
 
 ```cpp
@@ -585,7 +623,7 @@ which can be handled by *stepWalk* function.
 421             doEndWalk = true;
 422             break;
 443         break;
-444       case PSEPD:                                                                                                                                                                                                                                                                     445         DPRINTF(PageTableWalker,
+444       case PSEPD:                                                                                                                       445         DPRINTF(PageTableWalker,
 446                 "Got legacy mode PSE PD entry %#08x.\n", (uint32_t)pte);
 447         doWrite = !pte.a;
 448         pte.a = 1;
@@ -683,18 +721,21 @@ which can be handled by *stepWalk* function.
 540     return fault;
 541 }
 ```
-Even though it is very long function,
+Even though it is very long ,
 depending on the current state
 representing levels of the page table 
 accessed by the received packet,
 next level page table address is calculated.
-Because we are here because of accessing PML4,
+
+Because we are here because of accessing PML4 (first level page table),
 line 301-316 will be executed.
-Also, the next state is set as next level of page table PDP.
+First of all, 
+the next state is set to
+next level of page table level, PDP.
 
 After setting fields associated with current page table level,
 it generates another read packet (Line 520-539), and
-sendPackets function sends the generated read packet.
+sendPackets function sends this packer when it is invoked..
 These sending and receiving steps are repeated until the final PTE is read.
 
 When PTE is read from the memory sub-system,
@@ -704,56 +745,12 @@ new TLB entry is inserted to the TLB module (line 515-520).
 
 
 
-*gem5/src/arch/x86/tlb.cc*
-```cpp
-397             DPRINTF(TLB, "Entry found with paddr %#x, "
-398                     "doing protection checks.\n", entry->paddr);
-399             // Do paging protection checks.
-400             bool inUser = (m5Reg.cpl == 3 &&
-401                     !(flags & (CPL0FlagBit << FlagShift)));
-402             CR0 cr0 = tc->readMiscRegNoEffect(MISCREG_CR0);
-403             bool badWrite = (!entry->writable && (inUser || cr0.wp));
-404             if ((inUser && !entry->user) || (mode == Write && badWrite)) {
-405                 // The page must have been present to get into the TLB in
-406                 // the first place. We'll assume the reserved bits are
-407                 // fine even though we're not checking them.
-408                 return std::make_shared<PageFault>(vaddr, true, mode, inUser,
-409                                                    false);
-410             }
-411             if (storeCheck && badWrite) {
-412                 // This would fault if this were a write, so return a page
-413                 // fault that reflects that happening.
-414                 return std::make_shared<PageFault>(vaddr, true, Write, inUser,
-415                                                    false);
-416             }
-417
-418             Addr paddr = entry->paddr | (vaddr & mask(entry->logBytes));
-419             DPRINTF(TLB, "Translated %#x -> %#x.\n", vaddr, paddr);
-420             req->setPaddr(paddr);
-421             if (entry->uncacheable)
-422                 req->setFlags(Request::UNCACHEABLE | Request::STRICT_ORDER);
-423         } else {
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #Finish TLB translation
+When translate function finish,
+it returns fault when translation cannot be resolved successfully. 
+The returned fault will be handled by the translateTiming function
+which inovked translate function.
+
 *gem5/src/arch/x86/tlb.cc*
 ```cpp
 441 void
@@ -773,11 +770,12 @@ new TLB entry is inserted to the TLB module (line 515-520).
 ```
 
 After the translation has been finished,
-whether it has been done by TLB hit or page table walking,
+whether it has been done by TLB hit, page table walking, or fault raised,
 it invokes *finish* function through a translation object.
 let's go back to initiateMemRead function again
 to look at what is the translation object.
 
+###DataTranslation class
 ```cpp
  464         WholeTranslationState *state =
  465             new WholeTranslationState(req, new uint8_t[size], NULL, mode);
@@ -788,6 +786,8 @@ to look at what is the translation object.
 
 At line 464-468, we can easily find that 
 it is an object of *DataTranslation* class.
+To find out implementation of finish function,
+let's take a look at DataTranslation class.
 
 *gem5/src/cpu/translation.hh*
 ```cpp
@@ -858,19 +858,22 @@ it is an object of *DataTranslation* class.
 272 };
 ```
 
-Here finish function defined in *DataTranslation* class
+finish function defined in *DataTranslation* class
 re-invokes another finish function 
 through the state member field (line 257).
 Also after invoking finish function,
-it invokes xc->finishTranslation method.
+it invokes finishTranslation method
+of ThreadContext.
 
 ###WholeTranslationState class object contains translation related info
 When we look at the initiateMemRead function again,
 *WholeTranslationState* instance is passed 
 to the DataTranslation constructor as a state parameter.
+
 Therefore, state->finish of the DataTranslation invokes 
 WholeTranslationState::finish method. 
-Note that WholeTranslationState contains actual request.
+Note that WholeTranslationState contains actual request
+used for accessing page table entry from tlb.
 
 *gem5/src/cpu/translation.hh*
 ```cpp
@@ -954,20 +957,23 @@ Note that WholeTranslationState contains actual request.
 128         return outstanding == 0;
 129     }
 ```
+
 the finish function of WholeTranslationState
 stores generated fault on its internal buffer
 when meaningful has been raised in translation process
 (line 117).
 
 After the fault has been stored by WholeTranslationState's finish function,
-remaining part ofDataTranslation's finish function invokes
+remaining part of DataTranslation's finish function invokes
 *xc->finishTranslation(state)* function.
+Note that finishTranslation function requires
+WholeTranslationStation instance as state argument.
 
 
 To understand details, 
-we have to first look at what is the xc variable.
+we have to look at what is the xc variable.
 Because DataTranslation class is declared as a template class and 
-xc declared as template type,
+xc is declared as template type,
 it will be an instance of template type class.
 
 ```cpp
@@ -980,10 +986,9 @@ Because the translation variable
 has been declared with *DataTranslation<TimingSimpleCPU>* type,
 xc variable is declared as an instance of *TimingSimpleCpu*.
 Therefore, 
-when the xc->finishTranslation(sate) is called,
+when the xc->finishTranslation(state) is called,
 it will invoke TimingSimpleCPU::finishTranslation function.
-
-Note that we jumped to the CPU level 
+Note that we jumped to the CPU code
 from the TLB module. 
 
 ```cpp
@@ -1018,6 +1023,7 @@ it ends up ivnoking *translationFault* function of the CPU
 with a previously stored fault(line 638).
 Note that state->getFault method returns the fault
 previously stored by WholeTranslationState's finish.
+
 When a translation has happended
 because of prefetch instruction,
 it suppress generated fault because it is not critical for execution.
@@ -1026,6 +1032,8 @@ However,
 when no fault has been encountered 
 during the translation,
 it invokes sendData function.
+
+#SendData reads data from physical memory
 What is the sendData function!!?!?!?!?!?!?!?!?!?
 
 ###When fault happens during translation, what CPU has to do?
@@ -1052,7 +1060,8 @@ What is the sendData function!!?!?!?!?!?!?!?!?!?
 
 The translateFault function invokes postExecute and advanceInst function.
 By looking at the function argument,
-we can infer that *advanceInst* function actually deal with the fault.
+we can infer that *advanceInst* function 
+actually deal with the fault.
 postExecute function doesn't invoke any meaningful function to proceed pipeline, but
 It updates stat of the processor such as 
 power model, load instruction counter, etc.

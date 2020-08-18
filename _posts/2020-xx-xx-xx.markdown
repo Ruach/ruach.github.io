@@ -3,7 +3,43 @@ layout: post
 titile: "Microops in GEM5"
 categories: GEM5, Microops
 ---
+GEM5 requires user to implement bottom line interface functions
+to help execution of one instruction
+depending on instruction type.
+In this posting, we are going to take a look at
+those bottom lines implmentation
+of the load instruction in x86 architecture.
+Also, we will briefly go through
+how the instruction is fetched and executed
+using those interfaces.
+
+Because we have interest on load instructions,
+let's take a look at microops defined for
+load/store instruction.
+Note that the defined microop instructions are not
+x86 macro instructions that are exposed to the user
+as an ISA such as ld,st,mov instructions.
+A sequence of defined microops can define
+internal behavior of one macro instruction.
+Therefore, understanding how each microop works
+is same as understanding basic block of processor.
+
+*gem5/src/arch/x86/isa/microops/ldstop.isa*
 ```python
+{% raw %}
+417 let {{
+418
+419     # Make these empty strings so that concatenating onto
+420     # them will always work.
+421     header_output = ""
+422     decoder_output = ""
+423     exec_output = ""
+424
+425     segmentEAExpr = \
+426         'bits(scale * Index + Base + disp, addressSize * 8 - 1, 0);'
+427
+428     calculateEA = 'EA = SegBase + ' + segmentEAExpr
+429
 430     def defineMicroLoadOp(mnemonic, code, bigCode='',
 431                           mem_flags="0", big=True, nonSpec=False,
 432                           implicitStack=False):
@@ -55,6 +91,7 @@ categories: GEM5, Microops
 478                 self.mnemonic = name
 479
 480         microopClasses[name] = LoadOp
+{% endraw %}
 ```
 Inside a let block,
 *defineMicroLoadOp* provides a template method
@@ -62,11 +99,12 @@ used for defining microops
 belong to load operation category.
 
 To automatically generate microop classes, 
-we need some data structure that describes 
-semantic of microop that we have interest.
-For that meta-data,
-it makes use of InstObjParams class 
-that requires microop mnemonic, code defining the microop, and arguments of it.
+we need some data structure describing
+semantic of microop.
+It makes use of InstObjParams class 
+that requires microop mnemonic, 
+code defining the microop, 
+and arguments of it.
 When we look at the lines 441-449,
 it adds the meta-data of each microop to *iops* list.
 
@@ -75,17 +113,48 @@ code at line 450-455
 automatically generates CPP code.
 The template method called with the iop
 substitutes some string part of the template
-and defines class definition of microop in CPP format.
+and defines class definition and header of microop 
+in CPP format.
+ 
+Line 468-480 defines LoadOp classe
+associated with each microop class.
+Note that each class definition
+is defined with different mnemonic and class name
+corresponding to one microop definition.
 
-Also, note that
-the line 468 defines LoadOp class.
-Whenever the defineMicroLoadOp is called,
-a pair of LoadOp class reference and the name of microop
-is stored in the *microopClasses* dictionary.
-The microopClasses is a variable passed to
-previous initialization of MicroAssembler class.
+For load/store microops 
+multiple LoadOp classes are derived and 
+stored in the *microopClasses* dictionary 
+as a result.
 
 
+```python
+482     defineMicroLoadOp('Ld', 'Data = merge(Data, Mem, dataSize);',
+483                             'Data = Mem & mask(dataSize * 8);')
+484     defineMicroLoadOp('Ldis', 'Data = merge(Data, Mem, dataSize);',
+485                               'Data = Mem & mask(dataSize * 8);',
+486                                implicitStack=True)
+487     defineMicroLoadOp('Ldst', 'Data = merge(Data, Mem, dataSize);',
+488                               'Data = Mem & mask(dataSize * 8);',
+489                       '(StoreCheck << FlagShift)')
+490     defineMicroLoadOp('Ldstl', 'Data = merge(Data, Mem, dataSize);',
+491                                'Data = Mem & mask(dataSize * 8);',
+492                       '(StoreCheck << FlagShift) | Request::LOCKED_RMW',
+493                       nonSpec=True)
+494
+495     defineMicroLoadOp('Ldfp', code='FpData_uqw = Mem', big = False)
+```
+The above invocations of definedMicroLoadOp function
+result in storing <LoadOp class, microop name> pairs
+on the microopClasses.
+Remember that 
+the microopClasses is a variable passed to
+initialization of MicroAssembler class.
+to let parser can initiate 
+particular microop consisting of macroop.
+
+
+###InstObjParams
 *gem5/src/arch/isa_parser.py*
 ```python
 1413 class InstObjParams(object):
@@ -489,6 +558,7 @@ Also, memory flags such as prefetch are delivered to the memory module.
 Remember that *memFlags* are passed to the class 
 when the microop is constructed. 
 
+*gem5/build/X86/arch/x86/generated/exec-ns.cc.inc*
 ```cpp
 19144     Fault Ld::initiateAcc(ExecContext * xc,
 19145             Trace::InstRecord * traceData) const
@@ -513,7 +583,8 @@ when the microop is constructed.
 19164         return fault;
 19165     }
 ```
-For memory operation, initiateAcc is the most important function
+
+For memory operation, *initiateAcc* is the most important function
 that actually initiate memory access. 
 initiateAcc invokes initiateMemRead function, and
 each CPU class overrides initiateMemRead method.
@@ -535,7 +606,7 @@ through the interface ExecContext class.
 
 initiateMemRead helper function defined in x86 arch directory
 invokes actual initiateMemRead function
-through the ExecContext interface.
+through the *ExecContext* interface.
 
 *gem5/src/cpu/simple/exec_context.hh*
 ```cpp
@@ -615,7 +686,7 @@ that needs two memory access requests.
 When the memory address is not aligned, and 
 the access crosses the memory block boundary,
 then it should be handled with two separate memory requests.
-Otherwise, it invokes translateTiming function defined in data tlb object(dtb).
+Otherwise, it invokes *translateTiming* function defined in data tlb object(dtb).
 Note that initiateMemRead doesn't actually bring the data from the memory to cache.
 It first check the tlb for virtual to physical mapping, and 
 if the mapping doesn't exist,

@@ -817,7 +817,7 @@ It invokes *getDeclaration*, *getDefinition*, and *getAllocator* functions
 through the retrieved macroop container.
 Note that retrieved container is an instance of *X86Macroop python class*.
 
-###getDefinition of macroop container: generate class definition automatically
+###getDefinition: generate cpp class definition for macroop
 *gem5/src/arch/x86/isa/macroop.isa*
 ```python
 {% raw %}

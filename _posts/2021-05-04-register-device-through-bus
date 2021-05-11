@@ -1,0 +1,1756 @@
+---
+layout: post
+titile: "Linux usb core driver interface
+categories: linux, embedded-linux
+---
+
+```c
+/**                            
+ * module_usb_driver() - Helper macro for registering a USB driver
+ * @__usb_driver: usb_driver struct
+ *
+ * Helper macro for USB drivers which do not do anything special in module
+ * init/exit. This eliminates a lot of boilerplate. Each module may only
+ * use this macro once, and calling it replaces module_init() and module_exit()
+ */
+#define module_usb_driver(__usb_driver) \
+        module_driver(__usb_driver, usb_register, \
+                       usb_deregister)
+
+/**
+ * module_driver() - Helper macro for drivers that don't do anything
+ * special in module init/exit. This eliminates a lot of boilerplate.
+ * Each module may only use this macro once, and calling it replaces
+ * module_init() and module_exit().
+ *      
+ * @__driver: driver name
+ * @__register: register function for this driver type
+ * @__unregister: unregister function for this driver type
+ * @...: Additional arguments to be passed to __register and __unregister.
+ *
+ * Use this macro to construct bus specific macros for registering
+ * drivers, and do not use it on its own.
+ */
+#define module_driver(__driver, __register, __unregister, ...) \
+static int __init __driver##_init(void) \
+{ \
+        return __register(&(__driver) , ##__VA_ARGS__); \
+} \
+module_init(__driver##_init); \
+static void __exit __driver##_exit(void) \
+{ \                            
+        __unregister(&(__driver) , ##__VA_ARGS__); \
+} \
+module_exit(__driver##_exit);
+```
+
+Above macro automatically generates initialization and de-initialization function for
+your usb device driver. 
+It just invokes usb_register and usb_deregister function 
+on module init and exit respectively. 
+Note that module_usb_driver requires usb_device_driver structure as its operand.
+
+```c
+/**
+ * struct usb_driver - identifies USB interface driver to usbcore
+ * @name: The driver name should be unique among USB drivers,
+ *      and should normally be the same as the module name.
+ * @probe: Called to see if the driver is willing to manage a particular
+ *      interface on a device.  If it is, probe returns zero and uses
+ *      usb_set_intfdata() to associate driver-specific data with the
+ *      interface.  It may also use usb_set_interface() to specify the
+ *      appropriate altsetting.  If unwilling to manage the interface,
+ *      return -ENODEV, if genuine IO errors occurred, an appropriate
+ *      negative errno value.
+ * @disconnect: Called when the interface is no longer accessible, usually
+ *      because its device has been (or is being) disconnected or the
+ *      driver module is being unloaded.
+ * @unlocked_ioctl: Used for drivers that want to talk to userspace through
+ *      the "usbfs" filesystem.  This lets devices provide ways to
+ *      expose information to user space regardless of where they
+ *      do (or don't) show up otherwise in the filesystem.
+ * @suspend: Called when the device is going to be suspended by the
+ *      system either from system sleep or runtime suspend context. The
+ *      return value will be ignored in system sleep context, so do NOT
+ *      try to continue using the device if suspend fails in this case.
+ *      Instead, let the resume or reset-resume routine recover from
+ *      the failure.
+ * @resume: Called when the device is being resumed by the system.
+ * @reset_resume: Called when the suspended device has been reset instead
+ *      of being resumed.
+ * @pre_reset: Called by usb_reset_device() when the device is about to be
+ *      reset.  This routine must not return until the driver has no active
+ *      URBs for the device, and no more URBs may be submitted until the
+ *      post_reset method is called.
+ * @post_reset: Called by usb_reset_device() after the device
+ *      has been reset
+ * @id_table: USB drivers use ID table to support hotplugging.
+ *      Export this with MODULE_DEVICE_TABLE(usb,...).  This must be set
+ *      or your driver's probe function will never get called.
+ * @dev_groups: Attributes attached to the device that will be created once it
+ *      is bound to the driver.
+ * @dynids: used internally to hold the list of dynamically added device
+ *      ids for this driver.
+ * @drvwrap: Driver-model core structure wrapper.
+ * @no_dynamic_id: if set to 1, the USB core will not allow dynamic ids to be
+ *      added to this driver by preventing the sysfs file from being created.
+ * @supports_autosuspend: if set to 0, the USB core will not allow autosuspend
+ *      for interfaces bound to this driver.
+ * @soft_unbind: if set to 1, the USB core will not kill URBs and disable
+ *      endpoints before calling the driver's disconnect method.
+ * @disable_hub_initiated_lpm: if set to 1, the USB core will not allow hubs
+ *      to initiate lower power link state transitions when an idle timeout
+ *      occurs.  Device-initiated USB 3.0 link PM will still be allowed.
+ *
+ * USB interface drivers must provide a name, probe() and disconnect()
+ * methods, and an id_table.  Other driver fields are optional.
+ *
+ * The id_table is used in hotplugging.  It holds a set of descriptors,
+ * and specialized data may be associated with each entry.  That table
+ * is used by both user and kernel mode hotplugging support
+ *
+ * The probe() and disconnect() methods are called in a context where
+ * they can sleep, but they should avoid abusing the privilege.  Most
+ * work to connect to a device should be done when the device is opened,
+ * and undone at the last close.  The disconnect code needs to address
+ * concurrency issues with respect to open() and close() methods, as
+ * well as forcing all pending I/O requests to complete (by unlinking
+ * them as necessary, and blocking until the unlinks complete).
+ */
+struct usb_driver {
+        const char *name;
+
+        int (*probe) (struct usb_interface *intf,
+                      const struct usb_device_id *id);
+
+        void (*disconnect) (struct usb_interface *intf);
+
+        int (*unlocked_ioctl) (struct usb_interface *intf, unsigned int code,
+                        void *buf);
+
+        int (*suspend) (struct usb_interface *intf, pm_message_t message);
+        int (*resume) (struct usb_interface *intf);
+        int (*reset_resume)(struct usb_interface *intf);
+
+        int (*pre_reset)(struct usb_interface *intf);
+        int (*post_reset)(struct usb_interface *intf);
+
+        const struct usb_device_id *id_table;
+        const struct attribute_group **dev_groups;
+
+        struct usb_dynids dynids;
+        struct usbdrv_wrap drvwrap;
+        unsigned int no_dynamic_id:1;
+        unsigned int supports_autosuspend:1;
+        unsigned int disable_hub_initiated_lpm:1;
+        unsigned int soft_unbind:1;
+};
+```
+Although we didn't go thorough the device driver that populates the 
+usb_driver structure,
+USB interface drivers must provide a name, probe() and disconnect()
+methods, and an id_table. 
+id_table specified all usb devices that can be supported by this
+usb_driver, and whenever a device that can be managed by this device driver is found,
+the probe function will be invoked by the usb core. 
+
+
+```c
+
+/* use a define to avoid include chaining to get THIS_MODULE & friends */
+#define usb_register(driver) \
+        usb_register_driver(driver, THIS_MODULE, KBUILD_MODNAME)
+
+/**
+ * usb_register_driver - register a USB interface driver
+ * @new_driver: USB operations for the interface driver
+ * @owner: module owner of this driver.
+ * @mod_name: module name string
+ *
+ * Registers a USB interface driver with the USB core.  The list of
+ * unattached interfaces will be rescanned whenever a new driver is
+ * added, allowing the new driver to attach to any recognized interfaces.
+ *
+ * Return: A negative error code on failure and 0 on success.
+ *
+ * NOTE: if you want your driver to use the USB major number, you must call
+ * usb_register_dev() to enable that functionality.  This function no longer
+ * takes care of that.
+ */
+int usb_register_driver(struct usb_driver *new_driver, struct module *owner,
+                        const char *mod_name)
+{       
+        int retval = 0;
+        
+        if (usb_disabled())
+                return -ENODEV;
+        
+        new_driver->drvwrap.for_devices = 0;
+        new_driver->drvwrap.driver.name = new_driver->name;
+        new_driver->drvwrap.driver.bus = &usb_bus_type;
+        new_driver->drvwrap.driver.probe = usb_probe_interface;
+        new_driver->drvwrap.driver.remove = usb_unbind_interface;
+        new_driver->drvwrap.driver.owner = owner;
+        new_driver->drvwrap.driver.mod_name = mod_name;
+        new_driver->drvwrap.driver.dev_groups = new_driver->dev_groups;
+        spin_lock_init(&new_driver->dynids.lock);
+        INIT_LIST_HEAD(&new_driver->dynids.list);
+        
+        retval = driver_register(&new_driver->drvwrap.driver);
+        if (retval)
+                goto out;
+        
+        retval = usb_create_newid_files(new_driver);
+        if (retval)
+                goto out_newid;
+        
+        pr_info("%s: registered new interface driver %s\n",
+                        usbcore_name, new_driver->name);
+
+out:    
+        return retval;
+
+out_newid:
+        driver_unregister(&new_driver->drvwrap.driver);
+        
+        pr_err("%s: error %d registering interface driver %s\n",
+                usbcore_name, retval, new_driver->name);
+        goto out;
+}
+EXPORT_SYMBOL_GPL(usb_register_driver);
+```
+
+Instead of exposing the usb_drvier structure to the bus,
+usb core generates general device_driver structure
+that can be attached to the bus through general kernel api,
+driver_register function.
+For that wrapper driver population,
+usb core utilize the member field drvwrap of the usb_driver structure.
+This structure contains device_driver structure which is a general structure 
+for presenting device driver. 
+
+```c
+/**
+ * struct usbdrv_wrap - wrapper for driver-model structure
+ * @driver: The driver-model core driver structure.
+ * @for_devices: Non-zero for device drivers, 0 for interface drivers.
+ */
+struct usbdrv_wrap {
+        struct device_driver driver;
+        int for_devices;
+};
+
+/**
+ * struct device_driver - The basic device driver structure
+ * @name:       Name of the device driver.
+ * @bus:        The bus which the device of this driver belongs to.
+ * @owner:      The module owner.
+ * @mod_name:   Used for built-in modules.
+ * @suppress_bind_attrs: Disables bind/unbind via sysfs.
+ * @probe_type: Type of the probe (synchronous or asynchronous) to use.
+ * @of_match_table: The open firmware table.
+ * @acpi_match_table: The ACPI match table.
+ * @probe:      Called to query the existence of a specific device,
+ *              whether this driver can work with it, and bind the driver
+ *              to a specific device.
+ * @sync_state: Called to sync device state to software state after all the
+ *              state tracking consumers linked to this device (present at
+ *              the time of late_initcall) have successfully bound to a
+ *              driver. If the device has no consumers, this function will
+ *              be called at late_initcall_sync level. If the device has
+ *              consumers that are never bound to a driver, this function
+ *              will never get called until they do.
+ * @remove:     Called when the device is removed from the system to
+ *              unbind a device from this driver.
+ * @shutdown:   Called at shut-down time to quiesce the device.
+ * @suspend:    Called to put the device to sleep mode. Usually to a
+ *              low power state.
+ * @resume:     Called to bring a device from sleep mode.
+ * @groups:     Default attributes that get created by the driver core
+ *              automatically.
+ * @dev_groups: Additional attributes attached to device instance once the
+ *              it is bound to the driver.
+ * @pm:         Power management operations of the device which matched
+ *              this driver.
+ * @coredump:   Called when sysfs entry is written to. The device driver
+ *              is expected to call the dev_coredump API resulting in a
+ *              uevent.
+ * @p:          Driver core's private data, no one other than the driver
+ *              core can touch this.
+ *
+ * The device driver-model tracks all of the drivers known to the system.
+ * The main reason for this tracking is to enable the driver core to match
+ * up drivers with new devices. Once drivers are known objects within the
+ * system, however, a number of other things become possible. Device drivers
+ * can export information and configuration variables that are independent
+ * of any specific device.
+ */
+struct device_driver {
+        const char              *name;
+        struct bus_type         *bus;
+
+        struct module           *owner;
+        const char              *mod_name;      /* used for built-in modules */
+
+        bool suppress_bind_attrs;       /* disables bind/unbind via sysfs */
+        enum probe_type probe_type;
+
+        const struct of_device_id       *of_match_table;
+        const struct acpi_device_id     *acpi_match_table;
+
+        int (*probe) (struct device *dev);
+        void (*sync_state)(struct device *dev);
+        int (*remove) (struct device *dev);
+        void (*shutdown) (struct device *dev);
+        int (*suspend) (struct device *dev, pm_message_t state);
+        int (*resume) (struct device *dev);
+        const struct attribute_group **groups;
+        const struct attribute_group **dev_groups;
+
+        const struct dev_pm_ops *pm;
+        void (*coredump) (struct device *dev);
+
+        struct driver_private *p;
+};
+```
+Note that some fields of the wrapper device driver are filled with 
+the usb core's functions and pre-defined data structures,
+and only handlful of original usb_driver structure's member fields are used 
+to initialize the wrapper driver structure. 
+Note that it makes use of generic probe function of the usb_core instead of 
+the probe function of usb_driver structure.
+We will revisit this probe function later 
+how the probe function of usb_driver is invoked at the end of the world
+with the help of core's probe function. 
+
+```c
+/**
+ * struct bus_type - The bus type of the device
+ *
+ * @name:       The name of the bus.
+ * @dev_name:   Used for subsystems to enumerate devices like ("foo%u", dev->id).
+ * @dev_root:   Default device to use as the parent.
+ * @bus_groups: Default attributes of the bus.
+ * @dev_groups: Default attributes of the devices on the bus.
+ * @drv_groups: Default attributes of the device drivers on the bus.
+ * @match:      Called, perhaps multiple times, whenever a new device or driver
+ *              is added for this bus. It should return a positive value if the
+ *              given device can be handled by the given driver and zero
+ *              otherwise. It may also return error code if determining that
+ *              the driver supports the device is not possible. In case of
+ *              -EPROBE_DEFER it will queue the device for deferred probing.
+ * @uevent:     Called when a device is added, removed, or a few other things
+ *              that generate uevents to add the environment variables.
+ * @probe:      Called when a new device or driver add to this bus, and callback
+ *              the specific driver's probe to initial the matched device.
+ * @sync_state: Called to sync device state to software state after all the
+ *              state tracking consumers linked to this device (present at
+ *              the time of late_initcall) have successfully bound to a
+ *              driver. If the device has no consumers, this function will
+ *              be called at late_initcall_sync level. If the device has
+ *              consumers that are never bound to a driver, this function
+ *              will never get called until they do.
+ * @remove:     Called when a device removed from this bus.
+ * @shutdown:   Called at shut-down time to quiesce the device.
+ *
+ * @online:     Called to put the device back online (after offlining it).
+ * @offline:    Called to put the device offline for hot-removal. May fail.
+ *
+ * @suspend:    Called when a device on this bus wants to go to sleep mode.
+ * @resume:     Called to bring a device on this bus out of sleep mode.
+ * @num_vf:     Called to find out how many virtual functions a device on this
+ *              bus supports.
+ * @dma_configure:      Called to setup DMA configuration on a device on
+ *                      this bus.
+ * @pm:         Power management operations of this bus, callback the specific
+ *              device driver's pm-ops.
+ * @iommu_ops:  IOMMU specific operations for this bus, used to attach IOMMU
+ *              driver implementations to a bus and allow the driver to do
+ *              bus-specific setup
+ * @p:          The private data of the driver core, only the driver core can
+ *              touch this.
+ * @lock_key:   Lock class key for use by the lock validator
+ * @need_parent_lock:   When probing or removing a device on this bus, the
+ *                      device core should lock the device's parent.
+ *
+ * A bus is a channel between the processor and one or more devices. For the
+ * purposes of the device model, all devices are connected via a bus, even if
+ * it is an internal, virtual, "platform" bus. Buses can plug into each other.
+ * A USB controller is usually a PCI device, for example. The device model
+ * represents the actual connections between buses and the devices they control.
+ * A bus is represented by the bus_type structure. It contains the name, the
+ * default attributes, the bus' methods, PM operations, and the driver core's
+ * private data.
+ */
+struct bus_type {
+        const char              *name;
+        const char              *dev_name;
+        struct device           *dev_root;
+        const struct attribute_group **bus_groups;
+        const struct attribute_group **dev_groups;
+        const struct attribute_group **drv_groups;
+
+        int (*match)(struct device *dev, struct device_driver *drv);
+        int (*uevent)(struct device *dev, struct kobj_uevent_env *env);
+        int (*probe)(struct device *dev);
+        void (*sync_state)(struct device *dev);
+        int (*remove)(struct device *dev);
+        void (*shutdown)(struct device *dev);
+
+        int (*online)(struct device *dev);
+        int (*offline)(struct device *dev);
+
+        int (*suspend)(struct device *dev, pm_message_t state);
+        int (*resume)(struct device *dev);
+
+        int (*num_vf)(struct device *dev);
+
+        int (*dma_configure)(struct device *dev);
+
+        const struct dev_pm_ops *pm;
+
+        const struct iommu_ops *iommu_ops;
+
+        struct subsys_private *p;
+        struct lock_class_key lock_key;
+
+        bool need_parent_lock;
+};
+
+
+struct bus_type usb_bus_type = {
+        .name =         "usb",
+        .match =        usb_device_match,
+        .uevent =       usb_uevent,
+        .need_parent_lock =     true,
+};
+```
+
+Also, to register the generated generic device driver to the bus,
+usb core driver sets the bus information, usb_bus_type.
+The match field of the usb_bus_type is a call-back function
+used for matching the device and its device driver.
+When the new device claims that it sits on particular bus,
+the bus should invoke the call-back function
+to figure out whether any device driver says that they can support the found device. 
+When you look at the prototype of match function,
+it receives the device structure and device_driver structure.
+The first device structure is a structure for the device
+found by the bus, and the device_driver is a 
+driver we are trying to register.
+
+After the wrapper driver has been set, 
+we register the wrapper driver to a bus.
+
+```c
+/**
+ * driver_register - register driver with bus
+ * @drv: driver to register
+ *
+ * We pass off most of the work to the bus_add_driver() call,
+ * since most of the things we have to do deal with the bus
+ * structures.
+ */
+int driver_register(struct device_driver *drv)
+{
+        int ret;
+        struct device_driver *other;
+ 
+        if (!drv->bus->p) {
+                pr_err("Driver '%s' was unable to register with bus_type '%s' because the bus was not initialized.\n",
+                           drv->name, drv->bus->name);
+                return -EINVAL;
+        }
+ 
+        if ((drv->bus->probe && drv->probe) ||
+            (drv->bus->remove && drv->remove) ||
+            (drv->bus->shutdown && drv->shutdown))
+                pr_warn("Driver '%s' needs updating - please use "
+                        "bus_type methods\n", drv->name);
+        
+        other = driver_find(drv->name, drv->bus);
+        if (other) {
+                pr_err("Error: Driver '%s' is already registered, "
+                        "aborting...\n", drv->name);
+                return -EBUSY;
+        }
+        
+        ret = bus_add_driver(drv);
+        if (ret)
+                return ret;
+        ret = driver_add_groups(drv, drv->groups);
+        if (ret) {
+                bus_remove_driver(drv);
+                return ret;
+        }
+        kobject_uevent(&drv->p->kobj, KOBJ_ADD);
+        
+        return ret;
+}
+EXPORT_SYMBOL_GPL(driver_register);
+```
+Note that driver_register is not usb specific api to register the driver.
+It is a generic api to register device driver structure to the bus.
+First of all, it checks if the bus that is in charge of device driver management
+has proper core bus data structure, p. 
+You might think that 
+the first conditional statement check always return false
+because we never set the p member field of bus_type structure for usb,
+usb_bus_type.
+When we look at the usb_bus_type object, it has been statically allocated,
+and its p field has not been assigned at the initialization.
+To understand the p structure of the bus and its initialization,
+we will take a look at usb core driver initialization function later. 
+
+Afer it checks whether the current bus already has same named driver,
+and if there is nothing, then it delegates
+most of the driver registering process
+to bus_add_driver function.
+
+Before we delve into the bus_add_driver, 
+let's take a look at the p structure of the bus.
+
+
+```c
+/*
+ * Init
+ */
+static int __init usb_init(void)
+{
+        int retval;
+        if (usb_disabled()) {
+                pr_info("%s: USB support disabled\n", usbcore_name);
+                return 0;
+        }
+        usb_init_pool_max();
+
+        usb_debugfs_init();
+
+        usb_acpi_register();
+        retval = bus_register(&usb_bus_type);
+        if (retval)
+                goto bus_register_failed;
+        retval = bus_register_notifier(&usb_bus_type, &usb_bus_nb);
+        if (retval)
+                goto bus_notifier_failed;
+        retval = usb_major_init();
+        if (retval)
+                goto major_init_failed;
+        retval = usb_register(&usbfs_driver);
+        if (retval)
+                goto driver_register_failed;
+        retval = usb_devio_init();
+        if (retval)
+                goto usb_devio_init_failed;
+        retval = usb_hub_init();
+        if (retval)
+                goto hub_init_failed;
+        retval = usb_register_device_driver(&usb_generic_driver, THIS_MODULE);
+        if (!retval)
+                goto out;
+
+        usb_hub_cleanup();
+hub_init_failed:
+        usb_devio_cleanup();
+usb_devio_init_failed:
+        usb_deregister(&usbfs_driver);
+driver_register_failed:
+        usb_major_cleanup();
+major_init_failed:
+        bus_unregister_notifier(&usb_bus_type, &usb_bus_nb);
+bus_notifier_failed:
+        bus_unregister(&usb_bus_type);
+bus_register_failed:
+        usb_acpi_unregister();
+        usb_debugfs_cleanup();
+out:
+        return retval;
+}
+```
+
+To understand what happens to the our usb_bus_type object,
+we have to take a look at usb core driver initialization function,
+usb_init.
+You can easily find that usb_bus_type has been passed to the bus_register function,
+so let's take a look at the function's implementation details.
+
+```c
+/**
+ * bus_register - register a driver-core subsystem
+ * @bus: bus to register
+ *
+ * Once we have that, we register the bus with the kobject
+ * infrastructure, then register the children subsystems it has:
+ * the devices and drivers that belong to the subsystem.
+ */
+int bus_register(struct bus_type *bus)
+{
+        int retval;
+        struct subsys_private *priv;
+        struct lock_class_key *key = &bus->lock_key;
+
+        priv = kzalloc(sizeof(struct subsys_private), GFP_KERNEL);
+        if (!priv)
+                return -ENOMEM;
+
+        priv->bus = bus;
+        bus->p = priv;
+
+        BLOCKING_INIT_NOTIFIER_HEAD(&priv->bus_notifier);
+
+        retval = kobject_set_name(&priv->subsys.kobj, "%s", bus->name);
+        if (retval)
+                goto out;
+
+        priv->subsys.kobj.kset = bus_kset;
+        priv->subsys.kobj.ktype = &bus_ktype;
+        priv->drivers_autoprobe = 1;
+
+        retval = kset_register(&priv->subsys);
+        if (retval)
+                goto out;
+
+        retval = bus_create_file(bus, &bus_attr_uevent);
+        if (retval)
+                goto bus_uevent_fail;
+
+        priv->devices_kset = kset_create_and_add("devices", NULL,
+                                                 &priv->subsys.kobj);
+        if (!priv->devices_kset) {
+                retval = -ENOMEM;
+                goto bus_devices_fail;
+        }
+
+        priv->drivers_kset = kset_create_and_add("drivers", NULL,
+                                                 &priv->subsys.kobj);
+        if (!priv->drivers_kset) {
+                retval = -ENOMEM;
+                goto bus_drivers_fail;
+        }
+
+        INIT_LIST_HEAD(&priv->interfaces);
+        __mutex_init(&priv->mutex, "subsys mutex", key);
+        klist_init(&priv->klist_devices, klist_devices_get, klist_devices_put);
+        klist_init(&priv->klist_drivers, NULL, NULL);
+
+        retval = add_probe_files(bus);
+        if (retval)
+                goto bus_probe_files_fail;
+
+        retval = bus_add_groups(bus, bus->bus_groups);
+        if (retval)
+                goto bus_groups_fail;
+
+        pr_debug("bus: '%s': registered\n", bus->name);
+        return 0;
+
+bus_groups_fail:
+        remove_probe_files(bus);
+bus_probe_files_fail:
+        kset_unregister(bus->p->drivers_kset);
+bus_drivers_fail:
+        kset_unregister(bus->p->devices_kset);
+bus_devices_fail:
+        bus_remove_file(bus, &bus_attr_uevent);
+bus_uevent_fail:
+        kset_unregister(&bus->p->subsys);
+out:
+        kfree(bus->p);
+        bus->p = NULL;
+        return retval;
+}
+EXPORT_SYMBOL_GPL(bus_register);
+
+/**
+ * struct subsys_private - structure to hold the private to the driver core portions of the bus_type/class structure.
+ *      
+ * @subsys - the struct kset that defines this subsystem
+ * @devices_kset - the subsystem's 'devices' directory
+ * @interfaces - list of subsystem interfaces associated
+ * @mutex - protect the devices, and interfaces lists.
+ *              
+ * @drivers_kset - the list of drivers associated
+ * @klist_devices - the klist to iterate over the @devices_kset
+ * @klist_drivers - the klist to iterate over the @drivers_kset
+ * @bus_notifier - the bus notifier list for anything that cares about things
+ *                 on this bus.
+ * @bus - pointer back to the struct bus_type that this structure is associated
+ *        with.
+ *      
+ * @glue_dirs - "glue" directory to put in-between the parent device to
+ *              avoid namespace conflicts
+ * @class - pointer back to the struct class that this structure is associated
+ *          with.
+ *      
+ * This structure is the one that is the actual kobject allowing struct
+ * bus_type/class to be statically allocated safely.  Nothing outside of the
+ * driver core should ever touch these fields.
+ */             
+struct subsys_private {
+        struct kset subsys;
+        struct kset *devices_kset;
+        struct list_head interfaces;
+        struct mutex mutex;
+        
+        struct kset *drivers_kset;               
+        struct klist klist_devices;
+        struct klist klist_drivers;
+        struct blocking_notifier_head bus_notifier;
+        unsigned int drivers_autoprobe:1;
+        struct bus_type *bus;
+        
+        struct kset glue_dirs;                   
+        struct class *class;
+};            
+```
+To understand how the registered bus manages 
+devices attached to the bus and its associated drivers,
+we have to understand the data structure subsys_private 
+which contains most important data fields 
+regarding device and driver management. 
+
+The first thing done by the bus_register function is 
+allocating the subsys_private object and initialization.
+The function chains the bus_type structure and subsys_private structure
+by assigning the pointers to each other 
+as their memeber fields respectively. 
+Therefore, when you have either bus_type or subsys_private object,
+you can reference the other also. 
+It assigns the generated subsys_private object to 
+bus object memeber field, p.
+Remember that previous driver_register function
+checked whether the p member field of the bus 
+has been properly initialized and assigned. 
+
+It generates the sysfs file and directories for the bus,
+but the most important thing among this subsys_private initialization process is
+intializing list for managing devices and its associated drivers
+that could sit on the current bus, 
+klist_devices and klist_drivers.
+
+Now let's go back to bus_add_driver function 
+that actually register our device driver
+to the bus. 
+
+```c
+struct driver_private {
+        struct kobject kobj;
+        struct klist klist_devices;
+        struct klist_node knode_bus;
+        struct module_kobject *mkobj;
+        struct device_driver *driver;
+};
+
+/**
+ * bus_add_driver - Add a driver to the bus.
+ * @drv: driver.
+ */
+int bus_add_driver(struct device_driver *drv)
+{
+        struct bus_type *bus;
+        struct driver_private *priv;
+        int error = 0;
+
+        bus = bus_get(drv->bus);
+        if (!bus)
+                return -EINVAL;
+
+        pr_debug("bus: '%s': add driver %s\n", bus->name, drv->name);
+
+        priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+        if (!priv) {
+                error = -ENOMEM;
+                goto out_put_bus;
+        }
+        klist_init(&priv->klist_devices, NULL, NULL);
+        priv->driver = drv;
+        drv->p = priv;
+        priv->kobj.kset = bus->p->drivers_kset;
+        error = kobject_init_and_add(&priv->kobj, &driver_ktype, NULL,
+                                     "%s", drv->name);
+        if (error)
+                goto out_unregister;
+
+        klist_add_tail(&priv->knode_bus, &bus->p->klist_drivers);
+        if (drv->bus->p->drivers_autoprobe) {
+                error = driver_attach(drv);
+                if (error)
+                        goto out_unregister;
+        }
+        module_add_driver(drv->owner, drv);
+
+        error = driver_create_file(drv, &driver_attr_uevent);
+        if (error) {
+                printk(KERN_ERR "%s: uevent attr (%s) failed\n",
+                        __func__, drv->name);
+        }
+        error = driver_add_groups(drv, bus->drv_groups);
+        if (error) {
+                /* How the hell do we get out of this pickle? Give up */
+                printk(KERN_ERR "%s: driver_create_groups(%s) failed\n",
+                        __func__, drv->name);
+        }
+
+        if (!drv->suppress_bind_attrs) {
+                error = add_bind_files(drv);
+                if (error) {
+                        /* Ditto */
+                        printk(KERN_ERR "%s: add_bind_files(%s) failed\n",
+                                __func__, drv->name);
+                }
+        }
+
+        return 0;
+
+out_unregister:
+        kobject_put(&priv->kobj);
+        /* drv->p is freed in driver_release()  */
+        drv->p = NULL;
+out_put_bus:
+        bus_put(bus);
+        return error;
+}
+```
+The first thing that bus_add_driver function does is 
+allocating driver core's private data, driver_private structure object.
+When you look at the driver_private structure, 
+it has klist_devices klist 
+which contains entire devices that are currently managed by the driver
+that we are trying to register to the bus. 
+Because this is the first time the device driver is registered to the bus,
+it should not have any devices that are actively managed by this driver.
+Therefore, it resets the klist_devices list first using klist_init function.
+
+To allow the bus driver have access to the registered drivers,
+related data structure should be maintained by the bus driver.
+For that purpose, bus driver maintains klist_drivers list.
+Here the pointer to the knode_bus field of priv is stored to that list.
+
+Note that the driver_private structure not only contains the kndoe_bus 
+but also the driver structure
+associated with driver_private structure.
+Therefore, 
+whenever bus driver can access the knode_bus pointer,
+it can retrieve the driver_private structure 
+and device_driver associated with it.
+
+```c
+ 399 /**
+ 400  * bus_for_each_drv - driver iterator
+ 401  * @bus: bus we're dealing with.
+ 402  * @start: driver to start iterating on.
+ 403  * @data: data to pass to the callback.
+ 404  * @fn: function to call for each driver.
+ 405  *
+ 406  * This is nearly identical to the device iterator above.
+ 407  * We iterate over each driver that belongs to @bus, and call
+ 408  * @fn for each. If @fn returns anything but 0, we break out
+ 409  * and return it. If @start is not NULL, we use it as the head
+ 410  * of the list.
+ 411  *
+ 412  * NOTE: we don't return the driver that returns a non-zero
+ 413  * value, nor do we leave the reference count incremented for that
+ 414  * driver. If the caller needs to know that info, it must set it
+ 415  * in the callback. It must also be sure to increment the refcount
+ 416  * so it doesn't disappear before returning to the caller.
+ 417  */
+ 418 int bus_for_each_drv(struct bus_type *bus, struct device_driver *start,
+ 419                      void *data, int (*fn)(struct device_driver *, void *))
+ 420 {
+ 421         struct klist_iter i;
+ 422         struct device_driver *drv;
+ 423         int error = 0;
+ 424 
+ 425         if (!bus)
+ 426                 return -EINVAL;
+ 427 
+ 428         klist_iter_init_node(&bus->p->klist_drivers, &i,
+ 429                              start ? &start->p->knode_bus : NULL);
+ 430         while ((drv = next_driver(&i)) && !error)
+ 431                 error = fn(drv, data);
+ 432         klist_iter_exit(&i);
+ 433         return error;
+ 434 }
+
+ 387 static struct device_driver *next_driver(struct klist_iter *i)
+ 388 {
+ 389         struct klist_node *n = klist_next(i);
+ 390         struct driver_private *drv_priv;
+ 391 
+ 392         if (n) {
+ 393                 drv_priv = container_of(n, struct driver_private, knode_bus);
+ 394                 return drv_priv->driver;
+ 395         }
+ 396         return NULL;
+ 397 }
+
+```
+For example, bus core provides api called *bus_for_each_drv*
+to run a function against every device driver registered for a bus.
+It internally invokes next_driver function,
+and this function can retrieve the driver 
+by making use of container_of macro. 
+
+Here, klist_iter is used to traverse klist_node 
+of each device driver associated with current bus.
+Also note that the traversed klist is klist_drivers,
+which is the member field of subsys_private structure of the bus_type structure.
+
+Therefore, whenever klist_next function is invoked,
+it returns one klist_node associated with one device driver
+we've registered to the bus before.
+Note that this klist_node is the memeber field of driver_private
+we've set in the bus_add_driver function.
+
+As I told before, 
+when we have a reference to klist_node of the driver,
+we can retrieve the driver_private structure,
+and using this reference, we can return the devive driver object itself. 
+Note that this device driver structure is the wrapper device driver, drvwrap
+that we generated in the usb_register_driver.
+
+When drivers_autoprobe has been set, 
+it tries to bind the devices sitting on the bus 
+with the new registered driver at the driver register time. 
+When you go back to the bus_register function, 
+you can find that the drivers_autoprobe flag has been set by default.
+Therefore, 
+whenever the new device driver is trying to be registered to the bus,
+it will try to bind the driver to the already found devices. 
+We didn't cover the detail implementation of the driver_attach function,
+but it invokes binding function against the every registered devices on the bus
+that are managed by the klist. 
+
+
+##Probe probe probe
+```c
+int usb_register_driver(struct usb_driver *new_driver, struct module *owner,
+                        const char *mod_name)
+{
+        int retval = 0;
+
+        if (usb_disabled())
+                return -ENODEV;
+
+        new_driver->drvwrap.for_devices = 0;
+        new_driver->drvwrap.driver.name = new_driver->name;
+        new_driver->drvwrap.driver.bus = &usb_bus_type;
+        new_driver->drvwrap.driver.probe = usb_probe_interface;
+        new_driver->drvwrap.driver.remove = usb_unbind_interface;
+        new_driver->drvwrap.driver.owner = owner;
+        new_driver->drvwrap.driver.mod_name = mod_name;
+        new_driver->drvwrap.driver.dev_groups = new_driver->dev_groups;
+        spin_lock_init(&new_driver->dynids.lock);
+        INIT_LIST_HEAD(&new_driver->dynids.list);
+```
+You might remeber that when the wrapper driver is generated for usb driver,
+it has used the usb core's generic probe function
+instead of the device driver specific probe.
+Then when the driver's specific probe function is invoked? 
+Let's first take a look at usb_probe_interface function.
+
+```c
+/* called from driver core with dev locked */
+static int usb_probe_interface(struct device *dev)
+{
+        struct usb_driver *driver = to_usb_driver(dev->driver);
+        struct usb_interface *intf = to_usb_interface(dev);
+        struct usb_device *udev = interface_to_usbdev(intf);
+        const struct usb_device_id *id;
+        int error = -ENODEV;
+        int lpm_disable_error = -ENODEV;
+
+        dev_dbg(dev, "%s\n", __func__);
+
+        intf->needs_binding = 0;
+
+        if (usb_device_is_owned(udev))
+                return error;
+
+        if (udev->authorized == 0) {
+                dev_err(&intf->dev, "Device is not authorized for usage\n");
+                return error;
+        } else if (intf->authorized == 0) {
+                dev_err(&intf->dev, "Interface %d is not authorized for usage\n",
+                                intf->altsetting->desc.bInterfaceNumber);
+                return error;
+        }
+
+        id = usb_match_dynamic_id(intf, driver);
+        if (!id)
+                id = usb_match_id(intf, driver->id_table);
+        if (!id)
+                return error;
+
+        dev_dbg(dev, "%s - got id\n", __func__);
+
+        error = usb_autoresume_device(udev);
+        if (error)
+                return error;
+
+        intf->condition = USB_INTERFACE_BINDING;
+
+        /* Probed interfaces are initially active.  They are
+         * runtime-PM-enabled only if the driver has autosuspend support.
+         * They are sensitive to their children's power states.
+         */
+        pm_runtime_set_active(dev);
+        pm_suspend_ignore_children(dev, false);
+        if (driver->supports_autosuspend)
+                pm_runtime_enable(dev);
+
+        /* If the new driver doesn't allow hub-initiated LPM, and we can't
+         * disable hub-initiated LPM, then fail the probe.
+         *
+         * Otherwise, leaving LPM enabled should be harmless, because the
+         * endpoint intervals should remain the same, and the U1/U2 timeouts
+         * should remain the same.
+         *
+         * If we need to install alt setting 0 before probe, or another alt
+         * setting during probe, that should also be fine.  usb_set_interface()
+         * will attempt to disable LPM, and fail if it can't disable it.
+         */
+        if (driver->disable_hub_initiated_lpm) {
+                lpm_disable_error = usb_unlocked_disable_lpm(udev);
+                if (lpm_disable_error) {
+                        dev_err(&intf->dev, "%s Failed to disable LPM for driver %s\n",
+                                __func__, driver->name);
+                        error = lpm_disable_error;
+                        goto err;
+                }
+        }
+
+        /* Carry out a deferred switch to altsetting 0 */
+        if (intf->needs_altsetting0) {
+                error = usb_set_interface(udev, intf->altsetting[0].
+                                desc.bInterfaceNumber, 0);
+                if (error < 0)
+                        goto err;
+                intf->needs_altsetting0 = 0;
+        }
+
+        error = driver->probe(intf, id);
+        if (error)
+                goto err;
+
+        intf->condition = USB_INTERFACE_BOUND;
+
+        /* If the LPM disable succeeded, balance the ref counts. */
+        if (!lpm_disable_error)
+                usb_unlocked_enable_lpm(udev);
+
+        usb_autosuspend_device(udev);
+        return error;
+
+ err:
+        usb_set_intfdata(intf, NULL);
+        intf->needs_remote_wakeup = 0;
+        intf->condition = USB_INTERFACE_UNBOUND;
+
+        /* If the LPM disable succeeded, balance the ref counts. */
+        if (!lpm_disable_error)
+                usb_unlocked_enable_lpm(udev);
+
+        /* Unbound interfaces are always runtime-PM-disabled and -suspended */
+        if (driver->supports_autosuspend)
+                pm_runtime_disable(dev);
+        pm_runtime_set_suspended(dev);
+
+        usb_autosuspend_device(udev);
+        return error;
+}
+```
+
+
+
+
+```c
+/**
+ * struct usb_device - kernel's representation of a USB device
+ * @devnum: device number; address on a USB bus
+ * @devpath: device ID string for use in messages (e.g., /port/...)
+ * @route: tree topology hex string for use with xHCI
+ * @state: device state: configured, not attached, etc.
+ * @speed: device speed: high/full/low (or error)
+ * @rx_lanes: number of rx lanes in use, USB 3.2 adds dual-lane support
+ * @tx_lanes: number of tx lanes in use, USB 3.2 adds dual-lane support
+ * @tt: Transaction Translator info; used with low/full speed dev, highspeed hub
+ * @ttport: device port on that tt hub
+ * @toggle: one bit for each endpoint, with ([0] = IN, [1] = OUT) endpoints
+ * @parent: our hub, unless we're the root
+ * @bus: bus we're part of
+ * @ep0: endpoint 0 data (default control pipe)
+ * @dev: generic device interface
+ * @descriptor: USB device descriptor
+ * @bos: USB device BOS descriptor set
+ * @config: all of the device's configs
+ * @actconfig: the active configuration
+ * @ep_in: array of IN endpoints
+ * @ep_out: array of OUT endpoints
+ * @rawdescriptors: raw descriptors for each config
+ * @bus_mA: Current available from the bus
+ * @portnum: parent port number (origin 1)
+ * @level: number of USB hub ancestors
+ * @devaddr: device address, XHCI: assigned by HW, others: same as devnum
+ * @can_submit: URBs may be submitted
+ * @persist_enabled:  USB_PERSIST enabled for this device
+ * @have_langid: whether string_langid is valid
+ * @authorized: policy has said we can use it;
+ *      (user space) policy determines if we authorize this device to be
+ *      used or not. By default, wired USB devices are authorized.
+ *      WUSB devices are not, until we authorize them from user space.
+ *      FIXME -- complete doc
+ * @authenticated: Crypto authentication passed
+ * @wusb: device is Wireless USB
+ * @lpm_capable: device supports LPM
+ * @usb2_hw_lpm_capable: device can perform USB2 hardware LPM
+ * @usb2_hw_lpm_besl_capable: device can perform USB2 hardware BESL LPM
+ * @usb2_hw_lpm_enabled: USB2 hardware LPM is enabled
+ * @usb2_hw_lpm_allowed: Userspace allows USB 2.0 LPM to be enabled
+ * @usb3_lpm_u1_enabled: USB3 hardware U1 LPM enabled
+ * @usb3_lpm_u2_enabled: USB3 hardware U2 LPM enabled
+ * @string_langid: language ID for strings
+ * @product: iProduct string, if present (static)
+ * @manufacturer: iManufacturer string, if present (static)
+ * @serial: iSerialNumber string, if present (static)
+ * @filelist: usbfs files that are open to this device
+ * @maxchild: number of ports if hub
+ * @quirks: quirks of the whole device
+ * @urbnum: number of URBs submitted for the whole device
+ * @active_duration: total time device is not suspended
+ * @connect_time: time device was first connected
+ * @do_remote_wakeup:  remote wakeup should be enabled
+ * @reset_resume: needs reset instead of resume
+ * @port_is_suspended: the upstream port is suspended (L2 or U3)
+ * @wusb_dev: if this is a Wireless USB device, link to the WUSB
+ *      specific data for the device.
+ * @slot_id: Slot ID assigned by xHCI
+ * @removable: Device can be physically removed from this port
+ * @l1_params: best effor service latency for USB2 L1 LPM state, and L1 timeout.
+ * @u1_params: exit latencies for USB3 U1 LPM state, and hub-initiated timeout.
+ * @u2_params: exit latencies for USB3 U2 LPM state, and hub-initiated timeout.
+ * @lpm_disable_count: Ref count used by usb_disable_lpm() and usb_enable_lpm()
+ *      to keep track of the number of functions that require USB 3.0 Link Power
+ *      Management to be disabled for this usb_device.  This count should only
+ *      be manipulated by those functions, with the bandwidth_mutex is held.
+ * @hub_delay: cached value consisting of:
+ *      parent->hub_delay + wHubDelay + tTPTransmissionDelay (40ns)
+ *      Will be used as wValue for SetIsochDelay requests.
+ * @use_generic_driver: ask driver core to reprobe using the generic driver.
+ *
+ * Notes:
+ * Usbcore drivers should not set usbdev->state directly.  Instead use
+ * usb_set_device_state().
+ */
+struct usb_device {
+        int             devnum;
+        char            devpath[16];
+        u32             route;
+        enum usb_device_state   state;
+        enum usb_device_speed   speed;
+        unsigned int            rx_lanes;
+        unsigned int            tx_lanes;
+
+        struct usb_tt   *tt;
+        int             ttport;
+
+        unsigned int toggle[2];
+
+        struct usb_device *parent;
+        struct usb_bus *bus;
+        struct usb_host_endpoint ep0;
+
+        struct device dev;
+
+        struct usb_device_descriptor descriptor;
+        struct usb_host_bos *bos;
+        struct usb_host_config *config;
+
+        struct usb_host_config *actconfig;
+        struct usb_host_endpoint *ep_in[16];
+        struct usb_host_endpoint *ep_out[16];
+
+        char **rawdescriptors;
+
+        unsigned short bus_mA;
+        u8 portnum;
+        u8 level;
+        u8 devaddr;
+
+        unsigned can_submit:1;
+        unsigned persist_enabled:1;
+        unsigned have_langid:1;
+        unsigned authorized:1;
+        unsigned authenticated:1;
+        unsigned wusb:1;
+        unsigned lpm_capable:1;
+        unsigned usb2_hw_lpm_capable:1;
+        unsigned usb2_hw_lpm_besl_capable:1;
+        unsigned usb2_hw_lpm_enabled:1;
+        unsigned usb2_hw_lpm_allowed:1;
+        unsigned usb3_lpm_u1_enabled:1;
+        unsigned usb3_lpm_u2_enabled:1;
+        int string_langid;
+
+        /* static strings from the device */
+        char *product;
+        char *manufacturer;
+        char *serial;
+
+        struct list_head filelist;
+
+        int maxchild;
+
+        u32 quirks;
+        atomic_t urbnum;
+
+        unsigned long active_duration;
+
+#ifdef CONFIG_PM
+        unsigned long connect_time;
+
+        unsigned do_remote_wakeup:1;
+        unsigned reset_resume:1;
+        unsigned port_is_suspended:1;
+#endif
+        struct wusb_dev *wusb_dev;
+        int slot_id;
+        enum usb_device_removable removable;
+        struct usb2_lpm_parameters l1_params;
+        struct usb3_lpm_parameters u1_params;
+        struct usb3_lpm_parameters u2_params;
+        unsigned lpm_disable_count;
+
+        u16 hub_delay;
+        unsigned use_generic_driver:1;
+};
+#define to_usb_device(d) container_of(d, struct usb_device, dev)
+
+
+
+
+/**
+ * struct usb_interface - what usb device drivers talk to
+ * @altsetting: array of interface structures, one for each alternate
+ *      setting that may be selected.  Each one includes a set of
+ *      endpoint configurations.  They will be in no particular order.
+ * @cur_altsetting: the current altsetting.
+ * @num_altsetting: number of altsettings defined.
+ * @intf_assoc: interface association descriptor
+ * @minor: the minor number assigned to this interface, if this
+ *      interface is bound to a driver that uses the USB major number.
+ *      If this interface does not use the USB major, this field should
+ *      be unused.  The driver should set this value in the probe()
+ *      function of the driver, after it has been assigned a minor
+ *      number from the USB core by calling usb_register_dev().
+ * @condition: binding state of the interface: not bound, binding
+ *      (in probe()), bound to a driver, or unbinding (in disconnect())
+ * @sysfs_files_created: sysfs attributes exist
+ * @ep_devs_created: endpoint child pseudo-devices exist
+ * @unregistering: flag set when the interface is being unregistered
+ * @needs_remote_wakeup: flag set when the driver requires remote-wakeup
+ *      capability during autosuspend.
+ * @needs_altsetting0: flag set when a set-interface request for altsetting 0
+ *      has been deferred.
+ * @needs_binding: flag set when the driver should be re-probed or unbound
+ *      following a reset or suspend operation it doesn't support.
+ * @authorized: This allows to (de)authorize individual interfaces instead
+ *      a whole device in contrast to the device authorization.
+ * @dev: driver model's view of this device
+ * @usb_dev: if an interface is bound to the USB major, this will point
+ *      to the sysfs representation for that device.
+ * @reset_ws: Used for scheduling resets from atomic context.
+ * @resetting_device: USB core reset the device, so use alt setting 0 as
+ *      current; needs bandwidth alloc after reset.
+ *
+ * USB device drivers attach to interfaces on a physical device.  Each
+ * interface encapsulates a single high level function, such as feeding
+ * an audio stream to a speaker or reporting a change in a volume control.
+ * Many USB devices only have one interface.  The protocol used to talk to
+ * an interface's endpoints can be defined in a usb "class" specification,
+ * or by a product's vendor.  The (default) control endpoint is part of
+ * every interface, but is never listed among the interface's descriptors.
+ *
+ * The driver that is bound to the interface can use standard driver model
+ * calls such as dev_get_drvdata() on the dev member of this structure.
+ *
+ * Each interface may have alternate settings.  The initial configuration
+ * of a device sets altsetting 0, but the device driver can change
+ * that setting using usb_set_interface().  Alternate settings are often
+ * used to control the use of periodic endpoints, such as by having
+ * different endpoints use different amounts of reserved USB bandwidth.
+ * All standards-conformant USB devices that use isochronous endpoints
+ * will use them in non-default settings.
+ *              
+ * The USB specification says that alternate setting numbers must run from
+ * 0 to one less than the total number of alternate settings.  But some
+ * devices manage to mess this up, and the structures aren't necessarily
+ * stored in numerical order anyhow.  Use usb_altnum_to_altsetting() to
+ * look up an alternate setting in the altsetting array based on its number.
+ */
+struct usb_interface {
+        /* array of alternate settings for this interface,
+         * stored in no particular order */
+        struct usb_host_interface *altsetting;
+
+        struct usb_host_interface *cur_altsetting;      /* the currently
+                                         * active alternate setting */
+        unsigned num_altsetting;        /* number of alternate settings */
+
+        /* If there is an interface association descriptor then it will list
+         * the associated interfaces */
+        struct usb_interface_assoc_descriptor *intf_assoc;
+
+        int minor;                      /* minor number this interface is
+                                         * bound to */
+        enum usb_interface_condition condition;         /* state of binding */
+        unsigned sysfs_files_created:1; /* the sysfs attributes exist */
+        unsigned ep_devs_created:1;     /* endpoint "devices" exist */
+        unsigned unregistering:1;       /* unregistration is in progress */
+        unsigned needs_remote_wakeup:1; /* driver requires remote wakeup */
+        unsigned needs_altsetting0:1;   /* switch to altsetting 0 is pending */
+        unsigned needs_binding:1;       /* needs delayed unbind/rebind */
+        unsigned resetting_device:1;    /* true: bandwidth alloc after reset */
+        unsigned authorized:1;          /* used for interface authorization */
+
+        struct device dev;              /* interface specific device info */
+        struct device *usb_dev;
+        struct work_struct reset_ws;    /* for resets in atomic context */
+};
+#define to_usb_interface(d) container_of(d, struct usb_interface, dev)
+
+```
+
+###Generating usb configuration
+
+
+static int __init usb_init(void) {
+        ...
+        retval = usb_register_device_driver(&usb_generic_driver, THIS_MODULE);
+        if (!retval)
+                goto out;
+	...
+}
+
+struct usb_device_driver usb_generic_driver = {
+        .name = "usb",
+        .match = usb_generic_driver_match,
+        .probe = usb_generic_driver_probe,
+        .disconnect = usb_generic_driver_disconnect,
+#ifdef  CONFIG_PM
+        .suspend = usb_generic_driver_suspend,
+        .resume = usb_generic_driver_resume,
+#endif
+        .supports_autosuspend = 1,
+};
+
+
+/**
+ * usb_register_device_driver - register a USB device (not interface) driver
+ * @new_udriver: USB operations for the device driver
+ * @owner: module owner of this driver.
+ *
+ * Registers a USB device driver with the USB core.  The list of
+ * unattached devices will be rescanned whenever a new driver is
+ * added, allowing the new driver to attach to any recognized devices.
+ *
+ * Return: A negative error code on failure and 0 on success.
+ */
+int usb_register_device_driver(struct usb_device_driver *new_udriver,
+                struct module *owner)
+{
+        int retval = 0;
+
+        if (usb_disabled())
+                return -ENODEV;
+
+        new_udriver->drvwrap.for_devices = 1;
+        new_udriver->drvwrap.driver.name = new_udriver->name;
+        new_udriver->drvwrap.driver.bus = &usb_bus_type;
+        new_udriver->drvwrap.driver.probe = usb_probe_device;
+        new_udriver->drvwrap.driver.remove = usb_unbind_device;
+        new_udriver->drvwrap.driver.owner = owner;
+        new_udriver->drvwrap.driver.dev_groups = new_udriver->dev_groups;
+
+        retval = driver_register(&new_udriver->drvwrap.driver);
+
+        if (!retval) {
+                pr_info("%s: registered new device driver %s\n",
+                        usbcore_name, new_udriver->name);
+                /*
+                 * Check whether any device could be better served with
+                 * this new driver
+                 */
+                bus_for_each_dev(&usb_bus_type, NULL, new_udriver,
+                                 __usb_bus_reprobe_drivers);
+        } else {
+                pr_err("%s: error %d registering device driver %s\n",
+                        usbcore_name, retval, new_udriver->name);
+        }
+
+        return retval;
+}
+EXPORT_SYMBOL_GPL(usb_register_device_driver);
+
+/* called from driver core with dev locked */
+static int usb_probe_device(struct device *dev)
+{
+        struct usb_device_driver *udriver = to_usb_device_driver(dev->driver);
+        struct usb_device *udev = to_usb_device(dev);
+        int error = 0;
+
+        dev_dbg(dev, "%s\n", __func__);
+
+        /* TODO: Add real matching code */
+
+        /* The device should always appear to be in use
+         * unless the driver supports autosuspend.
+         */
+        if (!udriver->supports_autosuspend)
+                error = usb_autoresume_device(udev);
+        if (error)
+                return error;
+
+        if (udriver->generic_subclass)
+                error = usb_generic_driver_probe(udev);
+        if (error)
+                return error;
+
+        /* Probe the USB device with the driver in hand, but only
+         * defer to a generic driver in case the current USB
+         * device driver has an id_table or a match function; i.e.,
+         * when the device driver was explicitly matched against
+         * a device.
+         *
+         * If the device driver does not have either of these,
+         * then we assume that it can bind to any device and is
+         * not truly a more specialized/non-generic driver, so a
+         * return value of -ENODEV should not force the device
+         * to be handled by the generic USB driver, as there
+         * can still be another, more specialized, device driver.
+         *
+         * This accommodates the usbip driver.
+         *
+         * TODO: What if, in the future, there are multiple
+         * specialized USB device drivers for a particular device?
+         * In such cases, there is a need to try all matching
+         * specialised device drivers prior to setting the
+         * use_generic_driver bit.
+         */
+        error = udriver->probe(udev);
+        if (error == -ENODEV && udriver != &usb_generic_driver &&
+            (udriver->id_table || udriver->match)) {
+                udev->use_generic_driver = 1;
+                return -EPROBE_DEFER;
+        }
+        return error;
+}
+
+
+
+
+int usb_generic_driver_probe(struct usb_device *udev)
+{
+        int err, c;
+
+        /* Choose and set the configuration.  This registers the interfaces
+         * with the driver core and lets interface drivers bind to them.
+         */
+        if (udev->authorized == 0)
+                dev_err(&udev->dev, "Device is not authorized for usage\n");
+        else {
+                c = usb_choose_configuration(udev);
+                if (c >= 0) {
+                        err = usb_set_configuration(udev, c);
+                        if (err && err != -ENODEV) {
+                                dev_err(&udev->dev, "can't set config #%d, error %d\n",
+                                        c, err);
+                                /* This need not be fatal.  The user can try to
+                                 * set other configurations. */
+                        }
+                }
+        }
+        /* USB device state == configured ... usable */
+        usb_notify_add_device(udev);
+
+        return 0;
+}
+
+/*
+ * usb_set_configuration - Makes a particular device setting be current
+ * @dev: the device whose configuration is being updated
+ * @configuration: the configuration being chosen.
+ *
+ * Context: task context, might sleep. Caller holds device lock.
+ *
+ * This is used to enable non-default device modes.  Not all devices
+ * use this kind of configurability; many devices only have one
+ * configuration.
+ *
+ * @configuration is the value of the configuration to be installed.
+ * According to the USB spec (e.g. section 9.1.1.5), configuration values
+ * must be non-zero; a value of zero indicates that the device in
+ * unconfigured.  However some devices erroneously use 0 as one of their
+ * configuration values.  To help manage such devices, this routine will
+ * accept @configuration = -1 as indicating the device should be put in
+ * an unconfigured state.
+ *
+ * USB device configurations may affect Linux interoperability,
+ * power consumption and the functionality available.  For example,
+ * the default configuration is limited to using 100mA of bus power,
+ * so that when certain device functionality requires more power,
+ * and the device is bus powered, that functionality should be in some
+ * non-default device configuration.  Other device modes may also be
+ * reflected as configuration options, such as whether two ISDN
+ * channels are available independently; and choosing between open
+ * standard device protocols (like CDC) or proprietary ones.
+ *
+ * Note that a non-authorized device (dev->authorized == 0) will only
+ * be put in unconfigured mode.
+ *
+ * Note that USB has an additional level of device configurability,
+ * associated with interfaces.  That configurability is accessed using
+ * usb_set_interface().
+ *
+ * This call is synchronous. The calling context must be able to sleep,
+ * must own the device lock, and must not hold the driver model's USB
+ * bus mutex; usb interface driver probe() methods cannot use this routine.
+ *
+ * Returns zero on success, or else the status code returned by the
+ * underlying call that failed.  On successful completion, each interface
+ * in the original device configuration has been destroyed, and each one
+ * in the new configuration has been probed by all relevant usb device
+ * drivers currently known to the kernel.
+ */
+int usb_set_configuration(struct usb_device *dev, int configuration)
+{
+        int i, ret;
+        struct usb_host_config *cp = NULL;
+        struct usb_interface **new_interfaces = NULL;
+        struct usb_hcd *hcd = bus_to_hcd(dev->bus);
+        int n, nintf;
+
+        if (dev->authorized == 0 || configuration == -1)
+                configuration = 0;
+        else {
+                for (i = 0; i < dev->descriptor.bNumConfigurations; i++) {
+                        if (dev->config[i].desc.bConfigurationValue ==
+                                        configuration) {
+                                cp = &dev->config[i];
+                                break;
+                        }
+                }
+        }
+        if ((!cp && configuration != 0))
+                return -EINVAL;
+
+        /* The USB spec says configuration 0 means unconfigured.
+         * But if a device includes a configuration numbered 0,
+         * we will accept it as a correctly configured state.
+         * Use -1 if you really want to unconfigure the device.
+         */
+        if (cp && configuration == 0)
+                dev_warn(&dev->dev, "config 0 descriptor??\n");
+
+        /* Allocate memory for new interfaces before doing anything else,
+         * so that if we run out then nothing will have changed. */
+        n = nintf = 0;
+        if (cp) {
+                nintf = cp->desc.bNumInterfaces;
+                new_interfaces = kmalloc_array(nintf, sizeof(*new_interfaces),
+                                               GFP_NOIO);
+                if (!new_interfaces)
+                        return -ENOMEM;
+
+                for (; n < nintf; ++n) {
+                        new_interfaces[n] = kzalloc(
+                                        sizeof(struct usb_interface),
+                                        GFP_NOIO);
+                        if (!new_interfaces[n]) {
+                                ret = -ENOMEM;
+free_interfaces:
+                                while (--n >= 0)
+                                        kfree(new_interfaces[n]);
+                                kfree(new_interfaces);
+                                return ret;
+                        }
+                }
+
+                i = dev->bus_mA - usb_get_max_power(dev, cp);
+                if (i < 0)
+                        dev_warn(&dev->dev, "new config #%d exceeds power "
+                                        "limit by %dmA\n",
+                                        configuration, -i);
+        }
+
+        /* Wake up the device so we can send it the Set-Config request */
+        ret = usb_autoresume_device(dev);
+        if (ret)
+                goto free_interfaces;
+
+        /* if it's already configured, clear out old state first.
+         * getting rid of old interfaces means unbinding their drivers.
+         */
+        if (dev->state != USB_STATE_ADDRESS)
+                usb_disable_device(dev, 1);     /* Skip ep0 */
+
+        /* Get rid of pending async Set-Config requests for this device */
+        cancel_async_set_config(dev);
+
+        /* Make sure we have bandwidth (and available HCD resources) for this
+         * configuration.  Remove endpoints from the schedule if we're dropping
+         * this configuration to set configuration 0.  After this point, the
+         * host controller will not allow submissions to dropped endpoints.  If
+         * this call fails, the device state is unchanged.
+         */
+        mutex_lock(hcd->bandwidth_mutex);
+        /* Disable LPM, and re-enable it once the new configuration is
+         * installed, so that the xHCI driver can recalculate the U1/U2
+         * timeouts.
+         */
+        if (dev->actconfig && usb_disable_lpm(dev)) {
+                dev_err(&dev->dev, "%s Failed to disable LPM\n", __func__);
+                mutex_unlock(hcd->bandwidth_mutex);
+                ret = -ENOMEM;
+                goto free_interfaces;
+        }
+        ret = usb_hcd_alloc_bandwidth(dev, cp, NULL, NULL);
+        if (ret < 0) {
+                if (dev->actconfig)
+                        usb_enable_lpm(dev);
+                mutex_unlock(hcd->bandwidth_mutex);
+                usb_autosuspend_device(dev);
+                goto free_interfaces;
+        }
+
+        /*
+         * Initialize the new interface structures and the
+         * hc/hcd/usbcore interface/endpoint state.
+         */
+        for (i = 0; i < nintf; ++i) {
+                struct usb_interface_cache *intfc;
+                struct usb_interface *intf;
+                struct usb_host_interface *alt;
+                u8 ifnum;
+
+                cp->interface[i] = intf = new_interfaces[i];
+                intfc = cp->intf_cache[i];
+                intf->altsetting = intfc->altsetting;
+                intf->num_altsetting = intfc->num_altsetting;
+                intf->authorized = !!HCD_INTF_AUTHORIZED(hcd);
+                kref_get(&intfc->ref);
+
+                alt = usb_altnum_to_altsetting(intf, 0);
+
+                /* No altsetting 0?  We'll assume the first altsetting.
+                 * We could use a GetInterface call, but if a device is
+                 * so non-compliant that it doesn't have altsetting 0
+                 * then I wouldn't trust its reply anyway.
+                 */
+                if (!alt)
+                        alt = &intf->altsetting[0];
+
+                ifnum = alt->desc.bInterfaceNumber;
+                intf->intf_assoc = find_iad(dev, cp, ifnum);
+                intf->cur_altsetting = alt;
+                usb_enable_interface(dev, intf, true);
+                intf->dev.parent = &dev->dev;
+                if (usb_of_has_combined_node(dev)) {
+                        device_set_of_node_from_dev(&intf->dev, &dev->dev);
+                } else {
+                        intf->dev.of_node = usb_of_get_interface_node(dev,
+                                        configuration, ifnum);
+                }
+                ACPI_COMPANION_SET(&intf->dev, ACPI_COMPANION(&dev->dev));
+                intf->dev.driver = NULL;
+                intf->dev.bus = &usb_bus_type;
+                intf->dev.type = &usb_if_device_type;
+                intf->dev.groups = usb_interface_groups;
+                INIT_WORK(&intf->reset_ws, __usb_queue_reset_device);
+                intf->minor = -1;
+                device_initialize(&intf->dev);
+                pm_runtime_no_callbacks(&intf->dev);
+                dev_set_name(&intf->dev, "%d-%s:%d.%d", dev->bus->busnum,
+                                dev->devpath, configuration, ifnum);
+                usb_get_dev(dev);
+        }
+        kfree(new_interfaces);
+
+        ret = usb_control_msg_send(dev, 0, USB_REQ_SET_CONFIGURATION, 0,
+                                   configuration, 0, NULL, 0,
+                                   USB_CTRL_SET_TIMEOUT, GFP_NOIO);
+        if (ret && cp) {
+                /*
+                 * All the old state is gone, so what else can we do?
+                 * The device is probably useless now anyway.
+                 */
+                usb_hcd_alloc_bandwidth(dev, NULL, NULL, NULL);
+                for (i = 0; i < nintf; ++i) {
+                        usb_disable_interface(dev, cp->interface[i], true);
+                        put_device(&cp->interface[i]->dev);
+                        cp->interface[i] = NULL;
+                }
+                cp = NULL;
+        }
+
+        dev->actconfig = cp;
+        mutex_unlock(hcd->bandwidth_mutex);
+
+        if (!cp) {
+                usb_set_device_state(dev, USB_STATE_ADDRESS);
+
+                /* Leave LPM disabled while the device is unconfigured. */
+                usb_autosuspend_device(dev);
+                return ret;
+        }
+        usb_set_device_state(dev, USB_STATE_CONFIGURED);
+
+        if (cp->string == NULL &&
+                        !(dev->quirks & USB_QUIRK_CONFIG_INTF_STRINGS))
+                cp->string = usb_cache_string(dev, cp->desc.iConfiguration);
+
+        /* Now that the interfaces are installed, re-enable LPM. */
+        usb_unlocked_enable_lpm(dev);
+        /* Enable LTM if it was turned off by usb_disable_device. */
+        usb_enable_ltm(dev);
+
+        /* Now that all the interfaces are set up, register them
+         * to trigger binding of drivers to interfaces.  probe()
+         * routines may install different altsettings and may
+         * claim() any interfaces not yet bound.  Many class drivers
+         * need that: CDC, audio, video, etc.
+         */
+        for (i = 0; i < nintf; ++i) {
+                struct usb_interface *intf = cp->interface[i];
+
+                if (intf->dev.of_node &&
+                    !of_device_is_available(intf->dev.of_node)) {
+                        dev_info(&dev->dev, "skipping disabled interface %d\n",
+                                 intf->cur_altsetting->desc.bInterfaceNumber);
+                        continue;
+                }
+
+                dev_dbg(&dev->dev,
+                        "adding %s (config #%d, interface %d)\n",
+                        dev_name(&intf->dev), configuration,
+                        intf->cur_altsetting->desc.bInterfaceNumber);
+                device_enable_async_suspend(&intf->dev);
+                ret = device_add(&intf->dev);
+                if (ret != 0) {
+                        dev_err(&dev->dev, "device_add(%s) --> %d\n",
+                                dev_name(&intf->dev), ret);
+                        continue;
+                }
+                create_intf_ep_devs(intf);
+        }
+
+        usb_autosuspend_device(dev);
+        return 0;
+}
+EXPORT_SYMBOL_GPL(usb_set_configuration);
+
+
+
+
+```
+

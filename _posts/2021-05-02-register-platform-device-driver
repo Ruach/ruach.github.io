@@ -3,362 +3,93 @@ layout: post
 titile: "Linux usb core driver interface
 categories: linux, embedded-linux
 ---
-We will cover how the linux usb driver is registered 
-in this posting 
+We will cover how the platform device drivers 
+can be registered and managed by the platform device bus subsystem.
 
 ```c
-/**                            
- * module_usb_driver() - Helper macro for registering a USB driver
- * @__usb_driver: usb_driver struct
- *
- * Helper macro for USB drivers which do not do anything special in module
- * init/exit. This eliminates a lot of boilerplate. Each module may only
- * use this macro once, and calling it replaces module_init() and module_exit()
- */
-#define module_usb_driver(__usb_driver) \
-        module_driver(__usb_driver, usb_register, \
-                       usb_deregister)
-
-/**
- * module_driver() - Helper macro for drivers that don't do anything
- * special in module init/exit. This eliminates a lot of boilerplate.
- * Each module may only use this macro once, and calling it replaces
- * module_init() and module_exit().
- *      
- * @__driver: driver name
- * @__register: register function for this driver type
- * @__unregister: unregister function for this driver type
- * @...: Additional arguments to be passed to __register and __unregister.
- *
- * Use this macro to construct bus specific macros for registering
- * drivers, and do not use it on its own.
- */
-#define module_driver(__driver, __register, __unregister, ...) \
-static int __init __driver##_init(void) \
-{ \
-        return __register(&(__driver) , ##__VA_ARGS__); \
-} \
-module_init(__driver##_init); \
-static void __exit __driver##_exit(void) \
-{ \                            
-        __unregister(&(__driver) , ##__VA_ARGS__); \
-} \
-module_exit(__driver##_exit);
-```
-
-Above macro automatically generates initialization and de-initialization function for
-your usb device driver. 
-It just invokes usb_register and usb_deregister function 
-on module init and exit respectively. 
-Note that module_usb_driver requires usb_device_driver structure as its operand,
-so the usb kernel module should provide the corresponding structure 
-to register the driver to the usb subsystem.
-
-```c
-/**
- * struct usb_driver - identifies USB interface driver to usbcore
- * @name: The driver name should be unique among USB drivers,
- *      and should normally be the same as the module name.
- * @probe: Called to see if the driver is willing to manage a particular
- *      interface on a device.  If it is, probe returns zero and uses
- *      usb_set_intfdata() to associate driver-specific data with the
- *      interface.  It may also use usb_set_interface() to specify the
- *      appropriate altsetting.  If unwilling to manage the interface,
- *      return -ENODEV, if genuine IO errors occurred, an appropriate
- *      negative errno value.
- * @disconnect: Called when the interface is no longer accessible, usually
- *      because its device has been (or is being) disconnected or the
- *      driver module is being unloaded.
- * @unlocked_ioctl: Used for drivers that want to talk to userspace through
- *      the "usbfs" filesystem.  This lets devices provide ways to
- *      expose information to user space regardless of where they
- *      do (or don't) show up otherwise in the filesystem.
- * @suspend: Called when the device is going to be suspended by the
- *      system either from system sleep or runtime suspend context. The
- *      return value will be ignored in system sleep context, so do NOT
- *      try to continue using the device if suspend fails in this case.
- *      Instead, let the resume or reset-resume routine recover from
- *      the failure.
- * @resume: Called when the device is being resumed by the system.
- * @reset_resume: Called when the suspended device has been reset instead
- *      of being resumed.
- * @pre_reset: Called by usb_reset_device() when the device is about to be
- *      reset.  This routine must not return until the driver has no active
- *      URBs for the device, and no more URBs may be submitted until the
- *      post_reset method is called.
- * @post_reset: Called by usb_reset_device() after the device
- *      has been reset
- * @id_table: USB drivers use ID table to support hotplugging.
- *      Export this with MODULE_DEVICE_TABLE(usb,...).  This must be set
- *      or your driver's probe function will never get called.
- * @dev_groups: Attributes attached to the device that will be created once it
- *      is bound to the driver.
- * @dynids: used internally to hold the list of dynamically added device
- *      ids for this driver.
- * @drvwrap: Driver-model core structure wrapper.
- * @no_dynamic_id: if set to 1, the USB core will not allow dynamic ids to be
- *      added to this driver by preventing the sysfs file from being created.
- * @supports_autosuspend: if set to 0, the USB core will not allow autosuspend
- *      for interfaces bound to this driver.
- * @soft_unbind: if set to 1, the USB core will not kill URBs and disable
- *      endpoints before calling the driver's disconnect method.
- * @disable_hub_initiated_lpm: if set to 1, the USB core will not allow hubs
- *      to initiate lower power link state transitions when an idle timeout
- *      occurs.  Device-initiated USB 3.0 link PM will still be allowed.
- *
- * USB interface drivers must provide a name, probe() and disconnect()
- * methods, and an id_table.  Other driver fields are optional.
- *
- * The id_table is used in hotplugging.  It holds a set of descriptors,
- * and specialized data may be associated with each entry.  That table
- * is used by both user and kernel mode hotplugging support
- *
- * The probe() and disconnect() methods are called in a context where
- * they can sleep, but they should avoid abusing the privilege.  Most
- * work to connect to a device should be done when the device is opened,
- * and undone at the last close.  The disconnect code needs to address
- * concurrency issues with respect to open() and close() methods, as
- * well as forcing all pending I/O requests to complete (by unlinking
- * them as necessary, and blocking until the unlinks complete).
- */
-struct usb_driver {
-        const char *name;
-
-        int (*probe) (struct usb_interface *intf,
-                      const struct usb_device_id *id);
-
-        void (*disconnect) (struct usb_interface *intf);
-
-        int (*unlocked_ioctl) (struct usb_interface *intf, unsigned int code,
-                        void *buf);
-
-        int (*suspend) (struct usb_interface *intf, pm_message_t message);
-        int (*resume) (struct usb_interface *intf);
-        int (*reset_resume)(struct usb_interface *intf);
-
-        int (*pre_reset)(struct usb_interface *intf);
-        int (*post_reset)(struct usb_interface *intf);
-
-        const struct usb_device_id *id_table;
-        const struct attribute_group **dev_groups;
-
-        struct usb_dynids dynids;
-        struct usbdrv_wrap drvwrap;
-        unsigned int no_dynamic_id:1;
-        unsigned int supports_autosuspend:1;
-        unsigned int disable_hub_initiated_lpm:1;
-        unsigned int soft_unbind:1;
-};
-```
-Although we didn't go thorough a particular device driver implementation
-that populates the usb_driver structure,
-USB interface drivers must provide a name, probe() and disconnect()
-methods, and an id_table to be registered. 
-id_table specified all usb devices 
-that can be supported by this usb_driver.
-Note that id_table will be used later in the matching function 
-of the usb bus subsystem. 
-When the matching is doen,
-the probe function provided in the usb_driver will be invoked.
-
-
-###usb_register_driver register the driver to the usb bus
-Regardless of the usb driver invokes usb_register function on it init or 
-utilize the module_usb_driver macro,
-it ends up invoking the usb_register function
-with the usb_drvier structure provided by the driver.
-
-```c
-/* use a define to avoid include chaining to get THIS_MODULE & friends */
-#define usb_register(driver) \
-        usb_register_driver(driver, THIS_MODULE, KBUILD_MODNAME)
-
-/**
- * usb_register_driver - register a USB interface driver
- * @new_driver: USB operations for the interface driver
- * @owner: module owner of this driver.
- * @mod_name: module name string
- *
- * Registers a USB interface driver with the USB core.  The list of
- * unattached interfaces will be rescanned whenever a new driver is
- * added, allowing the new driver to attach to any recognized interfaces.
- *
- * Return: A negative error code on failure and 0 on success.
- *
- * NOTE: if you want your driver to use the USB major number, you must call
- * usb_register_dev() to enable that functionality.  This function no longer
- * takes care of that.
- */
-int usb_register_driver(struct usb_driver *new_driver, struct module *owner,
-                        const char *mod_name)
-{       
-        int retval = 0;
-        
-        if (usb_disabled())
-                return -ENODEV;
-        
-        new_driver->drvwrap.for_devices = 0;
-        new_driver->drvwrap.driver.name = new_driver->name;
-        new_driver->drvwrap.driver.bus = &usb_bus_type;
-        new_driver->drvwrap.driver.probe = usb_probe_interface;
-        new_driver->drvwrap.driver.remove = usb_unbind_interface;
-        new_driver->drvwrap.driver.owner = owner;
-        new_driver->drvwrap.driver.mod_name = mod_name;
-        new_driver->drvwrap.driver.dev_groups = new_driver->dev_groups;
-        spin_lock_init(&new_driver->dynids.lock);
-        INIT_LIST_HEAD(&new_driver->dynids.list);
-        
-        retval = driver_register(&new_driver->drvwrap.driver);
-        if (retval)
-                goto out;
-        
-        retval = usb_create_newid_files(new_driver);
-        if (retval)
-                goto out_newid;
-        
-        pr_info("%s: registered new interface driver %s\n",
-                        usbcore_name, new_driver->name);
-
-out:    
-        return retval;
-
-out_newid:
-        driver_unregister(&new_driver->drvwrap.driver);
-        
-        pr_err("%s: error %d registering interface driver %s\n",
-                usbcore_name, retval, new_driver->name);
-        goto out;
-}
-EXPORT_SYMBOL_GPL(usb_register_driver);
-```
-
-Instead of exposing the usb_drvier structure to the bus,
-usb core generates general device_driver structure
-that can be attached to the bus through general kernel api,
-driver_register function.
-For that wrapper driver population,
-usb core utilize the member field drvwrap of the usb_driver structure.
-This structure contains device_driver structure which is a general structure 
-for presenting device driver. 
-
-```c
-/**
- * struct usbdrv_wrap - wrapper for driver-model structure
- * @driver: The driver-model core driver structure.
- * @for_devices: Non-zero for device drivers, 0 for interface drivers.
- */
-struct usbdrv_wrap {
+struct platform_driver {
+        int (*probe)(struct platform_device *);
+        int (*remove)(struct platform_device *);
+        void (*shutdown)(struct platform_device *);
+        int (*suspend)(struct platform_device *, pm_message_t state);
+        int (*resume)(struct platform_device *);
         struct device_driver driver;
-        int for_devices;
-};
+        const struct platform_device_id *id_table;
+        bool prevent_deferred_probe;
+}
 
-/**
- * struct device_driver - The basic device driver structure
- * @name:       Name of the device driver.
- * @bus:        The bus which the device of this driver belongs to.
- * @owner:      The module owner.
- * @mod_name:   Used for built-in modules.
- * @suppress_bind_attrs: Disables bind/unbind via sysfs.
- * @probe_type: Type of the probe (synchronous or asynchronous) to use.
- * @of_match_table: The open firmware table.
- * @acpi_match_table: The ACPI match table.
- * @probe:      Called to query the existence of a specific device,
- *              whether this driver can work with it, and bind the driver
- *              to a specific device.
- * @sync_state: Called to sync device state to software state after all the
- *              state tracking consumers linked to this device (present at
- *              the time of late_initcall) have successfully bound to a
- *              driver. If the device has no consumers, this function will
- *              be called at late_initcall_sync level. If the device has
- *              consumers that are never bound to a driver, this function
- *              will never get called until they do.
- * @remove:     Called when the device is removed from the system to
- *              unbind a device from this driver.
- * @shutdown:   Called at shut-down time to quiesce the device.
- * @suspend:    Called to put the device to sleep mode. Usually to a
- *              low power state.
- * @resume:     Called to bring a device from sleep mode.
- * @groups:     Default attributes that get created by the driver core
- *              automatically.
- * @dev_groups: Additional attributes attached to device instance once the
- *              it is bound to the driver.
- * @pm:         Power management operations of the device which matched
- *              this driver.
- * @coredump:   Called when sysfs entry is written to. The device driver
- *              is expected to call the dev_coredump API resulting in a
- *              uevent.
- * @p:          Driver core's private data, no one other than the driver
- *              core can touch this.
- *
- * The device driver-model tracks all of the drivers known to the system.
- * The main reason for this tracking is to enable the driver core to match
- * up drivers with new devices. Once drivers are known objects within the
- * system, however, a number of other things become possible. Device drivers
- * can export information and configuration variables that are independent
- * of any specific device.
+/* module_platform_driver() - Helper macro for drivers that don't do
+ * anything special in module init/exit.  This eliminates a lot of
+ * boilerplate.  Each module may only use this macro once, and
+ * calling it replaces module_init() and module_exit()
  */
-struct device_driver {
-        const char              *name;
-        struct bus_type         *bus;
-
-        struct module           *owner;
-        const char              *mod_name;      /* used for built-in modules */
-
-        bool suppress_bind_attrs;       /* disables bind/unbind via sysfs */
-        enum probe_type probe_type;
-
-        const struct of_device_id       *of_match_table;
-        const struct acpi_device_id     *acpi_match_table;
-
-        int (*probe) (struct device *dev);
-        void (*sync_state)(struct device *dev);
-        int (*remove) (struct device *dev);
-        void (*shutdown) (struct device *dev);
-        int (*suspend) (struct device *dev, pm_message_t state);
-        int (*resume) (struct device *dev);
-        const struct attribute_group **groups;
-        const struct attribute_group **dev_groups;
-
-        const struct dev_pm_ops *pm;
-        void (*coredump) (struct device *dev);
-
-        struct driver_private *p;
-};
+#define module_platform_driver(__platform_driver) \
+        module_driver(__platform_driver, platform_driver_register, \
+                        platform_driver_unregister)
+/*
+ * use a macro to avoid include chaining to get THIS_MODULE
+ */
+#define platform_driver_register(drv) \
+        __platform_driver_register(drv, THIS_MODULE)
+extern int __platform_driver_register(struct platform_driver *,
+                                        struct module *);
+extern void platform_driver_unregister(struct platform_driver *);
 ```
-Note that some fields of the wrapper device driver are filled with 
-the usb core's functions and pre-defined data structures,
-and only handlful of original usb_driver structure's member fields are used 
-to initialize the wrapper driver structure. 
-Note that it makes use of generic probe function of the usb_core instead of 
-the probe function of usb_driver structure.
-We will revisit this probe function later 
-how the probe function of usb_driver is invoked at the end of the world
-with the help of core's probe function. 
+Every device driver who want to register their driver as platform device
+should utilize pre-defined macro or invoke proper platform driver registration APIs
+at their driver initialization code.
+%
+Most kernel device driver utilizes the macro 
+compared to have their own APIs to register the device driver
+because they don't require any other complicated operations 
+except registering the driver.
+Therefore, utilizing the macro will remove boilerplate code 
+required for registering your driver to platform driver
+and make code looks simple.
+
+Above macro automatically generates 
+initialization and de-initialization function for
+your platform device driver.
+It just invokes platform_driver_register and platform_driver_unregister function 
+on module init and exit respectively. 
+Both macro requires a platform_driver structure object, and
+populating proper platform_driver structure representing current device driver
+should be done by the device driver itself.
+We will take a look at platform device driver registeration process in detail.
 
 ```c
-struct bus_type usb_bus_type = {
-        .name =         "usb",
-        .match =        usb_device_match,
-        .uevent =       usb_uevent,
-        .need_parent_lock =     true,
-};
+/**
+ * __platform_driver_register - register a driver for platform-level devices
+ * @drv: platform driver structure
+ * @owner: owning module/driver
+ */
+int __platform_driver_register(struct platform_driver *drv,
+                                struct module *owner)
+{
+        drv->driver.owner = owner;
+        drv->driver.bus = &platform_bus_type;
+ 
+        return driver_register(&drv->driver);
+}     
 ```
+Even though the device driver should provide the platform_driver 
+and its associated call-back functions,
+it is not driver's duty to allocate a driver structure 
+used for actual device driver registration process.
+Therefore, 
+the above function and further apis for platform device
+will populate the driver structure.
+Also, because driver registration process utilize the common driver core apis 
+that can be used for every driver registration 
+regardless of the bus type,
+it should set the generic driver object and pass it to the registration api.
+First of all,
+the bus_type object for platform device, platform_bus_type 
+should be set as its bus
+because this driver is supposed to support platform devices,
+After the member field of the generic driver object has been filled out,
+it invoked driver_register api.
 
-Also, to register the generated generic device driver to the bus,
-usb core driver sets the bus information, usb_bus_type.
-The match field of the usb_bus_type is a call-back function
-used for matching the device and its device driver.
-When the new device claims that it sits on particular bus,
-the bus should invoke the call-back function
-to figure out whether any device driver says that they can support the found device. 
-When you look at the prototype of match function,
-it receives the device structure and device_driver structure.
-The first device structure is a structure for the device
-found by the bus, and the device_driver is a 
-driver we are trying to register.
-
-After the wrapper driver has been set, 
-we register the wrapper driver to a bus.
 
 ```c
 /**
@@ -407,24 +138,346 @@ int driver_register(struct device_driver *drv)
 }
 EXPORT_SYMBOL_GPL(driver_register);
 ```
-Note that driver_register is not usb specific api to register the driver.
+Note that driver_register is not bus-specific api to register the driver.
 It is a generic api to register device driver structure to the bus.
-First of all, it checks if the bus that is in charge of device driver management
-has proper core bus data structure, p. 
-You might think that 
-the first conditional statement check always return false
-because we never set the p member field of bus_type structure for usb,
-usb_bus_type.
-When we look at the usb_bus_type object, it has been statically allocated,
-and its p field has not been assigned at the initialization.
-To understand the p structure of the bus and its initialization,
-we will take a look at usb core driver initialization function later. 
+This function firstly checks 
+whether the bus_type has been properly initialized and registered 
+to the system by checking the presence of private sub-system of the bus. 
+To understand how the private subsystem has been allocated for a bus,
+you might want to check previous posting. 
 
-Afer it checks whether the current bus already has same named driver,
-and if there is nothing, then it delegates
+And then not to register same named device driver more than once,
+it checks if the bus attached to the device_driver structure 
+already has the same named device driver. 
+If there is nothing, then it delegates
 most of the driver registering process
 to bus_add_driver function.
 
+```c
+struct driver_private {
+        struct kobject kobj;
+        struct klist klist_devices;
+        struct klist_node knode_bus;
+        struct module_kobject *mkobj;
+        struct device_driver *driver;
+};
+
+/**
+ * bus_add_driver - Add a driver to the bus.
+ * @drv: driver.
+ */
+int bus_add_driver(struct device_driver *drv)
+{
+        struct bus_type *bus;
+        struct driver_private *priv;
+        int error = 0;
+
+        bus = bus_get(drv->bus);
+        if (!bus)
+                return -EINVAL;
+
+        pr_debug("bus: '%s': add driver %s\n", bus->name, drv->name);
+
+        priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+        if (!priv) {
+                error = -ENOMEM;
+                goto out_put_bus;
+        }
+        klist_init(&priv->klist_devices, NULL, NULL);
+        priv->driver = drv;
+        drv->p = priv;
+        priv->kobj.kset = bus->p->drivers_kset;
+        error = kobject_init_and_add(&priv->kobj, &driver_ktype, NULL,
+                                     "%s", drv->name);
+        if (error)
+                goto out_unregister;
+
+        klist_add_tail(&priv->knode_bus, &bus->p->klist_drivers);
+        if (drv->bus->p->drivers_autoprobe) {
+                error = driver_attach(drv);
+                if (error)
+                        goto out_unregister;
+        }
+        module_add_driver(drv->owner, drv);
+
+        error = driver_create_file(drv, &driver_attr_uevent);
+        if (error) {
+                printk(KERN_ERR "%s: uevent attr (%s) failed\n",
+                        __func__, drv->name);
+        }
+        error = driver_add_groups(drv, bus->drv_groups);
+        if (error) {
+                /* How the hell do we get out of this pickle? Give up */
+                printk(KERN_ERR "%s: driver_create_groups(%s) failed\n",
+                        __func__, drv->name);
+        }
+
+        if (!drv->suppress_bind_attrs) {
+                error = add_bind_files(drv);
+                if (error) {
+                        /* Ditto */
+                        printk(KERN_ERR "%s: add_bind_files(%s) failed\n",
+                                __func__, drv->name);
+                }
+        }
+
+        return 0;
+
+out_unregister:
+        kobject_put(&priv->kobj);
+        /* drv->p is freed in driver_release()  */
+        drv->p = NULL;
+out_put_bus:
+        bus_put(bus);
+        return error;
+}
+```
+The first thing done by the bus_add_driver function is 
+allocating driver's private data 
+used to memorize the driver specific information
+
+In detail,
+driver_private is used to manage those private information 
+related to current device driver.
+For example,
+it has klist_devices klist telling
+which devices has been bound to current driver and 
+knode_bus which is a knode object of the bus
+that we are trying to register our driver to
+It resets the klist_devices list first using klist_init function
+because there should be no devices attached to current device
+After the driver_private object has been initialized, 
+it should be added to the driver.
+
+And then we need to register our driver to the bus.
+To do that klist_add_tail function will
+add our driver_private's knodw to the 
+klist_driver list of the subsystem of the target bus.
+%
+When the bus has been initialized 
+if the bus has been configured to probe the device
+at every driver registration (drivers_autoprobe flag)
+it invokes the driver_attach function
+to check if there exists device 
+hat can be bound to the newly registered driver.
+
+```c
+/**
+ * driver_attach - try to bind driver to devices.
+ * @drv: driver.
+ *
+ * Walk the list of devices that the bus has on it and try to
+ * match the driver with each one.  If driver_probe_device()
+ * returns 0 and the @dev->driver is set, we've found a
+ * compatible pair.
+ */
+int driver_attach(struct device_driver *drv)
+{
+        return bus_for_each_dev(drv->bus, NULL, drv, __driver_attach);
+}
+EXPORT_SYMBOL_GPL(driver_attach);
+
+static int __driver_attach(struct device *dev, void *data)
+{
+        struct device_driver *drv = data;
+        int ret;
+
+        /*
+         * Lock device and try to bind to it. We drop the error
+         * here and always return 0, because we need to keep trying
+         * to bind to devices and some drivers will return an error
+         * simply if it didn't support the device.
+         *
+         * driver_probe_device() will spit a warning if there
+         * is an error.
+         */
+
+        ret = driver_match_device(drv, dev);
+        if (ret == 0) {
+                /* no match */
+                return 0;
+        } else if (ret == -EPROBE_DEFER) {
+                dev_dbg(dev, "Device match requests probe deferral\n");
+                driver_deferred_probe_add(dev);
+        } else if (ret < 0) {
+                dev_dbg(dev, "Bus failed to match device: %d\n", ret);
+                return ret;
+        } /* ret > 0 means positive match */
+
+        if (driver_allows_async_probing(drv)) {
+                /*
+                 * Instead of probing the device synchronously we will
+                 * probe it asynchronously to allow for more parallelism.
+                 *
+                 * We only take the device lock here in order to guarantee
+                 * that the dev->driver and async_driver fields are protected
+                 */
+                dev_dbg(dev, "probing driver %s asynchronously\n", drv->name);
+                device_lock(dev);
+                if (!dev->driver) {
+                        get_device(dev);
+                        dev->p->async_driver = drv;
+                        async_schedule_dev(__driver_attach_async_helper, dev);
+                }
+                device_unlock(dev);
+                return 0;
+        }
+
+        device_driver_attach(drv, dev);
+
+        return 0;
+}
+
+```
+driver_attach function invokes __driver_attach function 
+against all devices registered to the bus 
+our device driver attached.
+The driver_match_device matches the driver with the tarversed device
+(we covered the details about driver_match_device in previous posting).
+If the matching device found,
+it invokes device_driver_attach to manually bind device to the driver.
+
+```c
+/**
+ * device_driver_attach - attach a specific driver to a specific device
+ * @drv: Driver to attach
+ * @dev: Device to attach it to
+ *
+ * Manually attach driver to a device. Will acquire both @dev lock and
+ * @dev->parent lock if needed.
+ */
+int device_driver_attach(struct device_driver *drv, struct device *dev)
+{
+        int ret = 0;
+
+        __device_driver_lock(dev, dev->parent);
+
+        /*
+         * If device has been removed or someone has already successfully
+         * bound a driver before us just skip the driver probe call.
+         */
+        if (!dev->p->dead && !dev->driver)
+                ret = driver_probe_device(drv, dev);
+
+        __device_driver_unlock(dev, dev->parent);
+
+        return ret;
+}
+```
+If the device is not dead and has not been bound to any device driver,
+then it invokes driver_probe_device to actually bind the device to driver.
+All the details are already covered in the previous posting.
+That's it! We registered our platform device driver to the platform bus
+
+
+
+
+
+
+XXX:move to other posting.
+
+```c
+ 399 /**
+ 400  * bus_for_each_drv - driver iterator
+ 401  * @bus: bus we're dealing with.
+ 402  * @start: driver to start iterating on.
+ 403  * @data: data to pass to the callback.
+ 404  * @fn: function to call for each driver.
+ 405  *
+ 406  * This is nearly identical to the device iterator above.
+ 407  * We iterate over each driver that belongs to @bus, and call
+ 408  * @fn for each. If @fn returns anything but 0, we break out
+ 409  * and return it. If @start is not NULL, we use it as the head
+ 410  * of the list.
+ 411  *
+ 412  * NOTE: we don't return the driver that returns a non-zero
+ 413  * value, nor do we leave the reference count incremented for that
+ 414  * driver. If the caller needs to know that info, it must set it
+ 415  * in the callback. It must also be sure to increment the refcount
+ 416  * so it doesn't disappear before returning to the caller.
+ 417  */
+ 418 int bus_for_each_drv(struct bus_type *bus, struct device_driver *start,
+ 419                      void *data, int (*fn)(struct device_driver *, void *))
+ 420 {
+ 421         struct klist_iter i;
+ 422         struct device_driver *drv;
+ 423         int error = 0;
+ 424 
+ 425         if (!bus)
+ 426                 return -EINVAL;
+ 427 
+ 428         klist_iter_init_node(&bus->p->klist_drivers, &i,
+ 429                              start ? &start->p->knode_bus : NULL);
+ 430         while ((drv = next_driver(&i)) && !error)
+ 431                 error = fn(drv, data);
+ 432         klist_iter_exit(&i);
+ 433         return error;
+ 434 }
+
+ 387 static struct device_driver *next_driver(struct klist_iter *i)
+ 388 {
+ 389         struct klist_node *n = klist_next(i);
+ 390         struct driver_private *drv_priv;
+ 391 
+ 392         if (n) {
+ 393                 drv_priv = container_of(n, struct driver_private, knode_bus);
+ 394                 return drv_priv->driver;
+ 395         }
+ 396         return NULL;
+ 397 }
+
+```
+For example, bus core provides api called *bus_for_each_drv*
+to run a function against every device driver registered for a bus.
+It internally invokes next_driver function,
+and this function can retrieve the driver 
+by making use of container_of macro. 
+
+Here, klist_iter is used to traverse klist_node 
+of each device driver associated with current bus.
+Also note that the traversed klist is klist_drivers,
+which is the member field of subsys_private structure of the bus_type structure.
+
+Therefore, whenever klist_next function is invoked,
+it returns one klist_node associated with one device driver
+we've registered to the bus before.
+Note that this klist_node is the memeber field of driver_private
+we've set in the bus_add_driver function.
+
+As I told before, 
+when we have a reference to klist_node of the driver,
+we can retrieve the driver_private structure,
+and using this reference, we can return the devive driver object itself. 
+Note that this device driver structure is the wrapper device driver, drvwrap
+that we generated in the usb_register_driver.
+
+When drivers_autoprobe has been set, 
+it tries to bind the devices sitting on the bus 
+with the new registered driver at the driver register time. 
+When you go back to the bus_register function, 
+you can find that the drivers_autoprobe flag has been set by default.
+Therefore, 
+whenever the new device driver is trying to be registered to the bus,
+it will try to bind the driver to the already found devices. 
+We didn't cover the detail implementation of the driver_attach function,
+but it invokes binding function against the every registered devices on the bus
+that are managed by the klist. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###usb init
 Before we delve into the bus_add_driver, 
 let's take a look at the p structure of the bus.
 
@@ -646,198 +699,6 @@ intializing list for managing devices and its associated drivers
 that could sit on the current bus, 
 klist_devices and klist_drivers.
 
-Now let's go back to bus_add_driver function 
-that actually register our device driver
-to the bus. 
-
-```c
-struct driver_private {
-        struct kobject kobj;
-        struct klist klist_devices;
-        struct klist_node knode_bus;
-        struct module_kobject *mkobj;
-        struct device_driver *driver;
-};
-
-/**
- * bus_add_driver - Add a driver to the bus.
- * @drv: driver.
- */
-int bus_add_driver(struct device_driver *drv)
-{
-        struct bus_type *bus;
-        struct driver_private *priv;
-        int error = 0;
-
-        bus = bus_get(drv->bus);
-        if (!bus)
-                return -EINVAL;
-
-        pr_debug("bus: '%s': add driver %s\n", bus->name, drv->name);
-
-        priv = kzalloc(sizeof(*priv), GFP_KERNEL);
-        if (!priv) {
-                error = -ENOMEM;
-                goto out_put_bus;
-        }
-        klist_init(&priv->klist_devices, NULL, NULL);
-        priv->driver = drv;
-        drv->p = priv;
-        priv->kobj.kset = bus->p->drivers_kset;
-        error = kobject_init_and_add(&priv->kobj, &driver_ktype, NULL,
-                                     "%s", drv->name);
-        if (error)
-                goto out_unregister;
-
-        klist_add_tail(&priv->knode_bus, &bus->p->klist_drivers);
-        if (drv->bus->p->drivers_autoprobe) {
-                error = driver_attach(drv);
-                if (error)
-                        goto out_unregister;
-        }
-        module_add_driver(drv->owner, drv);
-
-        error = driver_create_file(drv, &driver_attr_uevent);
-        if (error) {
-                printk(KERN_ERR "%s: uevent attr (%s) failed\n",
-                        __func__, drv->name);
-        }
-        error = driver_add_groups(drv, bus->drv_groups);
-        if (error) {
-                /* How the hell do we get out of this pickle? Give up */
-                printk(KERN_ERR "%s: driver_create_groups(%s) failed\n",
-                        __func__, drv->name);
-        }
-
-        if (!drv->suppress_bind_attrs) {
-                error = add_bind_files(drv);
-                if (error) {
-                        /* Ditto */
-                        printk(KERN_ERR "%s: add_bind_files(%s) failed\n",
-                                __func__, drv->name);
-                }
-        }
-
-        return 0;
-
-out_unregister:
-        kobject_put(&priv->kobj);
-        /* drv->p is freed in driver_release()  */
-        drv->p = NULL;
-out_put_bus:
-        bus_put(bus);
-        return error;
-}
-```
-The first thing that bus_add_driver function does is 
-allocating driver core's private data, driver_private structure object.
-When you look at the driver_private structure, 
-it has klist_devices klist 
-which contains entire devices that are currently managed by the driver
-that we are trying to register to the bus. 
-Because this is the first time the device driver is registered to the bus,
-it should not have any devices that are actively managed by this driver.
-Therefore, it resets the klist_devices list first using klist_init function.
-
-To allow the bus driver have access to the registered drivers,
-related data structure should be maintained by the bus driver.
-For that purpose, bus driver maintains klist_drivers list.
-Here the pointer to the knode_bus field of priv is stored to that list.
-
-Note that the driver_private structure not only contains the kndoe_bus 
-but also the driver structure
-associated with driver_private structure.
-Therefore, 
-whenever bus driver can access the knode_bus pointer,
-it can retrieve the driver_private structure 
-and device_driver associated with it.
-
-```c
- 399 /**
- 400  * bus_for_each_drv - driver iterator
- 401  * @bus: bus we're dealing with.
- 402  * @start: driver to start iterating on.
- 403  * @data: data to pass to the callback.
- 404  * @fn: function to call for each driver.
- 405  *
- 406  * This is nearly identical to the device iterator above.
- 407  * We iterate over each driver that belongs to @bus, and call
- 408  * @fn for each. If @fn returns anything but 0, we break out
- 409  * and return it. If @start is not NULL, we use it as the head
- 410  * of the list.
- 411  *
- 412  * NOTE: we don't return the driver that returns a non-zero
- 413  * value, nor do we leave the reference count incremented for that
- 414  * driver. If the caller needs to know that info, it must set it
- 415  * in the callback. It must also be sure to increment the refcount
- 416  * so it doesn't disappear before returning to the caller.
- 417  */
- 418 int bus_for_each_drv(struct bus_type *bus, struct device_driver *start,
- 419                      void *data, int (*fn)(struct device_driver *, void *))
- 420 {
- 421         struct klist_iter i;
- 422         struct device_driver *drv;
- 423         int error = 0;
- 424 
- 425         if (!bus)
- 426                 return -EINVAL;
- 427 
- 428         klist_iter_init_node(&bus->p->klist_drivers, &i,
- 429                              start ? &start->p->knode_bus : NULL);
- 430         while ((drv = next_driver(&i)) && !error)
- 431                 error = fn(drv, data);
- 432         klist_iter_exit(&i);
- 433         return error;
- 434 }
-
- 387 static struct device_driver *next_driver(struct klist_iter *i)
- 388 {
- 389         struct klist_node *n = klist_next(i);
- 390         struct driver_private *drv_priv;
- 391 
- 392         if (n) {
- 393                 drv_priv = container_of(n, struct driver_private, knode_bus);
- 394                 return drv_priv->driver;
- 395         }
- 396         return NULL;
- 397 }
-
-```
-For example, bus core provides api called *bus_for_each_drv*
-to run a function against every device driver registered for a bus.
-It internally invokes next_driver function,
-and this function can retrieve the driver 
-by making use of container_of macro. 
-
-Here, klist_iter is used to traverse klist_node 
-of each device driver associated with current bus.
-Also note that the traversed klist is klist_drivers,
-which is the member field of subsys_private structure of the bus_type structure.
-
-Therefore, whenever klist_next function is invoked,
-it returns one klist_node associated with one device driver
-we've registered to the bus before.
-Note that this klist_node is the memeber field of driver_private
-we've set in the bus_add_driver function.
-
-As I told before, 
-when we have a reference to klist_node of the driver,
-we can retrieve the driver_private structure,
-and using this reference, we can return the devive driver object itself. 
-Note that this device driver structure is the wrapper device driver, drvwrap
-that we generated in the usb_register_driver.
-
-When drivers_autoprobe has been set, 
-it tries to bind the devices sitting on the bus 
-with the new registered driver at the driver register time. 
-When you go back to the bus_register function, 
-you can find that the drivers_autoprobe flag has been set by default.
-Therefore, 
-whenever the new device driver is trying to be registered to the bus,
-it will try to bind the driver to the already found devices. 
-We didn't cover the detail implementation of the driver_attach function,
-but it invokes binding function against the every registered devices on the bus
-that are managed by the klist. 
 
 
 ##Probe probe probe

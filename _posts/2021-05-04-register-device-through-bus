@@ -3,432 +3,8 @@ layout: post
 titile: "Linux usb core driver interface
 categories: linux, embedded-linux
 ---
-We will cover how the linux usb driver is registered 
-in this posting 
 
-```c
-/**                            
- * module_usb_driver() - Helper macro for registering a USB driver
- * @__usb_driver: usb_driver struct
- *
- * Helper macro for USB drivers which do not do anything special in module
- * init/exit. This eliminates a lot of boilerplate. Each module may only
- * use this macro once, and calling it replaces module_init() and module_exit()
- */
-#define module_usb_driver(__usb_driver) \
-        module_driver(__usb_driver, usb_register, \
-                       usb_deregister)
-
-/**
- * module_driver() - Helper macro for drivers that don't do anything
- * special in module init/exit. This eliminates a lot of boilerplate.
- * Each module may only use this macro once, and calling it replaces
- * module_init() and module_exit().
- *      
- * @__driver: driver name
- * @__register: register function for this driver type
- * @__unregister: unregister function for this driver type
- * @...: Additional arguments to be passed to __register and __unregister.
- *
- * Use this macro to construct bus specific macros for registering
- * drivers, and do not use it on its own.
- */
-#define module_driver(__driver, __register, __unregister, ...) \
-static int __init __driver##_init(void) \
-{ \
-        return __register(&(__driver) , ##__VA_ARGS__); \
-} \
-module_init(__driver##_init); \
-static void __exit __driver##_exit(void) \
-{ \                            
-        __unregister(&(__driver) , ##__VA_ARGS__); \
-} \
-module_exit(__driver##_exit);
-```
-
-Above macro automatically generates initialization and de-initialization function for
-your usb device driver. 
-It just invokes usb_register and usb_deregister function 
-on module init and exit respectively. 
-Note that module_usb_driver requires usb_device_driver structure as its operand,
-so the usb kernel module should provide the corresponding structure 
-to register the driver to the usb subsystem.
-
-```c
-/**
- * struct usb_driver - identifies USB interface driver to usbcore
- * @name: The driver name should be unique among USB drivers,
- *      and should normally be the same as the module name.
- * @probe: Called to see if the driver is willing to manage a particular
- *      interface on a device.  If it is, probe returns zero and uses
- *      usb_set_intfdata() to associate driver-specific data with the
- *      interface.  It may also use usb_set_interface() to specify the
- *      appropriate altsetting.  If unwilling to manage the interface,
- *      return -ENODEV, if genuine IO errors occurred, an appropriate
- *      negative errno value.
- * @disconnect: Called when the interface is no longer accessible, usually
- *      because its device has been (or is being) disconnected or the
- *      driver module is being unloaded.
- * @unlocked_ioctl: Used for drivers that want to talk to userspace through
- *      the "usbfs" filesystem.  This lets devices provide ways to
- *      expose information to user space regardless of where they
- *      do (or don't) show up otherwise in the filesystem.
- * @suspend: Called when the device is going to be suspended by the
- *      system either from system sleep or runtime suspend context. The
- *      return value will be ignored in system sleep context, so do NOT
- *      try to continue using the device if suspend fails in this case.
- *      Instead, let the resume or reset-resume routine recover from
- *      the failure.
- * @resume: Called when the device is being resumed by the system.
- * @reset_resume: Called when the suspended device has been reset instead
- *      of being resumed.
- * @pre_reset: Called by usb_reset_device() when the device is about to be
- *      reset.  This routine must not return until the driver has no active
- *      URBs for the device, and no more URBs may be submitted until the
- *      post_reset method is called.
- * @post_reset: Called by usb_reset_device() after the device
- *      has been reset
- * @id_table: USB drivers use ID table to support hotplugging.
- *      Export this with MODULE_DEVICE_TABLE(usb,...).  This must be set
- *      or your driver's probe function will never get called.
- * @dev_groups: Attributes attached to the device that will be created once it
- *      is bound to the driver.
- * @dynids: used internally to hold the list of dynamically added device
- *      ids for this driver.
- * @drvwrap: Driver-model core structure wrapper.
- * @no_dynamic_id: if set to 1, the USB core will not allow dynamic ids to be
- *      added to this driver by preventing the sysfs file from being created.
- * @supports_autosuspend: if set to 0, the USB core will not allow autosuspend
- *      for interfaces bound to this driver.
- * @soft_unbind: if set to 1, the USB core will not kill URBs and disable
- *      endpoints before calling the driver's disconnect method.
- * @disable_hub_initiated_lpm: if set to 1, the USB core will not allow hubs
- *      to initiate lower power link state transitions when an idle timeout
- *      occurs.  Device-initiated USB 3.0 link PM will still be allowed.
- *
- * USB interface drivers must provide a name, probe() and disconnect()
- * methods, and an id_table.  Other driver fields are optional.
- *
- * The id_table is used in hotplugging.  It holds a set of descriptors,
- * and specialized data may be associated with each entry.  That table
- * is used by both user and kernel mode hotplugging support
- *
- * The probe() and disconnect() methods are called in a context where
- * they can sleep, but they should avoid abusing the privilege.  Most
- * work to connect to a device should be done when the device is opened,
- * and undone at the last close.  The disconnect code needs to address
- * concurrency issues with respect to open() and close() methods, as
- * well as forcing all pending I/O requests to complete (by unlinking
- * them as necessary, and blocking until the unlinks complete).
- */
-struct usb_driver {
-        const char *name;
-
-        int (*probe) (struct usb_interface *intf,
-                      const struct usb_device_id *id);
-
-        void (*disconnect) (struct usb_interface *intf);
-
-        int (*unlocked_ioctl) (struct usb_interface *intf, unsigned int code,
-                        void *buf);
-
-        int (*suspend) (struct usb_interface *intf, pm_message_t message);
-        int (*resume) (struct usb_interface *intf);
-        int (*reset_resume)(struct usb_interface *intf);
-
-        int (*pre_reset)(struct usb_interface *intf);
-        int (*post_reset)(struct usb_interface *intf);
-
-        const struct usb_device_id *id_table;
-        const struct attribute_group **dev_groups;
-
-        struct usb_dynids dynids;
-        struct usbdrv_wrap drvwrap;
-        unsigned int no_dynamic_id:1;
-        unsigned int supports_autosuspend:1;
-        unsigned int disable_hub_initiated_lpm:1;
-        unsigned int soft_unbind:1;
-};
-```
-Although we didn't go thorough a particular device driver implementation
-that populates the usb_driver structure,
-USB interface drivers must provide a name, probe() and disconnect()
-methods, and an id_table to be registered. 
-id_table specified all usb devices 
-that can be supported by this usb_driver.
-Note that id_table will be used later in the matching function 
-of the usb bus subsystem. 
-When the matching is doen,
-the probe function provided in the usb_driver will be invoked.
-
-
-###usb_register_driver register the driver to the usb bus
-Regardless of the usb driver invokes usb_register function on it init or 
-utilize the module_usb_driver macro,
-it ends up invoking the usb_register function
-with the usb_drvier structure provided by the driver.
-
-```c
-/* use a define to avoid include chaining to get THIS_MODULE & friends */
-#define usb_register(driver) \
-        usb_register_driver(driver, THIS_MODULE, KBUILD_MODNAME)
-
-/**
- * usb_register_driver - register a USB interface driver
- * @new_driver: USB operations for the interface driver
- * @owner: module owner of this driver.
- * @mod_name: module name string
- *
- * Registers a USB interface driver with the USB core.  The list of
- * unattached interfaces will be rescanned whenever a new driver is
- * added, allowing the new driver to attach to any recognized interfaces.
- *
- * Return: A negative error code on failure and 0 on success.
- *
- * NOTE: if you want your driver to use the USB major number, you must call
- * usb_register_dev() to enable that functionality.  This function no longer
- * takes care of that.
- */
-int usb_register_driver(struct usb_driver *new_driver, struct module *owner,
-                        const char *mod_name)
-{       
-        int retval = 0;
-        
-        if (usb_disabled())
-                return -ENODEV;
-        
-        new_driver->drvwrap.for_devices = 0;
-        new_driver->drvwrap.driver.name = new_driver->name;
-        new_driver->drvwrap.driver.bus = &usb_bus_type;
-        new_driver->drvwrap.driver.probe = usb_probe_interface;
-        new_driver->drvwrap.driver.remove = usb_unbind_interface;
-        new_driver->drvwrap.driver.owner = owner;
-        new_driver->drvwrap.driver.mod_name = mod_name;
-        new_driver->drvwrap.driver.dev_groups = new_driver->dev_groups;
-        spin_lock_init(&new_driver->dynids.lock);
-        INIT_LIST_HEAD(&new_driver->dynids.list);
-        
-        retval = driver_register(&new_driver->drvwrap.driver);
-        if (retval)
-                goto out;
-        
-        retval = usb_create_newid_files(new_driver);
-        if (retval)
-                goto out_newid;
-        
-        pr_info("%s: registered new interface driver %s\n",
-                        usbcore_name, new_driver->name);
-
-out:    
-        return retval;
-
-out_newid:
-        driver_unregister(&new_driver->drvwrap.driver);
-        
-        pr_err("%s: error %d registering interface driver %s\n",
-                usbcore_name, retval, new_driver->name);
-        goto out;
-}
-EXPORT_SYMBOL_GPL(usb_register_driver);
-```
-
-Instead of exposing the usb_drvier structure to the bus,
-usb core generates general device_driver structure
-that can be attached to the bus through general kernel api,
-driver_register function.
-For that wrapper driver population,
-usb core utilize the member field drvwrap of the usb_driver structure.
-This structure contains device_driver structure which is a general structure 
-for presenting device driver. 
-
-```c
-/**
- * struct usbdrv_wrap - wrapper for driver-model structure
- * @driver: The driver-model core driver structure.
- * @for_devices: Non-zero for device drivers, 0 for interface drivers.
- */
-struct usbdrv_wrap {
-        struct device_driver driver;
-        int for_devices;
-};
-
-/**
- * struct device_driver - The basic device driver structure
- * @name:       Name of the device driver.
- * @bus:        The bus which the device of this driver belongs to.
- * @owner:      The module owner.
- * @mod_name:   Used for built-in modules.
- * @suppress_bind_attrs: Disables bind/unbind via sysfs.
- * @probe_type: Type of the probe (synchronous or asynchronous) to use.
- * @of_match_table: The open firmware table.
- * @acpi_match_table: The ACPI match table.
- * @probe:      Called to query the existence of a specific device,
- *              whether this driver can work with it, and bind the driver
- *              to a specific device.
- * @sync_state: Called to sync device state to software state after all the
- *              state tracking consumers linked to this device (present at
- *              the time of late_initcall) have successfully bound to a
- *              driver. If the device has no consumers, this function will
- *              be called at late_initcall_sync level. If the device has
- *              consumers that are never bound to a driver, this function
- *              will never get called until they do.
- * @remove:     Called when the device is removed from the system to
- *              unbind a device from this driver.
- * @shutdown:   Called at shut-down time to quiesce the device.
- * @suspend:    Called to put the device to sleep mode. Usually to a
- *              low power state.
- * @resume:     Called to bring a device from sleep mode.
- * @groups:     Default attributes that get created by the driver core
- *              automatically.
- * @dev_groups: Additional attributes attached to device instance once the
- *              it is bound to the driver.
- * @pm:         Power management operations of the device which matched
- *              this driver.
- * @coredump:   Called when sysfs entry is written to. The device driver
- *              is expected to call the dev_coredump API resulting in a
- *              uevent.
- * @p:          Driver core's private data, no one other than the driver
- *              core can touch this.
- *
- * The device driver-model tracks all of the drivers known to the system.
- * The main reason for this tracking is to enable the driver core to match
- * up drivers with new devices. Once drivers are known objects within the
- * system, however, a number of other things become possible. Device drivers
- * can export information and configuration variables that are independent
- * of any specific device.
- */
-struct device_driver {
-        const char              *name;
-        struct bus_type         *bus;
-
-        struct module           *owner;
-        const char              *mod_name;      /* used for built-in modules */
-
-        bool suppress_bind_attrs;       /* disables bind/unbind via sysfs */
-        enum probe_type probe_type;
-
-        const struct of_device_id       *of_match_table;
-        const struct acpi_device_id     *acpi_match_table;
-
-        int (*probe) (struct device *dev);
-        void (*sync_state)(struct device *dev);
-        int (*remove) (struct device *dev);
-        void (*shutdown) (struct device *dev);
-        int (*suspend) (struct device *dev, pm_message_t state);
-        int (*resume) (struct device *dev);
-        const struct attribute_group **groups;
-        const struct attribute_group **dev_groups;
-
-        const struct dev_pm_ops *pm;
-        void (*coredump) (struct device *dev);
-
-        struct driver_private *p;
-};
-```
-Note that some fields of the wrapper device driver are filled with 
-the usb core's functions and pre-defined data structures,
-and only handlful of original usb_driver structure's member fields are used 
-to initialize the wrapper driver structure. 
-Note that it makes use of generic probe function of the usb_core instead of 
-the probe function of usb_driver structure.
-We will revisit this probe function later 
-how the probe function of usb_driver is invoked at the end of the world
-with the help of core's probe function. 
-
-```c
-struct bus_type usb_bus_type = {
-        .name =         "usb",
-        .match =        usb_device_match,
-        .uevent =       usb_uevent,
-        .need_parent_lock =     true,
-};
-```
-
-Also, to register the generated generic device driver to the bus,
-usb core driver sets the bus information, usb_bus_type.
-The match field of the usb_bus_type is a call-back function
-used for matching the device and its device driver.
-When the new device claims that it sits on particular bus,
-the bus should invoke the call-back function
-to figure out whether any device driver says that they can support the found device. 
-When you look at the prototype of match function,
-it receives the device structure and device_driver structure.
-The first device structure is a structure for the device
-found by the bus, and the device_driver is a 
-driver we are trying to register.
-
-After the wrapper driver has been set, 
-we register the wrapper driver to a bus.
-
-```c
-/**
- * driver_register - register driver with bus
- * @drv: driver to register
- *
- * We pass off most of the work to the bus_add_driver() call,
- * since most of the things we have to do deal with the bus
- * structures.
- */
-int driver_register(struct device_driver *drv)
-{
-        int ret;
-        struct device_driver *other;
- 
-        if (!drv->bus->p) {
-                pr_err("Driver '%s' was unable to register with bus_type '%s' because the bus was not initialized.\n",
-                           drv->name, drv->bus->name);
-                return -EINVAL;
-        }
- 
-        if ((drv->bus->probe && drv->probe) ||
-            (drv->bus->remove && drv->remove) ||
-            (drv->bus->shutdown && drv->shutdown))
-                pr_warn("Driver '%s' needs updating - please use "
-                        "bus_type methods\n", drv->name);
-        
-        other = driver_find(drv->name, drv->bus);
-        if (other) {
-                pr_err("Error: Driver '%s' is already registered, "
-                        "aborting...\n", drv->name);
-                return -EBUSY;
-        }
-        
-        ret = bus_add_driver(drv);
-        if (ret)
-                return ret;
-        ret = driver_add_groups(drv, drv->groups);
-        if (ret) {
-                bus_remove_driver(drv);
-                return ret;
-        }
-        kobject_uevent(&drv->p->kobj, KOBJ_ADD);
-        
-        return ret;
-}
-EXPORT_SYMBOL_GPL(driver_register);
-```
-Note that driver_register is not usb specific api to register the driver.
-It is a generic api to register device driver structure to the bus.
-First of all, it checks if the bus that is in charge of device driver management
-has proper core bus data structure, p. 
-You might think that 
-the first conditional statement check always return false
-because we never set the p member field of bus_type structure for usb,
-usb_bus_type.
-When we look at the usb_bus_type object, it has been statically allocated,
-and its p field has not been assigned at the initialization.
-To understand the p structure of the bus and its initialization,
-we will take a look at usb core driver initialization function later. 
-
-Afer it checks whether the current bus already has same named driver,
-and if there is nothing, then it delegates
-most of the driver registering process
-to bus_add_driver function.
-
-Before we delve into the bus_add_driver, 
-let's take a look at the p structure of the bus.
-
-
+#Initializing usb subsystem 
 ```c
 /*
  * Init
@@ -484,369 +60,110 @@ bus_register_failed:
 out:
         return retval;
 }
+
+#define subsys_initcall(fn)             __define_initcall(fn, 4)
+subsys_initcall(usb_init);
 ```
 
-To understand what happens to the our usb_bus_type object,
-we have to take a look at usb core driver initialization function,
-usb_init.
-You can easily find that usb_bus_type has been passed to the bus_register function,
-so let's take a look at the function's implementation details.
+###Usb bus registration
+Based on the previous postings,
+we can know that a bus_type object 
+representing a specific bus sub-system
+should be initialized and registered
+by invoking bus_register function. 
+Let's take a look at which filed of bus_type 
+has been statically provided by the usb core first.
 
 ```c
-/**
- * bus_register - register a driver-core subsystem
- * @bus: bus to register
- *
- * Once we have that, we register the bus with the kobject
- * infrastructure, then register the children subsystems it has:
- * the devices and drivers that belong to the subsystem.
- */
-int bus_register(struct bus_type *bus)
-{
-        int retval;
-        struct subsys_private *priv;
-        struct lock_class_key *key = &bus->lock_key;
-
-        priv = kzalloc(sizeof(struct subsys_private), GFP_KERNEL);
-        if (!priv)
-                return -ENOMEM;
-
-        priv->bus = bus;
-        bus->p = priv;
-
-        BLOCKING_INIT_NOTIFIER_HEAD(&priv->bus_notifier);
-
-        retval = kobject_set_name(&priv->subsys.kobj, "%s", bus->name);
-        if (retval)
-                goto out;
-
-        priv->subsys.kobj.kset = bus_kset;
-        priv->subsys.kobj.ktype = &bus_ktype;
-        priv->drivers_autoprobe = 1;
-
-        retval = kset_register(&priv->subsys);
-        if (retval)
-                goto out;
-
-        retval = bus_create_file(bus, &bus_attr_uevent);
-        if (retval)
-                goto bus_uevent_fail;
-
-        priv->devices_kset = kset_create_and_add("devices", NULL,
-                                                 &priv->subsys.kobj);
-        if (!priv->devices_kset) {
-                retval = -ENOMEM;
-                goto bus_devices_fail;
-        }
-
-        priv->drivers_kset = kset_create_and_add("drivers", NULL,
-                                                 &priv->subsys.kobj);
-        if (!priv->drivers_kset) {
-                retval = -ENOMEM;
-                goto bus_drivers_fail;
-        }
-
-        INIT_LIST_HEAD(&priv->interfaces);
-        __mutex_init(&priv->mutex, "subsys mutex", key);
-        klist_init(&priv->klist_devices, klist_devices_get, klist_devices_put);
-        klist_init(&priv->klist_drivers, NULL, NULL);
-
-        retval = add_probe_files(bus);
-        if (retval)
-                goto bus_probe_files_fail;
-
-        retval = bus_add_groups(bus, bus->bus_groups);
-        if (retval)
-                goto bus_groups_fail;
-
-        pr_debug("bus: '%s': registered\n", bus->name);
-        return 0;
-
-bus_groups_fail:
-        remove_probe_files(bus);
-bus_probe_files_fail:
-        kset_unregister(bus->p->drivers_kset);
-bus_drivers_fail:
-        kset_unregister(bus->p->devices_kset);
-bus_devices_fail:
-        bus_remove_file(bus, &bus_attr_uevent);
-bus_uevent_fail:
-        kset_unregister(&bus->p->subsys);
-out:
-        kfree(bus->p);
-        bus->p = NULL;
-        return retval;
-}
-EXPORT_SYMBOL_GPL(bus_register);
-
-/**
- * struct subsys_private - structure to hold the private to the driver core portions of the bus_type/class structure.
- *      
- * @subsys - the struct kset that defines this subsystem
- * @devices_kset - the subsystem's 'devices' directory
- * @interfaces - list of subsystem interfaces associated
- * @mutex - protect the devices, and interfaces lists.
- *              
- * @drivers_kset - the list of drivers associated
- * @klist_devices - the klist to iterate over the @devices_kset
- * @klist_drivers - the klist to iterate over the @drivers_kset
- * @bus_notifier - the bus notifier list for anything that cares about things
- *                 on this bus.
- * @bus - pointer back to the struct bus_type that this structure is associated
- *        with.
- *      
- * @glue_dirs - "glue" directory to put in-between the parent device to
- *              avoid namespace conflicts
- * @class - pointer back to the struct class that this structure is associated
- *          with.
- *      
- * This structure is the one that is the actual kobject allowing struct
- * bus_type/class to be statically allocated safely.  Nothing outside of the
- * driver core should ever touch these fields.
- */             
-struct subsys_private {
-        struct kset subsys;
-        struct kset *devices_kset;
-        struct list_head interfaces;
-        struct mutex mutex;
-        
-        struct kset *drivers_kset;               
-        struct klist klist_devices;
-        struct klist klist_drivers;
-        struct blocking_notifier_head bus_notifier;
-        unsigned int drivers_autoprobe:1;
-        struct bus_type *bus;
-        
-        struct kset glue_dirs;                   
-        struct class *class;
-};            
-```
-To understand how the registered bus manages 
-devices attached to the bus and its associated drivers,
-we have to understand the data structure subsys_private 
-which contains most important data fields 
-regarding device and driver management. 
-
-The first thing done by the bus_register function is 
-allocating the subsys_private object and initialization.
-The function chains the bus_type structure and subsys_private structure
-by assigning the pointers to each other 
-as their memeber fields respectively. 
-Therefore, when you have either bus_type or subsys_private object,
-you can reference the other also. 
-It assigns the generated subsys_private object to 
-bus object memeber field, p.
-Remember that previous driver_register function
-checked whether the p member field of the bus 
-has been properly initialized and assigned. 
-
-It generates the sysfs file and directories for the bus,
-but the most important thing among this subsys_private initialization process is
-intializing list for managing devices and its associated drivers
-that could sit on the current bus, 
-klist_devices and klist_drivers.
-
-Now let's go back to bus_add_driver function 
-that actually register our device driver
-to the bus. 
-
-```c
-struct driver_private {
-        struct kobject kobj;
-        struct klist klist_devices;
-        struct klist_node knode_bus;
-        struct module_kobject *mkobj;
-        struct device_driver *driver;
+struct bus_type usb_bus_type = {
+        .name =         "usb",
+        .match =        usb_device_match,
+        .uevent =       usb_uevent,
+        .need_parent_lock =     true,
 };
+```
+Compared to the bus_type object used for the platform bus,
+usb bus_type object provides only handful of information.
+Note that even the probe function has not been provided. 
+
+###Registering notifier block for usb bus
+We doesn't utilize the notifier block for the platform bus, 
+but usb bus utilize the notifier block.
+The bus_register_notifier set the usb_bus_nb notifier block 
+to the initialized usb bus.
+
+```c
+static struct notifier_block usb_bus_nb = {
+        .notifier_call = usb_bus_notify,
+};   
+
+/*
+ * Notifications of device and interface registration
+ */
+static int usb_bus_notify(struct notifier_block *nb, unsigned long action,
+                void *data)
+{
+        struct device *dev = data;
+
+        switch (action) {
+        case BUS_NOTIFY_ADD_DEVICE:
+                if (dev->type == &usb_device_type)
+                        (void) usb_create_sysfs_dev_files(to_usb_device(dev));
+                else if (dev->type == &usb_if_device_type)
+                        usb_create_sysfs_intf_files(to_usb_interface(dev));
+                break;
+
+        case BUS_NOTIFY_DEL_DEVICE:
+                if (dev->type == &usb_device_type)
+                        usb_remove_sysfs_dev_files(to_usb_device(dev));
+                else if (dev->type == &usb_if_device_type)
+                        usb_remove_sysfs_intf_files(to_usb_interface(dev));
+                break;
+        }
+        return 0;
+}  
+```
+When the notification is sent, the above usb_bus_notify function will be invoked 
+with the action parameter.
+Based on the action, 
+it hanldes usb device management on the sysfs.
+
+###register usb filesystem driver, usbfs
+
+```c
+struct usb_driver usbfs_driver = {
+        .name =         "usbfs",
+        .probe =        driver_probe,
+        .disconnect =   driver_disconnect,
+        .suspend =      driver_suspend,
+        .resume =       driver_resume,
+        .supports_autosuspend = 1,
+};      
+
+#define usb_register(driver) \
+        usb_register_driver(driver, THIS_MODULE, KBUILD_MODNAME)
 
 /**
- * bus_add_driver - Add a driver to the bus.
- * @drv: driver.
+ * usb_register_driver - register a USB interface driver
+ * @new_driver: USB operations for the interface driver
+ * @owner: module owner of this driver.
+ * @mod_name: module name string
+ *
+ * Registers a USB interface driver with the USB core.  The list of
+ * unattached interfaces will be rescanned whenever a new driver is
+ * added, allowing the new driver to attach to any recognized interfaces.
+ *
+ * Return: A negative error code on failure and 0 on success.
+ *
+ * NOTE: if you want your driver to use the USB major number, you must call
+ * usb_register_dev() to enable that functionality.  This function no longer
+ * takes care of that.
  */
-int bus_add_driver(struct device_driver *drv)
-{
-        struct bus_type *bus;
-        struct driver_private *priv;
-        int error = 0;
-
-        bus = bus_get(drv->bus);
-        if (!bus)
-                return -EINVAL;
-
-        pr_debug("bus: '%s': add driver %s\n", bus->name, drv->name);
-
-        priv = kzalloc(sizeof(*priv), GFP_KERNEL);
-        if (!priv) {
-                error = -ENOMEM;
-                goto out_put_bus;
-        }
-        klist_init(&priv->klist_devices, NULL, NULL);
-        priv->driver = drv;
-        drv->p = priv;
-        priv->kobj.kset = bus->p->drivers_kset;
-        error = kobject_init_and_add(&priv->kobj, &driver_ktype, NULL,
-                                     "%s", drv->name);
-        if (error)
-                goto out_unregister;
-
-        klist_add_tail(&priv->knode_bus, &bus->p->klist_drivers);
-        if (drv->bus->p->drivers_autoprobe) {
-                error = driver_attach(drv);
-                if (error)
-                        goto out_unregister;
-        }
-        module_add_driver(drv->owner, drv);
-
-        error = driver_create_file(drv, &driver_attr_uevent);
-        if (error) {
-                printk(KERN_ERR "%s: uevent attr (%s) failed\n",
-                        __func__, drv->name);
-        }
-        error = driver_add_groups(drv, bus->drv_groups);
-        if (error) {
-                /* How the hell do we get out of this pickle? Give up */
-                printk(KERN_ERR "%s: driver_create_groups(%s) failed\n",
-                        __func__, drv->name);
-        }
-
-        if (!drv->suppress_bind_attrs) {
-                error = add_bind_files(drv);
-                if (error) {
-                        /* Ditto */
-                        printk(KERN_ERR "%s: add_bind_files(%s) failed\n",
-                                __func__, drv->name);
-                }
-        }
-
-        return 0;
-
-out_unregister:
-        kobject_put(&priv->kobj);
-        /* drv->p is freed in driver_release()  */
-        drv->p = NULL;
-out_put_bus:
-        bus_put(bus);
-        return error;
-}
-```
-The first thing that bus_add_driver function does is 
-allocating driver core's private data, driver_private structure object.
-When you look at the driver_private structure, 
-it has klist_devices klist 
-which contains entire devices that are currently managed by the driver
-that we are trying to register to the bus. 
-Because this is the first time the device driver is registered to the bus,
-it should not have any devices that are actively managed by this driver.
-Therefore, it resets the klist_devices list first using klist_init function.
-
-To allow the bus driver have access to the registered drivers,
-related data structure should be maintained by the bus driver.
-For that purpose, bus driver maintains klist_drivers list.
-Here the pointer to the knode_bus field of priv is stored to that list.
-
-Note that the driver_private structure not only contains the kndoe_bus 
-but also the driver structure
-associated with driver_private structure.
-Therefore, 
-whenever bus driver can access the knode_bus pointer,
-it can retrieve the driver_private structure 
-and device_driver associated with it.
-
-```c
- 399 /**
- 400  * bus_for_each_drv - driver iterator
- 401  * @bus: bus we're dealing with.
- 402  * @start: driver to start iterating on.
- 403  * @data: data to pass to the callback.
- 404  * @fn: function to call for each driver.
- 405  *
- 406  * This is nearly identical to the device iterator above.
- 407  * We iterate over each driver that belongs to @bus, and call
- 408  * @fn for each. If @fn returns anything but 0, we break out
- 409  * and return it. If @start is not NULL, we use it as the head
- 410  * of the list.
- 411  *
- 412  * NOTE: we don't return the driver that returns a non-zero
- 413  * value, nor do we leave the reference count incremented for that
- 414  * driver. If the caller needs to know that info, it must set it
- 415  * in the callback. It must also be sure to increment the refcount
- 416  * so it doesn't disappear before returning to the caller.
- 417  */
- 418 int bus_for_each_drv(struct bus_type *bus, struct device_driver *start,
- 419                      void *data, int (*fn)(struct device_driver *, void *))
- 420 {
- 421         struct klist_iter i;
- 422         struct device_driver *drv;
- 423         int error = 0;
- 424 
- 425         if (!bus)
- 426                 return -EINVAL;
- 427 
- 428         klist_iter_init_node(&bus->p->klist_drivers, &i,
- 429                              start ? &start->p->knode_bus : NULL);
- 430         while ((drv = next_driver(&i)) && !error)
- 431                 error = fn(drv, data);
- 432         klist_iter_exit(&i);
- 433         return error;
- 434 }
-
- 387 static struct device_driver *next_driver(struct klist_iter *i)
- 388 {
- 389         struct klist_node *n = klist_next(i);
- 390         struct driver_private *drv_priv;
- 391 
- 392         if (n) {
- 393                 drv_priv = container_of(n, struct driver_private, knode_bus);
- 394                 return drv_priv->driver;
- 395         }
- 396         return NULL;
- 397 }
-
-```
-For example, bus core provides api called *bus_for_each_drv*
-to run a function against every device driver registered for a bus.
-It internally invokes next_driver function,
-and this function can retrieve the driver 
-by making use of container_of macro. 
-
-Here, klist_iter is used to traverse klist_node 
-of each device driver associated with current bus.
-Also note that the traversed klist is klist_drivers,
-which is the member field of subsys_private structure of the bus_type structure.
-
-Therefore, whenever klist_next function is invoked,
-it returns one klist_node associated with one device driver
-we've registered to the bus before.
-Note that this klist_node is the memeber field of driver_private
-we've set in the bus_add_driver function.
-
-As I told before, 
-when we have a reference to klist_node of the driver,
-we can retrieve the driver_private structure,
-and using this reference, we can return the devive driver object itself. 
-Note that this device driver structure is the wrapper device driver, drvwrap
-that we generated in the usb_register_driver.
-
-When drivers_autoprobe has been set, 
-it tries to bind the devices sitting on the bus 
-with the new registered driver at the driver register time. 
-When you go back to the bus_register function, 
-you can find that the drivers_autoprobe flag has been set by default.
-Therefore, 
-whenever the new device driver is trying to be registered to the bus,
-it will try to bind the driver to the already found devices. 
-We didn't cover the detail implementation of the driver_attach function,
-but it invokes binding function against the every registered devices on the bus
-that are managed by the klist. 
-
-
-##Probe probe probe
-```c
 int usb_register_driver(struct usb_driver *new_driver, struct module *owner,
                         const char *mod_name)
-{
+{       
         int retval = 0;
-
+        
         if (usb_disabled())
                 return -ENODEV;
 
@@ -860,396 +177,170 @@ int usb_register_driver(struct usb_driver *new_driver, struct module *owner,
         new_driver->drvwrap.driver.dev_groups = new_driver->dev_groups;
         spin_lock_init(&new_driver->dynids.lock);
         INIT_LIST_HEAD(&new_driver->dynids.list);
-```
-You might remeber that when the wrapper driver is generated for usb driver,
-it has used the usb core's generic probe function
-instead of the device driver specific probe.
-Then when the driver's specific probe function is invoked? 
-Let's first take a look at usb_probe_interface function.
+ 
+        retval = driver_register(&new_driver->drvwrap.driver);
+        if (retval)
+                goto out; 
+ 
+        retval = usb_create_newid_files(new_driver);
+        if (retval)
+                goto out_newid;
+        
+        pr_info("%s: registered new interface driver %s\n",
+                        usbcore_name, new_driver->name);
+        
+out:    
+        return retval;
 
-```c
-/* called from driver core with dev locked */
-static int usb_probe_interface(struct device *dev)
-{
-        struct usb_driver *driver = to_usb_driver(dev->driver);
-        struct usb_interface *intf = to_usb_interface(dev);
-        struct usb_device *udev = interface_to_usbdev(intf);
-        const struct usb_device_id *id;
-        int error = -ENODEV;
-        int lpm_disable_error = -ENODEV;
-
-        dev_dbg(dev, "%s\n", __func__);
-
-        intf->needs_binding = 0;
-
-        if (usb_device_is_owned(udev))
-                return error;
-
-        if (udev->authorized == 0) {
-                dev_err(&intf->dev, "Device is not authorized for usage\n");
-                return error;
-        } else if (intf->authorized == 0) {
-                dev_err(&intf->dev, "Interface %d is not authorized for usage\n",
-                                intf->altsetting->desc.bInterfaceNumber);
-                return error;
-        }
-
-        id = usb_match_dynamic_id(intf, driver);
-        if (!id)
-                id = usb_match_id(intf, driver->id_table);
-        if (!id)
-                return error;
-
-        dev_dbg(dev, "%s - got id\n", __func__);
-
-        error = usb_autoresume_device(udev);
-        if (error)
-                return error;
-
-        intf->condition = USB_INTERFACE_BINDING;
-
-        /* Probed interfaces are initially active.  They are
-         * runtime-PM-enabled only if the driver has autosuspend support.
-         * They are sensitive to their children's power states.
-         */
-        pm_runtime_set_active(dev);
-        pm_suspend_ignore_children(dev, false);
-        if (driver->supports_autosuspend)
-                pm_runtime_enable(dev);
-
-        /* If the new driver doesn't allow hub-initiated LPM, and we can't
-         * disable hub-initiated LPM, then fail the probe.
-         *
-         * Otherwise, leaving LPM enabled should be harmless, because the
-         * endpoint intervals should remain the same, and the U1/U2 timeouts
-         * should remain the same.
-         *
-         * If we need to install alt setting 0 before probe, or another alt
-         * setting during probe, that should also be fine.  usb_set_interface()
-         * will attempt to disable LPM, and fail if it can't disable it.
-         */
-        if (driver->disable_hub_initiated_lpm) {
-                lpm_disable_error = usb_unlocked_disable_lpm(udev);
-                if (lpm_disable_error) {
-                        dev_err(&intf->dev, "%s Failed to disable LPM for driver %s\n",
-                                __func__, driver->name);
-                        error = lpm_disable_error;
-                        goto err;
-                }
-        }
-
-        /* Carry out a deferred switch to altsetting 0 */
-        if (intf->needs_altsetting0) {
-                error = usb_set_interface(udev, intf->altsetting[0].
-                                desc.bInterfaceNumber, 0);
-                if (error < 0)
-                        goto err;
-                intf->needs_altsetting0 = 0;
-        }
-
-        error = driver->probe(intf, id);
-        if (error)
-                goto err;
-
-        intf->condition = USB_INTERFACE_BOUND;
-
-        /* If the LPM disable succeeded, balance the ref counts. */
-        if (!lpm_disable_error)
-                usb_unlocked_enable_lpm(udev);
-
-        usb_autosuspend_device(udev);
-        return error;
-
- err:
-        usb_set_intfdata(intf, NULL);
-        intf->needs_remote_wakeup = 0;
-        intf->condition = USB_INTERFACE_UNBOUND;
-
-        /* If the LPM disable succeeded, balance the ref counts. */
-        if (!lpm_disable_error)
-                usb_unlocked_enable_lpm(udev);
-
-        /* Unbound interfaces are always runtime-PM-disabled and -suspended */
-        if (driver->supports_autosuspend)
-                pm_runtime_disable(dev);
-        pm_runtime_set_suspended(dev);
-
-        usb_autosuspend_device(udev);
-        return error;
+out_newid:
+        driver_unregister(&new_driver->drvwrap.driver);
+ 
+        pr_err("%s: error %d registering interface driver %s\n",
+                usbcore_name, retval, new_driver->name);
+        goto out;
 }
 ```
 
+usb_register macro invokes usb_register_driver 
+which register the usb related driver to the usb bus.
 
 
-
-```c
-/**
- * struct usb_device - kernel's representation of a USB device
- * @devnum: device number; address on a USB bus
- * @devpath: device ID string for use in messages (e.g., /port/...)
- * @route: tree topology hex string for use with xHCI
- * @state: device state: configured, not attached, etc.
- * @speed: device speed: high/full/low (or error)
- * @rx_lanes: number of rx lanes in use, USB 3.2 adds dual-lane support
- * @tx_lanes: number of tx lanes in use, USB 3.2 adds dual-lane support
- * @tt: Transaction Translator info; used with low/full speed dev, highspeed hub
- * @ttport: device port on that tt hub
- * @toggle: one bit for each endpoint, with ([0] = IN, [1] = OUT) endpoints
- * @parent: our hub, unless we're the root
- * @bus: bus we're part of
- * @ep0: endpoint 0 data (default control pipe)
- * @dev: generic device interface
- * @descriptor: USB device descriptor
- * @bos: USB device BOS descriptor set
- * @config: all of the device's configs
- * @actconfig: the active configuration
- * @ep_in: array of IN endpoints
- * @ep_out: array of OUT endpoints
- * @rawdescriptors: raw descriptors for each config
- * @bus_mA: Current available from the bus
- * @portnum: parent port number (origin 1)
- * @level: number of USB hub ancestors
- * @devaddr: device address, XHCI: assigned by HW, others: same as devnum
- * @can_submit: URBs may be submitted
- * @persist_enabled:  USB_PERSIST enabled for this device
- * @have_langid: whether string_langid is valid
- * @authorized: policy has said we can use it;
- *      (user space) policy determines if we authorize this device to be
- *      used or not. By default, wired USB devices are authorized.
- *      WUSB devices are not, until we authorize them from user space.
- *      FIXME -- complete doc
- * @authenticated: Crypto authentication passed
- * @wusb: device is Wireless USB
- * @lpm_capable: device supports LPM
- * @usb2_hw_lpm_capable: device can perform USB2 hardware LPM
- * @usb2_hw_lpm_besl_capable: device can perform USB2 hardware BESL LPM
- * @usb2_hw_lpm_enabled: USB2 hardware LPM is enabled
- * @usb2_hw_lpm_allowed: Userspace allows USB 2.0 LPM to be enabled
- * @usb3_lpm_u1_enabled: USB3 hardware U1 LPM enabled
- * @usb3_lpm_u2_enabled: USB3 hardware U2 LPM enabled
- * @string_langid: language ID for strings
- * @product: iProduct string, if present (static)
- * @manufacturer: iManufacturer string, if present (static)
- * @serial: iSerialNumber string, if present (static)
- * @filelist: usbfs files that are open to this device
- * @maxchild: number of ports if hub
- * @quirks: quirks of the whole device
- * @urbnum: number of URBs submitted for the whole device
- * @active_duration: total time device is not suspended
- * @connect_time: time device was first connected
- * @do_remote_wakeup:  remote wakeup should be enabled
- * @reset_resume: needs reset instead of resume
- * @port_is_suspended: the upstream port is suspended (L2 or U3)
- * @wusb_dev: if this is a Wireless USB device, link to the WUSB
- *      specific data for the device.
- * @slot_id: Slot ID assigned by xHCI
- * @removable: Device can be physically removed from this port
- * @l1_params: best effor service latency for USB2 L1 LPM state, and L1 timeout.
- * @u1_params: exit latencies for USB3 U1 LPM state, and hub-initiated timeout.
- * @u2_params: exit latencies for USB3 U2 LPM state, and hub-initiated timeout.
- * @lpm_disable_count: Ref count used by usb_disable_lpm() and usb_enable_lpm()
- *      to keep track of the number of functions that require USB 3.0 Link Power
- *      Management to be disabled for this usb_device.  This count should only
- *      be manipulated by those functions, with the bandwidth_mutex is held.
- * @hub_delay: cached value consisting of:
- *      parent->hub_delay + wHubDelay + tTPTransmissionDelay (40ns)
- *      Will be used as wValue for SetIsochDelay requests.
- * @use_generic_driver: ask driver core to reprobe using the generic driver.
- *
- * Notes:
- * Usbcore drivers should not set usbdev->state directly.  Instead use
- * usb_set_device_state().
- */
-struct usb_device {
-        int             devnum;
-        char            devpath[16];
-        u32             route;
-        enum usb_device_state   state;
-        enum usb_device_speed   speed;
-        unsigned int            rx_lanes;
-        unsigned int            tx_lanes;
-
-        struct usb_tt   *tt;
-        int             ttport;
-
-        unsigned int toggle[2];
-
-        struct usb_device *parent;
-        struct usb_bus *bus;
-        struct usb_host_endpoint ep0;
-
-        struct device dev;
-
-        struct usb_device_descriptor descriptor;
-        struct usb_host_bos *bos;
-        struct usb_host_config *config;
-
-        struct usb_host_config *actconfig;
-        struct usb_host_endpoint *ep_in[16];
-        struct usb_host_endpoint *ep_out[16];
-
-        char **rawdescriptors;
-
-        unsigned short bus_mA;
-        u8 portnum;
-        u8 level;
-        u8 devaddr;
-
-        unsigned can_submit:1;
-        unsigned persist_enabled:1;
-        unsigned have_langid:1;
-        unsigned authorized:1;
-        unsigned authenticated:1;
-        unsigned wusb:1;
-        unsigned lpm_capable:1;
-        unsigned usb2_hw_lpm_capable:1;
-        unsigned usb2_hw_lpm_besl_capable:1;
-        unsigned usb2_hw_lpm_enabled:1;
-        unsigned usb2_hw_lpm_allowed:1;
-        unsigned usb3_lpm_u1_enabled:1;
-        unsigned usb3_lpm_u2_enabled:1;
-        int string_langid;
-
-        /* static strings from the device */
-        char *product;
-        char *manufacturer;
-        char *serial;
-
-        struct list_head filelist;
-
-        int maxchild;
-
-        u32 quirks;
-        atomic_t urbnum;
-
-        unsigned long active_duration;
-
-#ifdef CONFIG_PM
-        unsigned long connect_time;
-
-        unsigned do_remote_wakeup:1;
-        unsigned reset_resume:1;
-        unsigned port_is_suspended:1;
-#endif
-        struct wusb_dev *wusb_dev;
-        int slot_id;
-        enum usb_device_removable removable;
-        struct usb2_lpm_parameters l1_params;
-        struct usb3_lpm_parameters u1_params;
-        struct usb3_lpm_parameters u2_params;
-        unsigned lpm_disable_count;
-
-        u16 hub_delay;
-        unsigned use_generic_driver:1;
-};
-#define to_usb_device(d) container_of(d, struct usb_device, dev)
-
-
-
-
-/**
- * struct usb_interface - what usb device drivers talk to
- * @altsetting: array of interface structures, one for each alternate
- *      setting that may be selected.  Each one includes a set of
- *      endpoint configurations.  They will be in no particular order.
- * @cur_altsetting: the current altsetting.
- * @num_altsetting: number of altsettings defined.
- * @intf_assoc: interface association descriptor
- * @minor: the minor number assigned to this interface, if this
- *      interface is bound to a driver that uses the USB major number.
- *      If this interface does not use the USB major, this field should
- *      be unused.  The driver should set this value in the probe()
- *      function of the driver, after it has been assigned a minor
- *      number from the USB core by calling usb_register_dev().
- * @condition: binding state of the interface: not bound, binding
- *      (in probe()), bound to a driver, or unbinding (in disconnect())
- * @sysfs_files_created: sysfs attributes exist
- * @ep_devs_created: endpoint child pseudo-devices exist
- * @unregistering: flag set when the interface is being unregistered
- * @needs_remote_wakeup: flag set when the driver requires remote-wakeup
- *      capability during autosuspend.
- * @needs_altsetting0: flag set when a set-interface request for altsetting 0
- *      has been deferred.
- * @needs_binding: flag set when the driver should be re-probed or unbound
- *      following a reset or suspend operation it doesn't support.
- * @authorized: This allows to (de)authorize individual interfaces instead
- *      a whole device in contrast to the device authorization.
- * @dev: driver model's view of this device
- * @usb_dev: if an interface is bound to the USB major, this will point
- *      to the sysfs representation for that device.
- * @reset_ws: Used for scheduling resets from atomic context.
- * @resetting_device: USB core reset the device, so use alt setting 0 as
- *      current; needs bandwidth alloc after reset.
- *
- * USB device drivers attach to interfaces on a physical device.  Each
- * interface encapsulates a single high level function, such as feeding
- * an audio stream to a speaker or reporting a change in a volume control.
- * Many USB devices only have one interface.  The protocol used to talk to
- * an interface's endpoints can be defined in a usb "class" specification,
- * or by a product's vendor.  The (default) control endpoint is part of
- * every interface, but is never listed among the interface's descriptors.
- *
- * The driver that is bound to the interface can use standard driver model
- * calls such as dev_get_drvdata() on the dev member of this structure.
- *
- * Each interface may have alternate settings.  The initial configuration
- * of a device sets altsetting 0, but the device driver can change
- * that setting using usb_set_interface().  Alternate settings are often
- * used to control the use of periodic endpoints, such as by having
- * different endpoints use different amounts of reserved USB bandwidth.
- * All standards-conformant USB devices that use isochronous endpoints
- * will use them in non-default settings.
- *              
- * The USB specification says that alternate setting numbers must run from
- * 0 to one less than the total number of alternate settings.  But some
- * devices manage to mess this up, and the structures aren't necessarily
- * stored in numerical order anyhow.  Use usb_altnum_to_altsetting() to
- * look up an alternate setting in the altsetting array based on its number.
- */
-struct usb_interface {
-        /* array of alternate settings for this interface,
-         * stored in no particular order */
-        struct usb_host_interface *altsetting;
-
-        struct usb_host_interface *cur_altsetting;      /* the currently
-                                         * active alternate setting */
-        unsigned num_altsetting;        /* number of alternate settings */
-
-        /* If there is an interface association descriptor then it will list
-         * the associated interfaces */
-        struct usb_interface_assoc_descriptor *intf_assoc;
-
-        int minor;                      /* minor number this interface is
-                                         * bound to */
-        enum usb_interface_condition condition;         /* state of binding */
-        unsigned sysfs_files_created:1; /* the sysfs attributes exist */
-        unsigned ep_devs_created:1;     /* endpoint "devices" exist */
-        unsigned unregistering:1;       /* unregistration is in progress */
-        unsigned needs_remote_wakeup:1; /* driver requires remote wakeup */
-        unsigned needs_altsetting0:1;   /* switch to altsetting 0 is pending */
-        unsigned needs_binding:1;       /* needs delayed unbind/rebind */
-        unsigned resetting_device:1;    /* true: bandwidth alloc after reset */
-        unsigned authorized:1;          /* used for interface authorization */
-
-        struct device dev;              /* interface specific device info */
-        struct device *usb_dev;
-        struct work_struct reset_ws;    /* for resets in atomic context */
-};
-#define to_usb_interface(d) container_of(d, struct usb_interface, dev)
-
+###Initializing usb devio
 ```
-
-###Generating usb configuration
-
-
-static int __init usb_init(void) {
-        ...
-        retval = usb_register_device_driver(&usb_generic_driver, THIS_MODULE);
-        if (!retval)
+static struct cdev usb_device_cdev;
+        
+int __init usb_devio_init(void)
+{               
+        int retval;
+        
+        retval = register_chrdev_region(USB_DEVICE_DEV, USB_DEVICE_MAX,
+                                        "usb_device");
+        if (retval) {
+                printk(KERN_ERR "Unable to register minors for usb_device\n");
                 goto out;
-	...
+        }
+        cdev_init(&usb_device_cdev, &usbdev_file_operations);
+        retval = cdev_add(&usb_device_cdev, USB_DEVICE_DEV, USB_DEVICE_MAX);
+        if (retval) {
+                printk(KERN_ERR "Unable to get usb_device major %d\n",
+                       USB_DEVICE_MAJOR);
+                goto error_cdev;
+        }
+        usb_register_notify(&usbdev_nb);
+out:    
+        return retval;
+
+error_cdev:
+        unregister_chrdev_region(USB_DEVICE_DEV, USB_DEVICE_MAX);
+        goto out;
 }
 
+const struct file_operations usbdev_file_operations = {
+        .owner =          THIS_MODULE,
+        .llseek =         no_seek_end_llseek,
+        .read =           usbdev_read,
+        .poll =           usbdev_poll,
+        .unlocked_ioctl = usbdev_ioctl,
+        .compat_ioctl =   compat_ptr_ioctl,
+        .mmap =           usbdev_mmap,
+        .open =           usbdev_open,
+        .release =        usbdev_release,      
+};
+
+
+static int usbdev_notify(struct notifier_block *self,
+                               unsigned long action, void *dev)
+{               
+        switch (action) {
+        case USB_DEVICE_ADD:
+                break;
+        case USB_DEVICE_REMOVE:
+                usbdev_remove(dev);
+                break;
+        }
+        return NOTIFY_OK;
+}               
+        
+static struct notifier_block usbdev_nb = {
+        .notifier_call =        usbdev_notify,
+};      
+
+```
+The first thing done by the usb devio initialization is 
+initializing and creating the character device for usb devices.
+Compared to platform devices,
+usb devices provides interfaces to the user programs
+so that the user can directly communicate with the 
+device files of the usb devices. 
+The usb_dev_file_operations provides 
+file operations related callback functions for that purpose. 
+XXX: how the other devices are accessed ? does it through the devio??????
+
+###Registering usb hub device driver
+```c
+int usb_hub_init(void)
+{       
+        if (usb_register(&hub_driver) < 0) {
+                printk(KERN_ERR "%s: can't register hub driver\n",
+                        usbcore_name);
+                return -1;
+        }
+        
+        /*      
+         * The workqueue needs to be freezable to avoid interfering with
+         * USB-PERSIST port handover. Otherwise it might see that a full-speed
+         * device was gone before the EHCI controller had handed its port
+         * over to the companion full-speed controller.
+         */
+        hub_wq = alloc_workqueue("usb_hub_wq", WQ_FREEZABLE, 0);
+        if (hub_wq)
+                return 0;
+
+        /* Fall through if kernel_thread failed */
+        usb_deregister(&hub_driver);
+        pr_err("%s: can't allocate workqueue for usb hub\n", usbcore_name);
+
+        return -1;
+}  
+        
+MODULE_DEVICE_TABLE(usb, hub_id_table);
+static struct usb_driver hub_driver = {
+        .name =         "hub",
+        .probe =        hub_probe,
+        .disconnect =   hub_disconnect,
+        .suspend =      hub_suspend,
+        .resume =       hub_resume,
+        .reset_resume = hub_reset_resume,
+        .pre_reset =    hub_pre_reset,
+        .post_reset =   hub_post_reset,
+        .unlocked_ioctl = hub_ioctl,
+        .id_table =     hub_id_table,
+        .supports_autosuspend = 1,
+};      
+                
+static const struct usb_device_id hub_id_table[] = {
+    { .match_flags = USB_DEVICE_ID_MATCH_VENDOR
+                   | USB_DEVICE_ID_MATCH_PRODUCT
+                   | USB_DEVICE_ID_MATCH_INT_CLASS,
+      .idVendor = USB_VENDOR_SMSC,
+      .idProduct = USB_PRODUCT_USB5534B,
+      .bInterfaceClass = USB_CLASS_HUB,
+      .driver_info = HUB_QUIRK_DISABLE_AUTOSUSPEND},
+    { .match_flags = USB_DEVICE_ID_MATCH_VENDOR
+                        | USB_DEVICE_ID_MATCH_INT_CLASS,
+      .idVendor = USB_VENDOR_GENESYS_LOGIC,
+      .bInterfaceClass = USB_CLASS_HUB,
+      .driver_info = HUB_QUIRK_CHECK_PORT_AUTOSUSPEND},
+    { .match_flags = USB_DEVICE_ID_MATCH_DEV_CLASS,
+      .bDeviceClass = USB_CLASS_HUB},
+    { .match_flags = USB_DEVICE_ID_MATCH_INT_CLASS,
+      .bInterfaceClass = USB_CLASS_HUB}, 
+    { }                                         /* Terminating entry */
+};      
+```
+
+##Register usb device drivers
+```c
 struct usb_device_driver usb_generic_driver = {
         .name = "usb",
         .match = usb_generic_driver_match,
@@ -1309,366 +400,1287 @@ int usb_register_device_driver(struct usb_device_driver *new_udriver,
         return retval;
 }
 EXPORT_SYMBOL_GPL(usb_register_device_driver);
+```
+Note that this function is slightly different 
+from usb_register_driver function
+which was used for 
+registering usb core interface drivers
+such as hub_driver, usbfs_driver.
+One of the notable difference is for_device field is only set 
+for the usb_generic_driver, and other interface driver 
+doesn't set the flag.
+Also differnet call back functions are set for this driver
+XXX
+The other biggest difference is 
+it invokes __usb_bus_reprobe_drivers function 
+for devices registered on the usb bus.
 
-/* called from driver core with dev locked */
-static int usb_probe_device(struct device *dev)
-{
-        struct usb_device_driver *udriver = to_usb_device_driver(dev->driver);
-        struct usb_device *udev = to_usb_device(dev);
-        int error = 0;
+#Long journey to understand how the USB device can be hot-plugged
+Although most basic usb core part and usb bus
+have been initialized at the boot-up,
+the internal usb controllers and another 
+layers of device driver should be bound
+to fully manage the usb subsystem. 
 
-        dev_dbg(dev, "%s\n", __func__);
+Previous initializations are mostly focused on the 
+usb core parts that provides 
+generic software layers for usb management 
+regradless of the hardware specification of the internal usb controller.
 
-        /* TODO: Add real matching code */
+However, the first layer that actually encounters
+usb attachment and detachment is the usb controller.
+As usb specification develops, 
+its controller implementing the specifications also evloved,
+and linux supports various usb controllers. 
 
-        /* The device should always appear to be in use
-         * unless the driver supports autosuspend.
-         */
-        if (!udriver->supports_autosuspend)
-                error = usb_autoresume_device(udev);
-        if (error)
-                return error;
+First to understand the linux-supporting usb controllers,
+you have to clearly distinguish 
+usb host controller interface from actual usb controller.
+There are four typical host controller interfaces supported by Linux:
+*OHCI (Open Host Controller Interface(Compaq)) supporting only USB1.1 (Full and Low speeds),
+*UHCI (Universal Host Controller Interface (Intel)) supporting 1.x(Full and Low speeds). 
+The hardware composition of UHCI is simple which makes its driver more complex burdening your processor.
+*EHCI (Extended Host Controller Interface) supporting USB 2.0.
+*XHCI (Extended Host Controller Interface) supporting USB 3.x and belows for compatibility (including 2.0, 1.X)
 
-        if (udriver->generic_subclass)
-                error = usb_generic_driver_probe(udev);
-        if (error)
-                return error;
-
-        /* Probe the USB device with the driver in hand, but only
-         * defer to a generic driver in case the current USB
-         * device driver has an id_table or a match function; i.e.,
-         * when the device driver was explicitly matched against
-         * a device.
-         *
-         * If the device driver does not have either of these,
-         * then we assume that it can bind to any device and is
-         * not truly a more specialized/non-generic driver, so a
-         * return value of -ENODEV should not force the device
-         * to be handled by the generic USB driver, as there
-         * can still be another, more specialized, device driver.
-         *
-         * This accommodates the usbip driver.
-         *
-         * TODO: What if, in the future, there are multiple
-         * specialized USB device drivers for a particular device?
-         * In such cases, there is a need to try all matching
-         * specialised device drivers prior to setting the
-         * use_generic_driver bit.
-         */
-        error = udriver->probe(udev);
-        if (error == -ENODEV && udriver != &usb_generic_driver &&
-            (udriver->id_table || udriver->match)) {
-                udev->use_generic_driver = 1;
-                return -EPROBE_DEFER;
-        }
-        return error;
-}
+XXX
+Although there is only one fixed specification for a particular USB version, 
+there can be various versions of USB controller 
+that implements particular specifications. 
+Therefore, 
+to support those controllers,
+device driver should be required.
+For example,
+the linux provides device driver supports for DWC3 
+which is 
+SuperSpeed (SS) USB 3.0 Dual-Role-Device (DRD) from Synopsys.
+Also, it has support for CDNS3
+which is a SuperSpeed (SS) USB 3.0 Dual-Role-Device (DRD) controller from Cadence.
+Furthermore, 
+note that there can be more device specific USB micro controller
+that is not supported by the linux officially. 
+For further information about Linux supported USB controller,
+take a look at usb directory.
 
 
 
+##The USB Host controller drivers
+There are various usb controllers 
+implemented by the different vendors 
+even though they support same USB specification.
+Therefore, to reduce the boilerplate in
+multiple host controller driver,
+linux implementes generic host controller code 
+that can support multiple versions of it. 
 
-int usb_generic_driver_probe(struct usb_device *udev)
-{
-        int err, c;
-
-        /* Choose and set the configuration.  This registers the interfaces
-         * with the driver core and lets interface drivers bind to them.
-         */
-        if (udev->authorized == 0)
-                dev_err(&udev->dev, "Device is not authorized for usage\n");
-        else {
-                c = usb_choose_configuration(udev);
-                if (c >= 0) {
-                        err = usb_set_configuration(udev, c);
-                        if (err && err != -ENODEV) {
-                                dev_err(&udev->dev, "can't set config #%d, error %d\n",
-                                        c, err);
-                                /* This need not be fatal.  The user can try to
-                                 * set other configurations. */
-                        }
-                }
-        }
-        /* USB device state == configured ... usable */
-        usb_notify_add_device(udev);
-
-        return 0;
-}
-
-/*
- * usb_set_configuration - Makes a particular device setting be current
- * @dev: the device whose configuration is being updated
- * @configuration: the configuration being chosen.
- *
- * Context: task context, might sleep. Caller holds device lock.
- *
- * This is used to enable non-default device modes.  Not all devices
- * use this kind of configurability; many devices only have one
- * configuration.
- *
- * @configuration is the value of the configuration to be installed.
- * According to the USB spec (e.g. section 9.1.1.5), configuration values
- * must be non-zero; a value of zero indicates that the device in
- * unconfigured.  However some devices erroneously use 0 as one of their
- * configuration values.  To help manage such devices, this routine will
- * accept @configuration = -1 as indicating the device should be put in
- * an unconfigured state.
- *
- * USB device configurations may affect Linux interoperability,
- * power consumption and the functionality available.  For example,
- * the default configuration is limited to using 100mA of bus power,
- * so that when certain device functionality requires more power,
- * and the device is bus powered, that functionality should be in some
- * non-default device configuration.  Other device modes may also be
- * reflected as configuration options, such as whether two ISDN
- * channels are available independently; and choosing between open
- * standard device protocols (like CDC) or proprietary ones.
- *
- * Note that a non-authorized device (dev->authorized == 0) will only
- * be put in unconfigured mode.
- *
- * Note that USB has an additional level of device configurability,
- * associated with interfaces.  That configurability is accessed using
- * usb_set_interface().
- *
- * This call is synchronous. The calling context must be able to sleep,
- * must own the device lock, and must not hold the driver model's USB
- * bus mutex; usb interface driver probe() methods cannot use this routine.
- *
- * Returns zero on success, or else the status code returned by the
- * underlying call that failed.  On successful completion, each interface
- * in the original device configuration has been destroyed, and each one
- * in the new configuration has been probed by all relevant usb device
- * drivers currently known to the kernel.
- */
-int usb_set_configuration(struct usb_device *dev, int configuration)
-{
-        int i, ret;
-        struct usb_host_config *cp = NULL;
-        struct usb_interface **new_interfaces = NULL;
-        struct usb_hcd *hcd = bus_to_hcd(dev->bus);
-        int n, nintf;
-
-        if (dev->authorized == 0 || configuration == -1)
-                configuration = 0;
-        else {
-                for (i = 0; i < dev->descriptor.bNumConfigurations; i++) {
-                        if (dev->config[i].desc.bConfigurationValue ==
-                                        configuration) {
-                                cp = &dev->config[i];
-                                break;
-                        }
-                }
-        }
-        if ((!cp && configuration != 0))
-                return -EINVAL;
-
-        /* The USB spec says configuration 0 means unconfigured.
-         * But if a device includes a configuration numbered 0,
-         * we will accept it as a correctly configured state.
-         * Use -1 if you really want to unconfigure the device.
-         */
-        if (cp && configuration == 0)
-                dev_warn(&dev->dev, "config 0 descriptor??\n");
-
-        /* Allocate memory for new interfaces before doing anything else,
-         * so that if we run out then nothing will have changed. */
-        n = nintf = 0;
-        if (cp) {
-                nintf = cp->desc.bNumInterfaces;
-                new_interfaces = kmalloc_array(nintf, sizeof(*new_interfaces),
-                                               GFP_NOIO);
-                if (!new_interfaces)
-                        return -ENOMEM;
-
-                for (; n < nintf; ++n) {
-                        new_interfaces[n] = kzalloc(
-                                        sizeof(struct usb_interface),
-                                        GFP_NOIO);
-                        if (!new_interfaces[n]) {
-                                ret = -ENOMEM;
-free_interfaces:
-                                while (--n >= 0)
-                                        kfree(new_interfaces[n]);
-                                kfree(new_interfaces);
-                                return ret;
-                        }
-                }
-
-                i = dev->bus_mA - usb_get_max_power(dev, cp);
-                if (i < 0)
-                        dev_warn(&dev->dev, "new config #%d exceeds power "
-                                        "limit by %dmA\n",
-                                        configuration, -i);
-        }
-
-        /* Wake up the device so we can send it the Set-Config request */
-        ret = usb_autoresume_device(dev);
-        if (ret)
-                goto free_interfaces;
-
-        /* if it's already configured, clear out old state first.
-         * getting rid of old interfaces means unbinding their drivers.
-         */
-        if (dev->state != USB_STATE_ADDRESS)
-                usb_disable_device(dev, 1);     /* Skip ep0 */
-
-        /* Get rid of pending async Set-Config requests for this device */
-        cancel_async_set_config(dev);
-
-        /* Make sure we have bandwidth (and available HCD resources) for this
-         * configuration.  Remove endpoints from the schedule if we're dropping
-         * this configuration to set configuration 0.  After this point, the
-         * host controller will not allow submissions to dropped endpoints.  If
-         * this call fails, the device state is unchanged.
-         */
-        mutex_lock(hcd->bandwidth_mutex);
-        /* Disable LPM, and re-enable it once the new configuration is
-         * installed, so that the xHCI driver can recalculate the U1/U2
-         * timeouts.
-         */
-        if (dev->actconfig && usb_disable_lpm(dev)) {
-                dev_err(&dev->dev, "%s Failed to disable LPM\n", __func__);
-                mutex_unlock(hcd->bandwidth_mutex);
-                ret = -ENOMEM;
-                goto free_interfaces;
-        }
-        ret = usb_hcd_alloc_bandwidth(dev, cp, NULL, NULL);
-        if (ret < 0) {
-                if (dev->actconfig)
-                        usb_enable_lpm(dev);
-                mutex_unlock(hcd->bandwidth_mutex);
-                usb_autosuspend_device(dev);
-                goto free_interfaces;
-        }
+```c
+struct usb_hcd {
 
         /*
-         * Initialize the new interface structures and the
-         * hc/hcd/usbcore interface/endpoint state.
+         * housekeeping
          */
-        for (i = 0; i < nintf; ++i) {
-                struct usb_interface_cache *intfc;
-                struct usb_interface *intf;
-                struct usb_host_interface *alt;
-                u8 ifnum;
+        struct usb_bus          self;           /* hcd is-a bus */
+        struct kref             kref;           /* reference counter */
 
-                cp->interface[i] = intf = new_interfaces[i];
-                intfc = cp->intf_cache[i];
-                intf->altsetting = intfc->altsetting;
-                intf->num_altsetting = intfc->num_altsetting;
-                intf->authorized = !!HCD_INTF_AUTHORIZED(hcd);
-                kref_get(&intfc->ref);
+        const char              *product_desc;  /* product/vendor string */
+        int                     speed;          /* Speed for this roothub.
+                                                 * May be different from
+                                                 * hcd->driver->flags & HCD_MASK
+                                                 */
+        char                    irq_descr[24];  /* driver + bus # */
 
-                alt = usb_altnum_to_altsetting(intf, 0);
+        struct timer_list       rh_timer;       /* drives root-hub polling */
+        struct urb              *status_urb;    /* the current status urb */
+#ifdef CONFIG_PM
+        struct work_struct      wakeup_work;    /* for remote wakeup */
+#endif
+        struct work_struct      died_work;      /* for when the device dies */
 
-                /* No altsetting 0?  We'll assume the first altsetting.
-                 * We could use a GetInterface call, but if a device is
-                 * so non-compliant that it doesn't have altsetting 0
-                 * then I wouldn't trust its reply anyway.
-                 */
-                if (!alt)
-                        alt = &intf->altsetting[0];
+        /*
+         * hardware info/state
+         */
+        const struct hc_driver  *driver;        /* hw-specific hooks */
+	...
 
-                ifnum = alt->desc.bInterfaceNumber;
-                intf->intf_assoc = find_iad(dev, cp, ifnum);
-                intf->cur_altsetting = alt;
-                usb_enable_interface(dev, intf, true);
-                intf->dev.parent = &dev->dev;
-                if (usb_of_has_combined_node(dev)) {
-                        device_set_of_node_from_dev(&intf->dev, &dev->dev);
-                } else {
-                        intf->dev.of_node = usb_of_get_interface_node(dev,
-                                        configuration, ifnum);
-                }
-                ACPI_COMPANION_SET(&intf->dev, ACPI_COMPANION(&dev->dev));
-                intf->dev.driver = NULL;
-                intf->dev.bus = &usb_bus_type;
-                intf->dev.type = &usb_if_device_type;
-                intf->dev.groups = usb_interface_groups;
-                INIT_WORK(&intf->reset_ws, __usb_queue_reset_device);
-                intf->minor = -1;
-                device_initialize(&intf->dev);
-                pm_runtime_no_callbacks(&intf->dev);
-                dev_set_name(&intf->dev, "%d-%s:%d.%d", dev->bus->busnum,
-                                dev->devpath, configuration, ifnum);
-                usb_get_dev(dev);
+}
+```
+Usb_hcd structure maintains general information
+required for managing USB controllers 
+regradless of its specification versions and vendors. 
+Therefore, 
+to utilize the benefit of Linux USB subsystem,
+each host controller driver should provide
+all information required by generic usb_hcd structure.
+
+
+###xHCI usb specification 
+Let's switch gears and take a look at 
+USB specification, particularly xHCI. 
+At the time of writing this posting,
+the xHCI usb specification is the up-to-date version of USB
+supporting usb3.x and belows such as usb1.x and usb 2.0.
+
+The USB specification is a essential information
+to represent a particular USB host controller device.
+You can see that 
+usb_hcd structure contains the hc_driver structure pointer
+in the above code block.
+This structure contains USB specification specific callback functions 
+utilized by the USB host controller driver 
+to support specific USB protocol such as USB 3.0, USB 2.0, etc. 
+
+**drivers/usb/host/xhci.c file**
+```c
+static const struct hc_driver xhci_hc_driver = {
+        .description =          "xhci-hcd",
+        .product_desc =         "xHCI Host Controller",
+        .hcd_priv_size =        sizeof(struct xhci_hcd),
+
+        /*
+         * generic hardware linkage
+         */
+        .irq =                  xhci_irq,
+        .flags =                HCD_MEMORY | HCD_DMA | HCD_USB3 | HCD_SHARED |
+                                HCD_BH,
+
+        /*
+         * basic lifecycle operations
+         */
+        .reset =                NULL, /* set in xhci_init_driver() */
+        .start =                xhci_run,
+        .stop =                 xhci_stop,
+        .shutdown =             xhci_shutdown,
+
+        /*
+         * managing i/o requests and associated device resources
+         */
+        .map_urb_for_dma =      xhci_map_urb_for_dma,
+        .unmap_urb_for_dma =    xhci_unmap_urb_for_dma,
+        .urb_enqueue =          xhci_urb_enqueue,
+        .urb_dequeue =          xhci_urb_dequeue,
+        .alloc_dev =            xhci_alloc_dev,
+        .free_dev =             xhci_free_dev,
+        .alloc_streams =        xhci_alloc_streams,
+        .free_streams =         xhci_free_streams,
+        .add_endpoint =         xhci_add_endpoint,
+        .drop_endpoint =        xhci_drop_endpoint,
+        .endpoint_disable =     xhci_endpoint_disable,
+        .endpoint_reset =       xhci_endpoint_reset,
+        .check_bandwidth =      xhci_check_bandwidth,
+        .reset_bandwidth =      xhci_reset_bandwidth,
+        .address_device =       xhci_address_device,
+        .enable_device =        xhci_enable_device,
+        .update_hub_device =    xhci_update_hub_device,
+        .reset_device =         xhci_discover_or_reset_device,
+
+        /*
+         * scheduling support
+         */
+        .get_frame_number =     xhci_get_frame,
+
+        /*
+         * root hub support
+         */
+        .hub_control =          xhci_hub_control,
+        .hub_status_data =      xhci_hub_status_data,
+        .bus_suspend =          xhci_bus_suspend,
+        .bus_resume =           xhci_bus_resume,
+        .get_resuming_ports =   xhci_get_resuming_ports,
+
+        /*
+         * call back when device connected and addressed
+         */
+        .update_device =        xhci_update_device,
+        .set_usb2_hw_lpm =      xhci_set_usb2_hardware_lpm,
+        .enable_usb3_lpm_timeout =      xhci_enable_usb3_lpm_timeout,
+        .disable_usb3_lpm_timeout =     xhci_disable_usb3_lpm_timeout,
+        .find_raw_port_number = xhci_find_raw_port_number,
+        .clear_tt_buffer_complete = xhci_clear_tt_buffer_complete,
+};
+```
+Because various USB controllers can adopt the xHCI specification,
+to reduce boiler plate code,
+Linux developers already implemented the generic operations
+required to support xHCI spec. 
+
+When one has reference to the xhci_hc_driver
+it can utilize all xHCI provided functionalities 
+and doesn't need to implement xHCI protocol 
+on its driver implementation once again. 
+
+```c
+void xhci_init_driver(struct hc_driver *drv,
+                      const struct xhci_driver_overrides *over)
+{
+        BUG_ON(!over);
+
+        /* Copy the generic table to drv then apply the overrides */
+        *drv = xhci_hc_driver;
+
+        if (over) {
+                drv->hcd_priv_size += over->extra_priv_size;
+                if (over->reset)
+                        drv->reset = over->reset;
+                if (over->start)
+                        drv->start = over->start;
         }
-        kfree(new_interfaces);
+}
+EXPORT_SYMBOL_GPL(xhci_init_driver);
+```
+The xHCI driver implementing the xhci_hc_driver doesn't consume this structure,
+but provide it to other drivers who want to utilize the xHCI specification.
+In other words, 
+xHCI driver is not designed to be bound to specific hardware module,
+but a just kernel level driver 
+designed to supports other usb host controllers.
+To acheive that, it exports function *xhci_init_driver*.
+When other device driver invokes this function,
+the xhci_hc_driver's reference is returned.
 
-        ret = usb_control_msg_send(dev, 0, USB_REQ_SET_CONFIGURATION, 0,
-                                   configuration, 0, NULL, 0,
-                                   USB_CTRL_SET_TIMEOUT, GFP_NOIO);
-        if (ret && cp) {
+###xHCI platform driver
+```c
+static struct platform_driver usb_xhci_driver = {
+        .probe  = xhci_plat_probe,
+        .remove = xhci_plat_remove,
+        .shutdown = usb_hcd_platform_shutdown,
+        .driver = {
+                .name = "xhci-hcd",
+                .pm = &xhci_plat_pm_ops,
+                .of_match_table = of_match_ptr(usb_xhci_of_match),
+                .acpi_match_table = ACPI_PTR(usb_xhci_acpi_match),
+        },
+};
+MODULE_ALIAS("platform:xhci-hcd");
+
+static int __init xhci_plat_init(void)
+{
+        xhci_init_driver(&xhci_plat_hc_driver, &xhci_plat_overrides);
+        return platform_driver_register(&usb_xhci_driver);
+}
+
+void xhci_init_driver(struct hc_driver *drv,
+                      const struct xhci_driver_overrides *over)
+{
+        BUG_ON(!over);
+
+        /* Copy the generic table to drv then apply the overrides */
+        *drv = xhci_hc_driver;
+
+        if (over) {
+                drv->hcd_priv_size += over->extra_priv_size;
+                if (over->reset)
+                        drv->reset = over->reset;
+                if (over->start)
+                        drv->start = over->start;
+        }
+}
+EXPORT_SYMBOL_GPL(xhci_init_driver);
+```
+The paltform driver for xHCI host controller interface
+invokes xhci_init_driver in its driver init function.
+This allows the xhci-hcd driver to get reference of the xHCI core object for hc_driver, and 
+also register the driver itself as platform driver.
+Note that usb_xhci_driver is a driver for platform xHCI controller. 
+
+
+
+###DWC3
+DWC3 is a SuperSpeed USB 3.0 controller developed by 
+the Synopsys DesignWare.
+In this posting this USB controller is used in our SoC
+and probed by the device tree.
+
+```c
+#ifdef CONFIG_OF
+static const struct of_device_id of_dwc3_match[] = {
+        {
+                .compatible = "snps,dwc3"
+        },
+        {
+                .compatible = "synopsys,dwc3"
+        },
+        { },
+};
+MODULE_DEVICE_TABLE(of, of_dwc3_match);
+
+static struct platform_driver dwc3_driver = {
+        .probe          = dwc3_probe,
+        .remove         = dwc3_remove,
+        .driver         = {
+                .name   = "dwc3",
+                .of_match_table = of_match_ptr(of_dwc3_match),
+                .acpi_match_table = ACPI_PTR(dwc3_acpi_match),
+                .pm     = &dwc3_dev_pm_ops,
+        },
+};
+module_platform_driver(dwc3_driver);
+```
+
+When a device node in the device tree
+has compatilbe string one of "snps,dwc3" or "synopsys,dwc3"
+the pre-designated probe function, dwc3_probe will be invoked.
+
+###DWC3 probe function
+Let's take a look at what happens when the DWC3 controller is found. 
+
+```c
+static int dwc3_probe(struct platform_device *pdev)
+{
+        struct device           *dev = &pdev->dev;
+        struct resource         *res, dwc_res;
+        struct dwc3             *dwc;
+
+        int                     ret;
+
+        void __iomem            *regs;
+
+        dwc = devm_kzalloc(dev, sizeof(*dwc), GFP_KERNEL);
+        if (!dwc)
+                return -ENOMEM;
+
+        dwc->dev = dev;
+
+        res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+        if (!res) {
+                dev_err(dev, "missing memory resource\n");
+                return -ENODEV;
+        }
+
+        dwc->xhci_resources[0].start = res->start;
+        dwc->xhci_resources[0].end = dwc->xhci_resources[0].start +
+                                        DWC3_XHCI_REGS_END;
+        dwc->xhci_resources[0].flags = res->flags;
+        dwc->xhci_resources[0].name = res->name;
+
+        /*
+         * Request memory region but exclude xHCI regs,
+         * since it will be requested by the xhci-plat driver.
+         */
+        dwc_res = *res;
+        dwc_res.start += DWC3_GLOBALS_REGS_START;
+
+        regs = devm_ioremap_resource(dev, &dwc_res);
+        if (IS_ERR(regs))
+                return PTR_ERR(regs);
+
+        dwc->regs       = regs;
+        dwc->regs_size  = resource_size(&dwc_res);
+
+        dwc3_get_properties(dwc);
+
+        dma_set_mask_and_coherent(dev, DMA_BIT_MASK(dwc->dma_mask_bits));
+
+        dwc->reset = devm_reset_control_array_get(dev, true, true);
+        if (IS_ERR(dwc->reset))
+                return PTR_ERR(dwc->reset);
+
+        if (dev->of_node) {
+                ret = devm_clk_bulk_get_all(dev, &dwc->clks);
+                if (ret == -EPROBE_DEFER)
+                        return ret;
                 /*
-                 * All the old state is gone, so what else can we do?
-                 * The device is probably useless now anyway.
+                 * Clocks are optional, but new DT platforms should support all
+                 * clocks as required by the DT-binding.
                  */
-                usb_hcd_alloc_bandwidth(dev, NULL, NULL, NULL);
-                for (i = 0; i < nintf; ++i) {
-                        usb_disable_interface(dev, cp->interface[i], true);
-                        put_device(&cp->interface[i]->dev);
-                        cp->interface[i] = NULL;
-                }
-                cp = NULL;
+                if (ret < 0)
+                        dwc->num_clks = 0;
+                else
+                        dwc->num_clks = ret;
+
         }
-
-        dev->actconfig = cp;
-        mutex_unlock(hcd->bandwidth_mutex);
-
-        if (!cp) {
-                usb_set_device_state(dev, USB_STATE_ADDRESS);
-
-                /* Leave LPM disabled while the device is unconfigured. */
-                usb_autosuspend_device(dev);
+        ret = reset_control_deassert(dwc->reset);
+        if (ret)
                 return ret;
-        }
-        usb_set_device_state(dev, USB_STATE_CONFIGURED);
 
-        if (cp->string == NULL &&
-                        !(dev->quirks & USB_QUIRK_CONFIG_INTF_STRINGS))
-                cp->string = usb_cache_string(dev, cp->desc.iConfiguration);
+        ret = clk_bulk_prepare_enable(dwc->num_clks, dwc->clks);
+        if (ret)
+                goto assert_reset;
 
-        /* Now that the interfaces are installed, re-enable LPM. */
-        usb_unlocked_enable_lpm(dev);
-        /* Enable LTM if it was turned off by usb_disable_device. */
-        usb_enable_ltm(dev);
-
-        /* Now that all the interfaces are set up, register them
-         * to trigger binding of drivers to interfaces.  probe()
-         * routines may install different altsettings and may
-         * claim() any interfaces not yet bound.  Many class drivers
-         * need that: CDC, audio, video, etc.
-         */
-        for (i = 0; i < nintf; ++i) {
-                struct usb_interface *intf = cp->interface[i];
-
-                if (intf->dev.of_node &&
-                    !of_device_is_available(intf->dev.of_node)) {
-                        dev_info(&dev->dev, "skipping disabled interface %d\n",
-                                 intf->cur_altsetting->desc.bInterfaceNumber);
-                        continue;
-                }
-
-                dev_dbg(&dev->dev,
-                        "adding %s (config #%d, interface %d)\n",
-                        dev_name(&intf->dev), configuration,
-                        intf->cur_altsetting->desc.bInterfaceNumber);
-                device_enable_async_suspend(&intf->dev);
-                ret = device_add(&intf->dev);
-                if (ret != 0) {
-                        dev_err(&dev->dev, "device_add(%s) --> %d\n",
-                                dev_name(&intf->dev), ret);
-                        continue;
-                }
-                create_intf_ep_devs(intf);
+        if (!dwc3_core_is_valid(dwc)) { 
+                dev_err(dwc->dev, "this is not a DesignWare USB3 DRD Core\n");
+                ret = -ENODEV;
+                goto disable_clks;
         }
 
-        usb_autosuspend_device(dev);
+        platform_set_drvdata(pdev, dwc);
+        dwc3_cache_hwparams(dwc);
+
+        spin_lock_init(&dwc->lock);
+
+        pm_runtime_set_active(dev);
+        pm_runtime_use_autosuspend(dev);
+        pm_runtime_set_autosuspend_delay(dev, DWC3_DEFAULT_AUTOSUSPEND_DELAY);
+        pm_runtime_enable(dev);
+        ret = pm_runtime_get_sync(dev);
+        if (ret < 0)
+                goto err1;
+
+        pm_runtime_forbid(dev);
+
+        ret = dwc3_alloc_event_buffers(dwc, DWC3_EVENT_BUFFERS_SIZE);
+        if (ret) {
+                dev_err(dwc->dev, "failed to allocate event buffers\n");
+                ret = -ENOMEM;
+                goto err2;
+        }
+
+        ret = dwc3_get_dr_mode(dwc);
+        if (ret)
+                goto err3;
+
+        ret = dwc3_alloc_scratch_buffers(dwc);
+        if (ret)
+                goto err3;
+
+        ret = dwc3_core_init(dwc);
+        if (ret) {
+                if (ret != -EPROBE_DEFER)
+                        dev_err(dev, "failed to initialize core: %d\n", ret);
+                goto err4;
+        }
+
+        dwc3_check_params(dwc);
+
+        ret = dwc3_core_init_mode(dwc);
+        if (ret)
+                goto err5;
+
+        dwc3_debugfs_init(dwc);
+        pm_runtime_put(dev);
+
+        return 0;
+	...
+}
+```
+The first priority of the dwc3_probe function is 
+retrieving the memory mapped address of the dwc3 USB controller. 
+This address should be specified in the device node of the DWC3 controller. 
+When you look at the binding of the DWC3,
+you can easily find that 
+the first reg value of the DWC3 binding is 
+a memory address of the DWC3 controller mapped on that system.
+Therefore, by invoking *res = platform_get_resource(pdev, IORESOURCE_MEM, 0)*
+you can retrieve the memory mapped address of the DWC3 controller.
+
+This address region not only contains xHCI information, but also DWC3 specific registers. 
+Because we will defer to the xHCI driver 
+on discovering its registers and configuring xHCI specific settings,
+we will skip the memory region containing the xHCI registers
+by adding predefined DWC3 offset
+(dwc_res.start += DWC3_GLOBALS_REGS_START).
+
+Because currently accessible address is physically mapped DWC3 register address,
+we need to let the kernel translate this address and 
+generate kernel virtual address. 
+To achieve it,
+it invoke sdevm_ioremap_resource function. 
+After this function is invokes, 
+we can access the DWC3 register as if
+it resides on the virtual memory of the kernel. 
+
+After the successful ioremap,
+dwc3_cache_hwparams function reads the DWC3 configuration registers 
+and stores them in the dwc3 structure object
+as a cache.
+The reason of having cache is reading those information from the actual memory
+is much faster than reading them from the memory mapped DWC3's actual registers.
+```c
+static void dwc3_cache_hwparams(struct dwc3 *dwc)
+{
+        struct dwc3_hwparams    *parms = &dwc->hwparams;
+
+        parms->hwparams0 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS0);
+        parms->hwparams1 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS1);
+        parms->hwparams2 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS2);
+        parms->hwparams3 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS3);
+        parms->hwparams4 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS4);
+        parms->hwparams5 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS5);
+        parms->hwparams6 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS6);
+        parms->hwparams7 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS7);
+        parms->hwparams8 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS8);
+}
+```
+The registers read by the above function are 
+GHWPARAMS0 to GHWPARAMS7 which are Global Hardware Parameters registers.
+These registers contain all the information
+required to initialize the DWC3 device driver.
+The detailed information about those registers are described in the DWC3 specification.
+
+The GHWPARAMS0 register read from dwc3_cache_hwparams function
+is used to determine the mode of the DWC3 controller.
+There are three different types of mode:
+Device-only, Host-only, and  Dual-role device (DRD).
+
+```c
+static int dwc3_get_dr_mode(struct dwc3 *dwc)
+{
+        enum usb_dr_mode mode;
+        struct device *dev = dwc->dev;
+        unsigned int hw_mode;
+
+        if (dwc->dr_mode == USB_DR_MODE_UNKNOWN)
+                dwc->dr_mode = USB_DR_MODE_OTG;
+
+        mode = dwc->dr_mode;
+        hw_mode = DWC3_GHWPARAMS0_MODE(dwc->hwparams.hwparams0);
+
+        switch (hw_mode) {
+        case DWC3_GHWPARAMS0_MODE_GADGET:
+                if (IS_ENABLED(CONFIG_USB_DWC3_HOST)) {
+                        dev_err(dev,
+                                "Controller does not support host mode.\n");
+                        return -EINVAL;
+                }
+                mode = USB_DR_MODE_PERIPHERAL;
+                break;
+        case DWC3_GHWPARAMS0_MODE_HOST:
+                if (IS_ENABLED(CONFIG_USB_DWC3_GADGET)) {
+                        dev_err(dev,
+                                "Controller does not support device mode.\n");
+                        return -EINVAL;
+                }
+                mode = USB_DR_MODE_HOST;
+                break;
+        default:
+                if (IS_ENABLED(CONFIG_USB_DWC3_HOST))
+                        mode = USB_DR_MODE_HOST;
+                else if (IS_ENABLED(CONFIG_USB_DWC3_GADGET))
+                        mode = USB_DR_MODE_PERIPHERAL;
+
+                /*
+                 * DWC_usb31 and DWC_usb3 v3.30a and higher do not support OTG
+                 * mode. If the controller supports DRD but the dr_mode is not
+                 * specified or set to OTG, then set the mode to peripheral.
+                 */
+                if (mode == USB_DR_MODE_OTG &&
+                    (!IS_ENABLED(CONFIG_USB_ROLE_SWITCH) ||
+                     !device_property_read_bool(dwc->dev, "usb-role-switch")) &&
+                    !DWC3_VER_IS_PRIOR(DWC3, 330A))
+                        mode = USB_DR_MODE_PERIPHERAL;
+        }
+
+        if (mode != dwc->dr_mode) {
+                dev_warn(dev,
+                         "Configuration mismatch. dr_mode forced to %s\n",
+                         mode == USB_DR_MODE_HOST ? "host" : "gadget");
+
+                dwc->dr_mode = mode;
+        }
+
         return 0;
 }
-EXPORT_SYMBOL_GPL(usb_set_configuration);
-
-
-
-
 ```
+The above function determines the operation mode of the DWC3
+Based on this mode, dwc3 core can be initialized in different way.
+
+```c
+tatic int dwc3_core_init_mode(struct dwc3 *dwc)
+{
+        struct device *dev = dwc->dev;
+        int ret;
+
+        switch (dwc->dr_mode) {
+        case USB_DR_MODE_PERIPHERAL:
+                dwc3_set_prtcap(dwc, DWC3_GCTL_PRTCAP_DEVICE);
+
+                if (dwc->usb2_phy)
+                        otg_set_vbus(dwc->usb2_phy->otg, false);
+                phy_set_mode(dwc->usb2_generic_phy, PHY_MODE_USB_DEVICE);
+                phy_set_mode(dwc->usb3_generic_phy, PHY_MODE_USB_DEVICE);
+
+                ret = dwc3_gadget_init(dwc);
+                if (ret) {
+                        if (ret != -EPROBE_DEFER)
+                                dev_err(dev, "failed to initialize gadget\n");
+                        eeturn ret;
+                }
+                break;
+        case USB_DR_MODE_HOST:
+                dwc3_set_prtcap(dwc, DWC3_GCTL_PRTCAP_HOST);
+
+                if (dwc->usb2_phy)
+                        otg_set_vbus(dwc->usb2_phy->otg, true);
+                phy_set_mode(dwc->usb2_generic_phy, PHY_MODE_USB_HOST);
+                phy_set_mode(dwc->usb3_generic_phy, PHY_MODE_USB_HOST);
+
+                ret = dwc3_host_init(dwc);
+                if (ret) {
+                        if (ret != -EPROBE_DEFER)
+                                dev_err(dev, "failed to initialize host\n");
+                        return ret;
+                }
+                break;
+        case USB_DR_MODE_OTG:
+                INIT_WORK(&dwc->drd_work, __dwc3_set_mode);
+                ret = dwc3_drd_init(dwc);
+                if (ret) {
+                        if (ret != -EPROBE_DEFER)
+                                dev_err(dev, "failed to initialize dual-role\n");
+                        return ret;
+                }
+                break;
+        default:
+                dev_err(dev, "Unsupported mode of operation %d\n", dwc->dr_mode);
+                return -EINVAL;
+        }
+
+        return 0;
+}
+```
+When the dr_mode is set as USB_DR_MODE_HOST,
+it invokes dwc_host_init function
+which register xHCI device!
+
+###dwc3 host init-allocate xhci-hcd platform device
+```c
+int dwc3_host_init(struct dwc3 *dwc)
+{
+        struct property_entry   props[4];
+        struct platform_device  *xhci;
+        int                     ret, irq;
+        struct resource         *res;
+        struct platform_device  *dwc3_pdev = to_platform_device(dwc->dev);
+        int                     prop_idx = 0;
+
+        irq = dwc3_host_get_irq(dwc);
+        if (irq < 0)
+                return irq;
+
+        res = platform_get_resource_byname(dwc3_pdev, IORESOURCE_IRQ, "host");
+        if (!res)
+                res = platform_get_resource_byname(dwc3_pdev, IORESOURCE_IRQ,
+                                "dwc_usb3");
+        if (!res)
+                res = platform_get_resource(dwc3_pdev, IORESOURCE_IRQ, 0);
+        if (!res)
+                return -ENOMEM;
+
+        dwc->xhci_resources[1].start = irq;
+        dwc->xhci_resources[1].end = irq;
+        dwc->xhci_resources[1].flags = res->flags;
+        dwc->xhci_resources[1].name = res->name;
+
+        xhci = platform_device_alloc("xhci-hcd", PLATFORM_DEVID_AUTO);
+        if (!xhci) {
+                dev_err(dwc->dev, "couldn't allocate xHCI device\n");
+                return -ENOMEM;
+        }
+
+        xhci->dev.parent        = dwc->dev;
+        ACPI_COMPANION_SET(&xhci->dev, ACPI_COMPANION(dwc->dev));
+
+        dwc->xhci = xhci;
+
+        ret = platform_device_add_resources(xhci, dwc->xhci_resources,
+                                                DWC3_XHCI_RESOURCES_NUM);
+        if (ret) {
+                dev_err(dwc->dev, "couldn't add resources to xHCI device\n");
+                goto err;
+        }
+
+        memset(props, 0, sizeof(struct property_entry) * ARRAY_SIZE(props));
+
+        if (dwc->usb3_lpm_capable)
+                props[prop_idx++] = PROPERTY_ENTRY_BOOL("usb3-lpm-capable");
+
+        if (dwc->usb2_lpm_disable)
+                props[prop_idx++] = PROPERTY_ENTRY_BOOL("usb2-lpm-disable");
+
+        /**
+         * WORKAROUND: dwc3 revisions <=3.00a have a limitation
+         * where Port Disable command doesn't work.
+         *
+         * The suggested workaround is that we avoid Port Disable
+         * completely.
+         *
+         * This following flag tells XHCI to do just that.
+         */
+        if (DWC3_VER_IS_WITHIN(DWC3, ANY, 300A))
+                props[prop_idx++] = PROPERTY_ENTRY_BOOL("quirk-broken-port-ped");
+
+        if (prop_idx) {
+                ret = platform_device_add_properties(xhci, props);
+                if (ret) {
+                        dev_err(dwc->dev, "failed to add properties to xHCI\n");
+                        goto err;
+                }
+        }
+
+        ret = platform_device_add(xhci);
+        if (ret) {
+                dev_err(dwc->dev, "failed to register xHCI device\n");
+                goto err;
+        }
+
+        return 0;
+err:
+        platform_device_put(xhci);
+        return ret;
+}
+```
+It invokes platform_device_alloc("xhci-hcd", PLATFORM_DEVID_AUTO) function
+which allocates and register the platform device.
+Note that the device name "xhci-hcd" is the name of the device driver 
+that we've explored before.
+Yes this is the name of usb_xhci_driver
+which will be used to bind the allocated device to the driver. 
+After the xHCI device is allocated,
+it registers the generated device to the platform bus
+by invoking platform_device_add function.
+This function invokes device_add function, and
+because the autoprobe flag is enabled for the platform bus,
+its corresponding driver's bind function will be invoked.  
+
+##Let's go back to usb_xhi_driver again!
+Because the generated platform device doesn't have of_match table,
+it will utilize the name of the device "xhci-hcd" and
+will bound to the usb_xhci_driver.
+
+```c
+static int xhci_plat_probe(struct platform_device *pdev)
+{
+        const struct xhci_plat_priv *priv_match;
+        const struct hc_driver  *driver;
+        struct device           *sysdev, *tmpdev;
+        struct xhci_hcd         *xhci;
+        struct resource         *res;
+        struct usb_hcd          *hcd;
+        int                     ret;
+        int                     irq;
+        struct xhci_plat_priv   *priv = NULL;
+
+
+        if (usb_disabled())
+                return -ENODEV;
+
+        driver = &xhci_plat_hc_driver;
+
+        irq = platform_get_irq(pdev, 0);
+        if (irq < 0)
+                return irq;
+
+        /*
+         * sysdev must point to a device that is known to the system firmware
+         * or PCI hardware. We handle these three cases here:
+         * 1. xhci_plat comes from firmware
+         * 2. xhci_plat is child of a device from firmware (dwc3-plat)
+         * 3. xhci_plat is grandchild of a pci device (dwc3-pci)
+         */
+        for (sysdev = &pdev->dev; sysdev; sysdev = sysdev->parent) {
+                if (is_of_node(sysdev->fwnode) ||
+                        is_acpi_device_node(sysdev->fwnode))
+                        break;
+#ifdef CONFIG_PCI
+                else if (sysdev->bus == &pci_bus_type)
+                        break;
+#endif
+        }
+
+        if (!sysdev)
+                sysdev = &pdev->dev;
+
+        /* Try to set 64-bit DMA first */
+        if (WARN_ON(!sysdev->dma_mask))
+                /* Platform did not initialize dma_mask */
+                ret = dma_coerce_mask_and_coherent(sysdev,
+                                                   DMA_BIT_MASK(64));
+        else
+                ret = dma_set_mask_and_coherent(sysdev, DMA_BIT_MASK(64));
+
+        /* If seting 64-bit DMA mask fails, fall back to 32-bit DMA mask */
+        if (ret) {
+                ret = dma_set_mask_and_coherent(sysdev, DMA_BIT_MASK(32));
+                if (ret)
+                        return ret;
+        }
+
+        pm_runtime_set_active(&pdev->dev);
+        pm_runtime_enable(&pdev->dev);
+        pm_runtime_get_noresume(&pdev->dev);
+
+        hcd = __usb_create_hcd(driver, sysdev, &pdev->dev,
+                               dev_name(&pdev->dev), NULL);
+        if (!hcd) {
+                ret = -ENOMEM;
+                goto disable_runtime;
+        }
+
+        hcd->regs = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
+        if (IS_ERR(hcd->regs)) {
+                ret = PTR_ERR(hcd->regs);
+                goto put_hcd;
+        }
+
+        hcd->rsrc_start = res->start;
+        hcd->rsrc_len = resource_size(res);
+
+        xhci = hcd_to_xhci(hcd);
+
+        /*
+         * Not all platforms have clks so it is not an error if the
+         * clock do not exist.
+         */
+        xhci->reg_clk = devm_clk_get_optional(&pdev->dev, "reg");
+        if (IS_ERR(xhci->reg_clk)) {
+                ret = PTR_ERR(xhci->reg_clk);
+                goto put_hcd;
+        }
+
+        ret = clk_prepare_enable(xhci->reg_clk);
+        if (ret)
+                goto put_hcd;
+
+        xhci->clk = devm_clk_get_optional(&pdev->dev, NULL);
+        if (IS_ERR(xhci->clk)) {
+                ret = PTR_ERR(xhci->clk);
+                goto disable_reg_clk;
+        }
+
+        ret = clk_prepare_enable(xhci->clk);
+        if (ret)
+                goto disable_reg_clk;
+
+        if (pdev->dev.of_node)
+                priv_match = of_device_get_match_data(&pdev->dev);
+        else
+                priv_match = dev_get_platdata(&pdev->dev);
+
+        if (priv_match) {
+                priv = hcd_to_xhci_priv(hcd);
+                /* Just copy data for now */
+                *priv = *priv_match;
+        }
+
+        device_set_wakeup_capable(&pdev->dev, true);
+
+        xhci->main_hcd = hcd;
+        xhci->shared_hcd = __usb_create_hcd(driver, sysdev, &pdev->dev,
+                        dev_name(&pdev->dev), hcd);
+        if (!xhci->shared_hcd) {
+                ret = -ENOMEM;
+                goto disable_clk;
+        }
+
+        /* imod_interval is the interrupt moderation value in nanoseconds. */
+        xhci->imod_interval = 40000;
+
+        /* Iterate over all parent nodes for finding quirks */
+        for (tmpdev = &pdev->dev; tmpdev; tmpdev = tmpdev->parent) {
+
+                if (device_property_read_bool(tmpdev, "usb2-lpm-disable"))
+                        xhci->quirks |= XHCI_HW_LPM_DISABLE;
+
+                if (device_property_read_bool(tmpdev, "usb3-lpm-capable"))
+                        xhci->quirks |= XHCI_LPM_SUPPORT;
+
+                if (device_property_read_bool(tmpdev, "quirk-broken-port-ped"))
+                        xhci->quirks |= XHCI_BROKEN_PORT_PED;
+
+                device_property_read_u32(tmpdev, "imod-interval-ns",
+                                         &xhci->imod_interval);
+        }
+
+        hcd->usb_phy = devm_usb_get_phy_by_phandle(sysdev, "usb-phy", 0);
+        if (IS_ERR(hcd->usb_phy)) {
+                ret = PTR_ERR(hcd->usb_phy);
+                if (ret == -EPROBE_DEFER)
+                        goto put_usb3_hcd;
+                hcd->usb_phy = NULL;
+        } else {
+                ret = usb_phy_init(hcd->usb_phy);
+                if (ret)
+                        goto put_usb3_hcd;
+        }
+
+        hcd->tpl_support = of_usb_host_tpl_support(sysdev->of_node);
+        xhci->shared_hcd->tpl_support = hcd->tpl_support;
+        if (priv && (priv->quirks & XHCI_SKIP_PHY_INIT))
+                hcd->skip_phy_initialization = 1;
+
+        if (priv && (priv->quirks & XHCI_SG_TRB_CACHE_SIZE_QUIRK))
+                xhci->quirks |= XHCI_SG_TRB_CACHE_SIZE_QUIRK;
+
+        ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
+        if (ret)
+                goto disable_usb_phy;
+
+        if (HCC_MAX_PSA(xhci->hcc_params) >= 4)
+                xhci->shared_hcd->can_do_streams = 1;
+
+        ret = usb_add_hcd(xhci->shared_hcd, irq, IRQF_SHARED);
+        if (ret)
+                goto dealloc_usb2_hcd;
+
+        device_enable_async_suspend(&pdev->dev);
+        pm_runtime_put_noidle(&pdev->dev);
+
+        /*
+         * Prevent runtime pm from being on as default, users should enable
+         * runtime pm using power/control in sysfs.
+         */
+        pm_runtime_forbid(&pdev->dev);
+
+        return 0;
+
+
+dealloc_usb2_hcd:
+        usb_remove_hcd(hcd);
+
+disable_usb_phy:
+        usb_phy_shutdown(hcd->usb_phy);
+
+put_usb3_hcd:
+        usb_put_hcd(xhci->shared_hcd);
+
+disable_clk:
+        clk_disable_unprepare(xhci->clk);
+
+disable_reg_clk:
+        clk_disable_unprepare(xhci->reg_clk);
+
+put_hcd:
+        usb_put_hcd(hcd);
+
+disable_runtime:
+        pm_runtime_put_noidle(&pdev->dev);
+        pm_runtime_disable(&pdev->dev);
+
+        return ret;
+}
+```
+The probe function firstly assigns the xhci_plat_hc_driver object 
+to the driver local variable. 
+Remember that 
+xhci_plat_hc_driver object is intialized 
+to contain the reference of xhci core hc_driver
+at the module loading time. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###xHCI platform probe - registering root hub
+
+
+
+
+
+
+XXXTODO!!
+###Registering root hub from the controller
+```c
+/**
+ * usb_add_hcd - finish generic HCD structure initialization and register
+ * @hcd: the usb_hcd structure to initialize
+ * @irqnum: Interrupt line to allocate
+ * @irqflags: Interrupt type flags
+ *
+ * Finish the remaining parts of generic HCD initialization: allocate the
+ * buffers of consistent memory, register the bus, request the IRQ line,
+ * and call the driver's reset() and start() routines.
+ */
+int usb_add_hcd(struct usb_hcd *hcd,
+                unsigned int irqnum, unsigned long irqflags)
+{
+        int retval;
+        struct usb_device *rhdev;
+
+        if (!hcd->skip_phy_initialization && usb_hcd_is_primary_hcd(hcd)) {
+                hcd->phy_roothub = usb_phy_roothub_alloc(hcd->self.sysdev);
+                if (IS_ERR(hcd->phy_roothub))
+                        return PTR_ERR(hcd->phy_roothub);
+
+                retval = usb_phy_roothub_init(hcd->phy_roothub);
+                if (retval)
+                        return retval;
+
+                retval = usb_phy_roothub_set_mode(hcd->phy_roothub,
+                                                  PHY_MODE_USB_HOST_SS);
+                if (retval)
+                        retval = usb_phy_roothub_set_mode(hcd->phy_roothub,
+                                                          PHY_MODE_USB_HOST);
+                if (retval)
+                        goto err_usb_phy_roothub_power_on;
+
+                retval = usb_phy_roothub_power_on(hcd->phy_roothub);
+                if (retval)
+                        goto err_usb_phy_roothub_power_on;
+        }
+
+        dev_info(hcd->self.controller, "%s\n", hcd->product_desc);
+
+        switch (authorized_default) {
+        case USB_AUTHORIZE_NONE:
+                hcd->dev_policy = USB_DEVICE_AUTHORIZE_NONE;
+                break;
+
+        case USB_AUTHORIZE_ALL:
+                hcd->dev_policy = USB_DEVICE_AUTHORIZE_ALL;
+                break;
+
+        case USB_AUTHORIZE_INTERNAL:
+                hcd->dev_policy = USB_DEVICE_AUTHORIZE_INTERNAL;
+                break;
+
+        case USB_AUTHORIZE_WIRED:
+        default:
+                hcd->dev_policy = hcd->wireless ?
+                        USB_DEVICE_AUTHORIZE_NONE : USB_DEVICE_AUTHORIZE_ALL;
+                break;
+        }
+
+        set_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
+
+        /* per default all interfaces are authorized */
+        set_bit(HCD_FLAG_INTF_AUTHORIZED, &hcd->flags);
+
+        /* HC is in reset state, but accessible.  Now do the one-time init,
+         * bottom up so that hcds can customize the root hubs before hub_wq
+         * starts talking to them.  (Note, bus id is assigned early too.)
+         */
+        retval = hcd_buffer_create(hcd);
+        if (retval != 0) {
+                dev_dbg(hcd->self.sysdev, "pool alloc failed\n");
+                goto err_create_buf;
+        }
+
+        retval = usb_register_bus(&hcd->self);
+        if (retval < 0)
+                goto err_register_bus;
+
+        rhdev = usb_alloc_dev(NULL, &hcd->self, 0);
+        if (rhdev == NULL) {
+                dev_err(hcd->self.sysdev, "unable to allocate root hub\n");
+                retval = -ENOMEM;
+                goto err_allocate_root_hub;
+        }
+        mutex_lock(&usb_port_peer_mutex);
+        hcd->self.root_hub = rhdev;
+        mutex_unlock(&usb_port_peer_mutex);
+
+        rhdev->rx_lanes = 1;
+        rhdev->tx_lanes = 1;
+
+        switch (hcd->speed) {
+        case HCD_USB11:
+                rhdev->speed = USB_SPEED_FULL;
+                break;
+        case HCD_USB2:
+                rhdev->speed = USB_SPEED_HIGH;
+                break;
+        case HCD_USB25:
+                rhdev->speed = USB_SPEED_WIRELESS;
+                break;
+        case HCD_USB3:
+                rhdev->speed = USB_SPEED_SUPER;
+                break;
+        case HCD_USB32:
+                rhdev->rx_lanes = 2;
+                rhdev->tx_lanes = 2;
+                fallthrough;
+        case HCD_USB31:
+                rhdev->speed = USB_SPEED_SUPER_PLUS;
+                break;
+        default:
+                retval = -EINVAL;
+                goto err_set_rh_speed;
+        }
+
+        /* wakeup flag init defaults to "everything works" for root hubs,
+         * but drivers can override it in reset() if needed, along with
+         * recording the overall controller's system wakeup capability.
+         */
+        device_set_wakeup_capable(&rhdev->dev, 1);
+
+        /* HCD_FLAG_RH_RUNNING doesn't matter until the root hub is
+         * registered.  But since the controller can die at any time,
+         * let's initialize the flag before touching the hardware.
+         */
+        set_bit(HCD_FLAG_RH_RUNNING, &hcd->flags);
+
+        /* "reset" is misnamed; its role is now one-time init. the controller
+         * should already have been reset (and boot firmware kicked off etc).
+         */
+        if (hcd->driver->reset) {
+                retval = hcd->driver->reset(hcd);
+                if (retval < 0) {
+                        dev_err(hcd->self.controller, "can't setup: %d\n",
+                                        retval);
+                        goto err_hcd_driver_setup;
+                }
+        }
+        hcd->rh_pollable = 1;
+
+        retval = usb_phy_roothub_calibrate(hcd->phy_roothub);
+        if (retval)
+                goto err_hcd_driver_setup;
+
+        /* NOTE: root hub and controller capabilities may not be the same */
+        if (device_can_wakeup(hcd->self.controller)
+                        && device_can_wakeup(&hcd->self.root_hub->dev))
+                dev_dbg(hcd->self.controller, "supports USB remote wakeup\n");
+
+        /* initialize tasklets */
+        init_giveback_urb_bh(&hcd->high_prio_bh);
+        init_giveback_urb_bh(&hcd->low_prio_bh);
+
+        /* enable irqs just before we start the controller,
+         * if the BIOS provides legacy PCI irqs.
+         */
+        if (usb_hcd_is_primary_hcd(hcd) && irqnum) {
+                retval = usb_hcd_request_irqs(hcd, irqnum, irqflags);
+                if (retval)
+                        goto err_request_irq;
+        }
+
+        hcd->state = HC_STATE_RUNNING;
+        retval = hcd->driver->start(hcd);
+        if (retval < 0) {
+                dev_err(hcd->self.controller, "startup error %d\n", retval);
+                goto err_hcd_driver_start;
+        }
+
+        /* starting here, usbcore will pay attention to this root hub */
+        retval = register_root_hub(hcd);
+        if (retval != 0)
+                goto err_register_root_hub;
+
+        if (hcd->uses_new_polling && HCD_POLL_RH(hcd))
+                usb_hcd_poll_rh_status(hcd);
+
+        return retval;
+
+err_register_root_hub:
+        hcd->rh_pollable = 0;
+        clear_bit(HCD_FLAG_POLL_RH, &hcd->flags);
+        del_timer_sync(&hcd->rh_timer);
+        hcd->driver->stop(hcd);
+        hcd->state = HC_STATE_HALT;
+        clear_bit(HCD_FLAG_POLL_RH, &hcd->flags);
+        del_timer_sync(&hcd->rh_timer);
+err_hcd_driver_start:
+        if (usb_hcd_is_primary_hcd(hcd) && hcd->irq > 0)
+                free_irq(irqnum, hcd);
+err_request_irq:
+err_hcd_driver_setup:
+err_set_rh_speed:
+        usb_put_invalidate_rhdev(hcd);
+err_allocate_root_hub:
+        usb_deregister_bus(&hcd->self);
+err_register_bus:
+        hcd_buffer_destroy(hcd);
+err_create_buf:
+        usb_phy_roothub_power_off(hcd->phy_roothub);
+err_usb_phy_roothub_power_on:
+        usb_phy_roothub_exit(hcd->phy_roothub);
+
+        return retval;
+}
+EXPORT_SYMBOL_GPL(usb_add_hcd);
+```
+
+
+
+```c
+/**
+ * register_root_hub - called by usb_add_hcd() to register a root hub
+ * @hcd: host controller for this root hub
+ *
+ * This function registers the root hub with the USB subsystem.  It sets up
+ * the device properly in the device tree and then calls usb_new_device()
+ * to register the usb device.  It also assigns the root hub's USB address
+ * (always 1).
+ *
+ * Return: 0 if successful. A negative error code otherwise.
+ */
+static int register_root_hub(struct usb_hcd *hcd)
+{
+        struct device *parent_dev = hcd->self.controller;
+        struct usb_device *usb_dev = hcd->self.root_hub;
+        const int devnum = 1;
+        int retval;
+
+        usb_dev->devnum = devnum;
+        usb_dev->bus->devnum_next = devnum + 1;
+        set_bit (devnum, usb_dev->bus->devmap.devicemap);
+        usb_set_device_state(usb_dev, USB_STATE_ADDRESS);
+
+        mutex_lock(&usb_bus_idr_lock);
+
+        usb_dev->ep0.desc.wMaxPacketSize = cpu_to_le16(64);
+        retval = usb_get_device_descriptor(usb_dev, USB_DT_DEVICE_SIZE);
+        if (retval != sizeof usb_dev->descriptor) {
+                mutex_unlock(&usb_bus_idr_lock);
+                dev_dbg (parent_dev, "can't read %s device descriptor %d\n",
+                                dev_name(&usb_dev->dev), retval);
+                return (retval < 0) ? retval : -EMSGSIZE;
+        }
+
+        if (le16_to_cpu(usb_dev->descriptor.bcdUSB) >= 0x0201) {
+                retval = usb_get_bos_descriptor(usb_dev);
+                if (!retval) {
+                        usb_dev->lpm_capable = usb_device_supports_lpm(usb_dev);
+                } else if (usb_dev->speed >= USB_SPEED_SUPER) {
+                        mutex_unlock(&usb_bus_idr_lock);
+                        dev_dbg(parent_dev, "can't read %s bos descriptor %d\n",
+                                        dev_name(&usb_dev->dev), retval);
+                        return retval;
+                }
+        }
+
+        retval = usb_new_device (usb_dev);
+        if (retval) {
+                dev_err (parent_dev, "can't register root hub for %s, %d\n",
+                                dev_name(&usb_dev->dev), retval);
+        } else {
+                spin_lock_irq (&hcd_root_hub_lock);
+                hcd->rh_registered = 1;
+                spin_unlock_irq (&hcd_root_hub_lock);
+
+                /* Did the HC die before the root hub was registered? */
+                if (HCD_DEAD(hcd))
+                        usb_hc_died (hcd);      /* This time clean up */
+        }
+        mutex_unlock(&usb_bus_idr_lock);
+
+        return retval;
+}
+```
+
+
+##When xHCI platform driver can be probed???
+
+
+
+
+
+
+
+
+
+
+
+
+
 

@@ -84,6 +84,7 @@ where a X86 MicroAssembler class instance is created.
 
 *gem5/src/arch/x86/isa/microasm.isa*
 ```python
+{% raw %}
  52 let {{
  53     import sys
  54     sys.path[0:0] = ["src/arch/x86/isa/"]
@@ -92,6 +93,7 @@ where a X86 MicroAssembler class instance is created.
  57     from micro_asm import MicroAssembler, Rom_Macroop
  58     mainRom = X86MicrocodeRom('main ROM')
  59     assembler = MicroAssembler(X86Macroop, microopClasses, mainRom, Rom_Macroop)
+{% endraw %}
 ```
 
 As shown on the line 59,
@@ -820,7 +822,6 @@ Note that retrieved container is an instance of *X86Macroop python class*.
 ###getDefinition: generate cpp class definition for macroop
 *gem5/src/arch/x86/isa/macroop.isa*
 ```python
-{% raw %}
 205         def getDefinition(self, env):
 206             #FIXME This first parameter should be the mnemonic. I need to
 207             #write some code which pulls that out
@@ -878,7 +879,6 @@ Note that retrieved container is an instance of *X86Macroop python class*.
 259                                  "init_env" : self.initEnv})
 260             return MacroConstructor.subst(iop) + \
 261                    MacroDisassembly.subst(iop);
-{% endraw %}
 ```
 
 Currently, 

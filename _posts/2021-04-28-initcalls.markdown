@@ -1,6 +1,6 @@
 ---
 layout: post
-titile: "Linux devicetree and platform drivers
+titile: "Initcalls: Initializing Linux subsystems"
 categories: linux, embedded-linux
 ---
 

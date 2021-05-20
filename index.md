@@ -4,4 +4,5 @@
 
 layout: page
 ---
-Hello this is test for homepage
+Most of the blog postings are just for my own studying
+Pleas take them with a grain of salt.

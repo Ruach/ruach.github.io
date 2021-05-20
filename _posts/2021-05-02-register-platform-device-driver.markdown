@@ -1,6 +1,6 @@
 ---
 layout: post
-titile: "Linux usb core driver interface
+titile: "How to register platform driver?"
 categories: linux, embedded-linux
 ---
 We will cover how the platform device drivers 

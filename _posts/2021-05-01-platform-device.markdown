@@ -1,6 +1,6 @@
 ---
 layout: post
-titile: "Linux devicetree and platform drivers
+titile: "Linux devicetree and platform drivers"
 categories: linux, embedded-linux
 ---
 

@@ -4,7 +4,7 @@ titile: "Linux devicetree and platform drivers"
 categories: linux, embedded-linux
 ---
 
-###Kernel initialization before DeviceTree
+### Kernel initialization before DeviceTree
 Although we are not going to cover the details of the initialization procedure,
 this post will take a look at 
 what happens before the device tree is initialized.

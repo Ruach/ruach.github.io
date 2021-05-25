@@ -1,6 +1,6 @@
 ---
 layout: post
-titile: "Pagetable walking and pagefault handling in Gem5"
+tittle: "Pagetable walking and pagefault handling in Gem5"
 categories: GEM5, TLB
 ---
 

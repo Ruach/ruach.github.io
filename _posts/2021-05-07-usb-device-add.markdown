@@ -3,7 +3,7 @@ layout: post
 titile: "Linux usb core driver interface
 categories: linux, embedded-linux
 ---
-#USB drivers are designed for interfaces
+# USB drivers are designed for interfaces
 
 For USB device,
 the drivers are not designed for the USB device itself,
@@ -26,6 +26,7 @@ and how those usb drivers can be probed later
 when the new usb device is plugged in. 
 
 ##Registering USB interface driver
+
 ```c
 /**
  * module_usb_driver() - Helper macro for registering a USB driver

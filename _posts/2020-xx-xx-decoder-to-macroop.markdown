@@ -1,4 +1,4 @@
-##decode isa and automatically generated decoder
+# decode isa and automatically generated decoder
 *gem5/src/arch/x86/isa/decoder/decoder.isa*
 ```cpp
 decode LEGACY_LOCK default Unknown::unknown()
@@ -32,7 +32,7 @@ decode LEGACY_LOCK default Unknown::unknown()
 ```
 
 
-##Deep dive into decode block parsing
+## Deep dive into decode block parsing
 *gem5/src/arch/isa_parser*
 ```python
 2209     def p_top_level_decode_block(self, t):
@@ -103,7 +103,7 @@ and can be parsed from *decode_stmt_list* token.
 2261         t[0] = t[1] + t[2]
 ```
 
-###Four different types of decode_stmt
+### Four different types of decode_stmt
 decode_stmt_list consists of decode_stmt or 
 decode_stmt followed by another decode_stmt_list.
 Let's take a look at decode_stmt rule.
@@ -245,7 +245,7 @@ we have to look at *formatMap* dictionary
 which returns Format data structure
 associated with format id of macroop instruction.
 
-###formatMap
+### formatMap
 *gem5/src/arch/isa_parser.py*
 ```python
 1564         # This dictionary maps format name strings to Format objects.
@@ -319,7 +319,7 @@ and invokes defineInst function thorugh the Format.
 Also note that defFormat receives 
 code and parameters of the parsed def format block.
 
-###defineInst needs two dynamically compiled functions
+### defineInst needs two dynamically compiled functions
 We can now understand what is the Format and
 how and when the generated Format is pushed into the formatMap.
 Then what happens when *defineInst* is invoked 
@@ -395,7 +395,7 @@ def defInst(_code, _context, *opTypeSet):
 The generated defInst function pointer is stored 
 to the *self.func* member field of Format instance.
 
-###Finally defineInst is invoked!
+### Finally defineInst is invoked!
 After two functions are compiled, 
 it can finally invokes *defineInst* function.
 To understand what kind of operands are needed by defineInst,

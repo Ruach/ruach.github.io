@@ -1,0 +1,114 @@
+
+**cpu/o3/impl.hh**
+```cpp
+// Forward declarations.
+template <class Impl>
+class BaseO3DynInst;
+
+template <class Impl>
+class FullO3CPU;
+
+/** Implementation specific struct that defines several key types to the
+ *  CPU, the stages within the CPU, the time buffers, and the DynInst.
+ *  The struct defines the ISA, the CPU policy, the specific DynInst, the
+ *  specific O3CPU, and all of the structs from the time buffers to do
+ *  communication.
+ *  This is one of the key things that must be defined for each hardware
+ *  specific CPU implementation.
+ */
+struct O3CPUImpl
+{
+    /** The type of MachInst. */
+    typedef TheISA::MachInst MachInst;
+
+    /** The CPU policy to be used, which defines all of the CPU stages. */
+    typedef SimpleCPUPolicy<O3CPUImpl> CPUPol;
+
+    /** The DynInst type to be used. */
+    typedef BaseO3DynInst<O3CPUImpl> DynInst;
+
+    /** The refcounted DynInst pointer to be used.  In most cases this is
+     *  what should be used, and not DynInst *.
+     */
+    typedef RefCountingPtr<DynInst> DynInstPtr;
+    typedef RefCountingPtr<const DynInst> DynInstConstPtr;
+
+    /** The O3CPU type to be used. */
+    typedef FullO3CPU<O3CPUImpl> O3CPU;
+
+    /** Same typedef, but for CPUType.  BaseDynInst may not always use
+     * an O3 CPU, so it's clearer to call it CPUType instead in that
+     * case.
+     */
+    typedef O3CPU CPUType;
+
+    enum {
+      MaxWidth = 8,
+      MaxThreads = 4
+    };
+};
+```
+
+
+
+**cpu/o3/cpu_policy.hh**
+```cpp
+/**
+ * Struct that defines the key classes to be used by the CPU.  All
+ * classes use the typedefs defined here to determine what are the
+ * classes of the other stages and communication buffers.  In order to
+ * change a structure such as the IQ, simply change the typedef here
+ * to use the desired class instead, and recompile.  In order to
+ * create a different CPU to be used simultaneously with this one, see
+ * the alpha_impl.hh file for instructions.
+ */
+template<class Impl>
+struct SimpleCPUPolicy
+{
+    /** Typedef for the freelist of registers. */
+    typedef UnifiedFreeList FreeList;
+    /** Typedef for the rename map. */
+    typedef UnifiedRenameMap RenameMap;
+    /** Typedef for the ROB. */
+    typedef ::ROB<Impl> ROB;
+    /** Typedef for the instruction queue/scheduler. */
+    typedef InstructionQueue<Impl> IQ;
+    /** Typedef for the memory dependence unit. */
+    typedef ::MemDepUnit<StoreSet, Impl> MemDepUnit;
+    /** Typedef for the LSQ. */
+    typedef ::LSQ<Impl> LSQ;
+    /** Typedef for the thread-specific LSQ units. */
+    typedef ::LSQUnit<Impl> LSQUnit;
+
+    /** Typedef for fetch. */
+    typedef DefaultFetch<Impl> Fetch;
+    /** Typedef for decode. */
+    typedef DefaultDecode<Impl> Decode;
+    /** Typedef for rename. */
+    typedef DefaultRename<Impl> Rename;
+    /** Typedef for Issue/Execute/Writeback. */
+    typedef DefaultIEW<Impl> IEW;
+    /** Typedef for commit. */
+    typedef DefaultCommit<Impl> Commit;
+
+    /** The struct for communication between fetch and decode. */
+    typedef DefaultFetchDefaultDecode<Impl> FetchStruct;
+
+    /** The struct for communication between decode and rename. */
+    typedef DefaultDecodeDefaultRename<Impl> DecodeStruct;
+
+    /** The struct for communication between rename and IEW. */
+    typedef DefaultRenameDefaultIEW<Impl> RenameStruct;
+
+    /** The struct for communication between IEW and commit. */
+    typedef DefaultIEWDefaultCommit<Impl> IEWStruct;
+
+    /** The struct for communication within the IEW stage. */
+    typedef ::IssueStruct<Impl> IssueStruct;
+
+    /** The struct for all backwards communication. */
+    typedef TimeBufStruct<Impl> TimeStruct;
+
+};
+
+```

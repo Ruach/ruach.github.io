@@ -1,0 +1,271 @@
+---
+layout: post
+titile: "Pybind11 in Gem5"
+categories: Gem5, Python3, pybind11
+---
+
+
+```python
+# The SimObject class is the root of the special hierarchy.  Most of
+# the code in this class deals with the configuration hierarchy itself
+# (parent/child node relationships).
+class SimObject(object):
+    # Specify metaclass.  Any class inheriting from SimObject will
+    # get this metaclass.
+    __metaclass__ = MetaSimObject
+    type = 'SimObject'
+    abstract = True
+
+    cxx_header = "sim/sim_object.hh"
+    cxx_extra_bases = [ "Drainable", "Serializable", "Stats::Group" ]
+    eventq_index = Param.UInt32(Parent.eventq_index, "Event Queue Index")
+
+    cxx_exports = [
+        PyBindMethod("init"),
+        PyBindMethod("initState"),
+        PyBindMethod("memInvalidate"),
+        PyBindMethod("memWriteback"),
+        PyBindMethod("regProbePoints"),
+        PyBindMethod("regProbeListeners"),
+        PyBindMethod("startup"),
+    ]
+
+    cxx_param_exports = [
+        PyBindProperty("name"),
+    ]
+
+    ......
+
+    # Initialize new instance.  For objects with SimObject-valued
+    # children, we need to recursively clone the classes represented
+    # by those param values as well in a consistent "deep copy"-style
+    # fashion.  That is, we want to make sure that each instance is
+    # cloned only once, and that if there are multiple references to
+    # the same original object, we end up with the corresponding
+    # cloned references all pointing to the same cloned instance.
+    def __init__(self, **kwargs):
+        ancestor = kwargs.get('_ancestor')
+        memo_dict = kwargs.get('_memo')
+        if memo_dict is None:
+            # prepare to memoize any recursively instantiated objects
+            memo_dict = {}
+        elif ancestor:
+            # memoize me now to avoid problems with recursive calls
+            memo_dict[ancestor] = self
+
+        if not ancestor:
+            ancestor = self.__class__
+        ancestor._instantiated = True
+
+        # initialize required attributes
+        self._parent = None
+        self._name = None
+        self._ccObject = None  # pointer to C++ object
+        self._ccParams = None
+        self._instantiated = False # really "cloned"
+
+        # Clone children specified at class level.  No need for a
+        # multidict here since we will be cloning everything.
+        # Do children before parameter values so that children that
+        # are also param values get cloned properly.
+        self._children = {}
+        for key,val in ancestor._children.items():
+            self.add_child(key, val(_memo=memo_dict))
+
+        # Inherit parameter values from class using multidict so
+        # individual value settings can be overridden but we still
+        # inherit late changes to non-overridden class values.
+        self._values = multidict(ancestor._values)
+        self._hr_values = multidict(ancestor._hr_values)
+        # clone SimObject-valued parameters
+        for key,val in ancestor._values.items():
+            val = tryAsSimObjectOrVector(val)
+            if val is not None:
+                self._values[key] = val(_memo=memo_dict)
+
+        # clone port references.  no need to use a multidict here
+        # since we will be creating new references for all ports.
+        self._port_refs = {}
+        for key,val in ancestor._port_refs.items():
+            self._port_refs[key] = val.clone(self, memo_dict)
+        # apply attribute assignments from keyword args, if any
+        for key,val in kwargs.items():
+            setattr(self, key, val)
+```
+
+
+
+**gem5/src/sconscript**
+```python
+# Generate SimObject Python bindings wrapper files
+if env['USE_PYTHON']:
+    for name,simobj in sorted(sim_objects.iteritems()):
+        py_source = PySource.modules[simobj.__module__]
+        extra_deps = [ py_source.tnode ]
+        cc_file = File('python/_m5/param_%s.cc' % name)
+        env.Command(cc_file, Value(name),
+                    MakeAction(createSimObjectPyBindWrapper,
+                               Transform("SO PyBind")))
+        env.Depends(cc_file, depends + extra_deps)
+        Source(cc_file)
+
+def createSimObjectPyBindWrapper(target, source, env):
+    name = source[0].get_text_contents()
+    obj = sim_objects[name]
+
+    code = code_formatter()
+    obj.pybind_decl(code)
+    code.write(target[0].abspath)
+```
+
+
+```python
+    def pybind_decl(cls, code):
+        py_class_name = cls.pybind_class
+
+        # The 'local' attribute restricts us to the params declared in
+        # the object itself, not including inherited params (which
+        # will also be inherited from the base class's param struct
+        # here). Sort the params based on their key
+        params = map(lambda k_v: k_v[1], sorted(cls._params.local.items()))
+        ports = cls._ports.local
+
+        code('''#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
+
+#include "params/$cls.hh"
+#include "python/pybind11/core.hh"
+#include "sim/init.hh"
+#include "sim/sim_object.hh"
+
+#include "${{cls.cxx_header}}"
+
+''')
+
+        for param in params:
+            param.pybind_predecls(code)
+
+        code('''namespace py = pybind11;
+
+static void
+module_init(py::module &m_internal)
+{
+    py::module m = m_internal.def_submodule("param_${cls}");
+''')
+        code.indent()
+        if cls._base:
+            code('py::class_<${cls}Params, ${{cls._base.type}}Params, ' \
+                 'std::unique_ptr<${{cls}}Params, py::nodelete>>(' \
+                 'm, "${cls}Params")')
+        else:
+            code('py::class_<${cls}Params, ' \
+                 'std::unique_ptr<${cls}Params, py::nodelete>>(' \
+                 'm, "${cls}Params")')
+
+        code.indent()
+        if not hasattr(cls, 'abstract') or not cls.abstract:
+            code('.def(py::init<>())')
+            code('.def("create", &${cls}Params::create)')
+
+        param_exports = cls.cxx_param_exports + [
+            PyBindProperty(k)
+            for k, v in sorted(cls._params.local.items())
+        ] + [
+            PyBindProperty("port_%s_connection_count" % port.name)
+            for port in ports.values()
+        ]
+        for exp in param_exports:
+            exp.export(code, "%sParams" % cls)
+
+        code(';')
+        code()
+        code.dedent()
+
+        bases = []
+        if 'cxx_base' in cls._value_dict:
+            # If the c++ base class implied by python inheritance was
+            # overridden, use that value.
+            if cls.cxx_base:
+                bases.append(cls.cxx_base)
+        elif cls._base:
+            # If not and if there was a SimObject base, use its c++ class
+            # as this class' base.
+            bases.append(cls._base.cxx_class)
+        # Add in any extra bases that were requested.
+        bases.extend(cls.cxx_extra_bases)
+
+        if bases:
+            base_str = ", ".join(bases)
+            code('py::class_<${{cls.cxx_class}}, ${base_str}, ' \
+                 'std::unique_ptr<${{cls.cxx_class}}, py::nodelete>>(' \
+                 'm, "${py_class_name}")')
+        else:
+            code('py::class_<${{cls.cxx_class}}, ' \
+                 'std::unique_ptr<${{cls.cxx_class}}, py::nodelete>>(' \
+                 'm, "${py_class_name}")')
+        code.indent()
+        for exp in cls.cxx_exports:
+            exp.export(code, cls.cxx_class)
+        code(';')
+        code.dedent()
+        code()
+        code.dedent()
+        code('}')
+        code()
+        code('static EmbeddedPyBind embed_obj("${0}", module_init, "${1}");',
+             cls, cls._base.type if cls._base else "")
+
+    _warned_about_nested_templates = False
+
+
+
+
+```
+
+
+## BaseCPU
+**gem5/src/cpu/BaseCPU**
+```python
+class BaseCPU(ClockedObject):
+    type = 'BaseCPU'
+    abstract = True
+    cxx_header = "cpu/base.hh"
+
+    cxx_exports = [
+        PyBindMethod("switchOut"),
+        PyBindMethod("takeOverFrom"),
+        PyBindMethod("switchedOut"),
+        PyBindMethod("flushTLBs"),
+        PyBindMethod("totalInsts"),
+        PyBindMethod("scheduleInstStop"),
+        PyBindMethod("getCurrentInstCount"),
+    ]
+
+
+```
+
+
+
+## Example: switchCPUS
+```python
+def switchCpus(system, cpuList, verbose=True):
+    # Now all of the CPUs are ready to be switched out
+    for old_cpu, new_cpu in cpuList:
+        old_cpu.switchOut()
+
+    # Change the memory mode if required. We check if this is needed
+    # to avoid printing a warning if no switch was performed.
+    if system.getMemoryMode() != memory_mode:
+        # Flush the memory system if we are switching to a memory mode
+        # that disables caches. This typically happens when switching to a
+        # hardware virtualized CPU.
+        if memory_mode == objects.params.atomic_noncaching:
+            memWriteback(system)
+            memInvalidate(system)
+
+        _changeMemoryMode(system, memory_mode)
+
+    for old_cpu, new_cpu in cpuList:
+        new_cpu.takeOverFrom(old_cpu)
+
+```

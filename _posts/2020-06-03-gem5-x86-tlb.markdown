@@ -1273,7 +1273,7 @@ its own pagefault related semantics
 before invoking the parent's invoke function 
 provided by the X86FaultBase class.
 
-### invoke change current RIP to pre-defined microops
+### Invoke change current RIP to pre-defined microops
 Basically, 
 invoke function makes the processor 
 jump to the pre-defined microcode function
@@ -1395,7 +1395,7 @@ when the interrupt makes use of error code,
 it should also be passed to the microcode
 
 To pass the arguments to the microcode world, 
-it invokes setIntRegs function defined in the threadcontext. 
+it invokes setIntReg functions defined in the threadcontext. 
 *Threadcontext* is instance of SimpleThread class 
 defined in cpu/simple_thread.hh
 (When you use the o3 out-of-order cpu model, 
@@ -1513,6 +1513,7 @@ defined in the gem5/src/arch/YOUR_ARCHITECTURE directory.
 In my case, because I use the X86
 it should be X86ISA namespace.
 
+### SetIntReg with TheISA
 Now let's go back to SimpleThread class.
 In addition to the architecture specific register context,
 it provides *setIntReg* function.
@@ -1554,13 +1555,13 @@ As shown in the invoke function,
 micro register 1,7, and 15 has been used 
 to pass the fault related arguments to the microops.
 
-##Jump to the ROM code!
+## Jump to the ROM code!
 After finishing setting the required parameters
 now, it jumps to the stored ROM code 
 pointed to by the label.
 This control flow transition is done by 
 updating *_pcState* memeber field 
-of the SimpleThread class.
+of the SimpleThread class object.
 
 *gem5/srch/arch/x86/faults.cc*
 ```
@@ -1571,7 +1572,7 @@ of the SimpleThread class.
 ```
 
 When we look at the above code
-in the invoke function,
+in the invoke function of X86FaultBase class,
 we can find that it updates upc field of the pcState 
 to location of the ROM code.
 Note that romMicroPC function sets flag to specify upc 
@@ -1620,13 +1621,13 @@ not from the faulting instruction?
 Let's go back to the advancePC function
 that called the invoke function.
 
-#Let's go back to advancePC & advanceInst
+# Let's go back to advancePC & advanceInst
 *gem5/src/cpu/simple/base.cc*
 ```cpp
 673         fault->invoke(threadContexts[curThread], curStaticInst);
 674         thread->decoder.reset();
 ```
-After the invoke function has been executed
+After the invoke function is called 
 as part of the advancePC function,
 it resets the decoder,
 which updates decoder state as *ResetState*.
@@ -1724,16 +1725,6 @@ it invokes fetch() function defined in the TimingSimpleCPU class.
  668
  669     // We must have just got suspended by a PC event
  670     if (_status == Idle)
-Even though startWalk doesn't receive any function argument,
-note that all the required fields such as req and flags
-are contained in the WalkerState class instance
-that has been used for invoking startWalk function.
-The main purpose of this function is 
-send request to the cache or memory 
-to read the memory,
-which actually read the page-table residing in the memory.
-This memory reqeust results in page table access,
-and virtual to physical page mapping can be retrieved. 
  671         return;
  672
  673     TheISA::PCState pcState = thread->pcState();

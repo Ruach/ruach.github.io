@@ -7,7 +7,100 @@ In this posting,
 we are going to take a look at how the memory accesses
 can be resolved through the TLB and pagetable walking.
 
+# Who initiates TLB access?
+TLB maintains a virtual to physical address translation information
+to reduce time of walking the entire page table at every memory access.
+In other words, it is a cache of virtual to physical mapping maintained 
+by the processor usually. 
+Then which part of the CPU logic initiates the TLB logic, 
+and what operations should be done by the TLB component?  
+
+## Memory related operations of CPU sends request to TLB before accessing actual data
+```cpp
+ 425 Fault
+ 426 TimingSimpleCPU::initiateMemRead(Addr addr, unsigned size,
+ 427                                  Request::Flags flags,
+ 428                                  const std::vector<bool>& byte_enable)
+ 429 {
+ 430     SimpleExecContext &t_info = *threadInfo[curThread];
+ 431     SimpleThread* thread = t_info.thread;
+ 432 
+ 433     if (flags & Request::PREFETCH_EN_CACHE) {
+ 434         ENHandler handler = thread->readMiscRegNoEffect(MISCREG_EVENT_NOTIFIER);
+ 435         uint64_t addr = handler.addr << 8 | handler.redZone;
+ 436         DPRINTF(EnCache, "TimingSimpleCPU::initiateMemRead(): ENHandler address for cache is user:%#x\n", addr);
+ 437     }
+ 438 
+ 439     Fault fault;
+ 440     const int asid = 0;
+ 441     const Addr pc = thread->instAddr();
+ 442     unsigned block_size = cacheLineSize();
+ 443     BaseTLB::Mode mode = BaseTLB::Read;
+ 444 
+ 445     if (traceData)
+ 446         traceData->setMem(addr, size, flags);
+ 447 
+ 448     RequestPtr req = std::make_shared<Request>(
+ 449         asid, addr, size, flags, dataMasterId(), pc,
+ 450         thread->contextId());
+ 451     if (!byte_enable.empty()) {
+ 452         req->setByteEnable(byte_enable);
+ 453     }
+ 454    
+ 455     req->taskId(taskId());
+ 456 
+ 457     Addr split_addr = roundDown(addr + size - 1, block_size);
+ 458     assert(split_addr <= addr || split_addr - addr < block_size);
+ 459                                  
+ 460     _status = DTBWaitResponse;
+ 461     if (split_addr > addr) {
+ 462         RequestPtr req1, req2;
+ 463         assert(!req->isLLSC() && !req->isSwap());
+ 464         req->splitOnVaddr(split_addr, req1, req2);
+ 465    
+ 466         WholeTranslationState *state =
+ 467             new WholeTranslationState(req, req1, req2, new uint8_t[size],
+ 468                                       NULL, mode);
+ 469         DataTranslation<TimingSimpleCPU *> *trans1 =
+ 470             new DataTranslation<TimingSimpleCPU *>(this, state, 0);
+ 471         DataTranslation<TimingSimpleCPU *> *trans2 =
+ 472             new DataTranslation<TimingSimpleCPU *>(this, state, 1);
+ 473 
+ 474         thread->dtb->translateTiming(req1, thread->getTC(), trans1, mode);
+ 475         thread->dtb->translateTiming(req2, thread->getTC(), trans2, mode);
+ 476     } else {
+ 477         WholeTranslationState *state =
+ 478             new WholeTranslationState(req, new uint8_t[size], NULL, mode);
+ 479         DataTranslation<TimingSimpleCPU *> *translation
+ 480             = new DataTranslation<TimingSimpleCPU *>(this, state);
+ 481         thread->dtb->translateTiming(req, thread->getTC(), translation, mode);
+ 482     }
+ 483 
+ 484     return NoFault;
+ 485 }
+```
+One of the most important basic capability of processor is accessing memory.
+GEM5 make each processor implement their own memory access building blocks as 
+member function of each processor class. We are going to take a look at one simple processor,
+TimingSimpleCPU and corresponding memory function, initiateMemRead. 
+The detailed implementation of this function is going to be explained in XXX.
+Note that at the end of the initiateMemRead function, it generates 
+DataTranslation object and pass it to the translateTiming function defined 
+in the datacache component of the processor. 
+This translation object is used to process current TLB access request.
+Also note that translateTiming function needs threadContext to execute TLB accessing
+and RequestPtr object containing all the memory access request information
+such as virtual address. 
+
 ## Check TLB first, and then access memory
+Although the initiateMemRead function and following translateTiming function 
+can be considered to be used for initiating memory access,
+they are basically used to initiate TLB access. 
+The actual memory access happens after the TLB resolves 
+virtual to physical translation without incurring serious processor fault. 
+The memory accessing part will be described in 
+further posting, and we will focus on the translation part only. 
+
 *gem5/src/arch/x86/tlb.cc*
 ```cpp
 441 void
@@ -26,10 +119,12 @@ can be resolved through the TLB and pagetable walking.
 454 }
 ```
 
-*translateTiming* starts translation
-by invoking TLB::translate function.
-Depending on the TLB status,
-translate function fetch data from the TLB or memory.
+*translateTiming* starts translation by invoking TLB::translate function.
+Depending on the TLB status, translate function fetch data from the TLB or 
+memory (page table).
+Also note that translateTiming function is defined as a member function
+of *TLB* class, which means we are currently dealing with TLB components 
+jumping from the processor part. 
 Let's take a look at the part of the translate function
 that we are interested in.
 
@@ -76,27 +171,32 @@ that we are interested in.
 ```
 
 translate function first asks TLB to find 
-whether the required translation entry exist in the TLB already (line 345)
+whether the required translation entry exist in the TLB already (line 345, lookup function)
 When the TLB entry is not found,
-it starts to traverse pagetable 
+it starts to traverse pagetable stored in the memory
 to get virtual to physical translation (line 351-395)
 Because I assume that readers want to make use of the fullsystem emulation,
 we are going to take a look at line 360-369.
 
 When GEM5 executes in fullsystem mode, and TLB miss happens,
-it traverses the pagetable with pagetable_walker (line 361).
+it traverses the pagetable with pagetable_walker (line 361, walker object).
 Note that req parameter has been passed because
 it contains all the required information such as address, flags 
 to resolve memory access properly.
 
-
 ## Page table walking: when TLB misses happen
+When the TLB entry already exists in the TLB cache because 
+previous memory request with the same virtual address has been resolved by the TLB.
+However, when it is the initial request or the previous TLB entry has been evicted
+from the TLB cache, it should walk through the pagetable and retrieve the TLB entry
+We will take a look at how the TLB actually walks the pagetable and retrieve the 
+last-level page table entry.
+
 ### WalkerState per request
 Compared to other simple logic, 
-TLB misses cannot be resolved in one cycle in general
+*TLB misses cannot be resolved in one cycle in general*
 because it involves multiple memory accesses
 before the virtual to physical mapping is found. 
-
 
 *gem5/src/arch/x86/pagetable_walker.cc*
 ```cpp
@@ -886,7 +986,8 @@ re-invokes another finish function
 through the state member field (line 257).
 Also after invoking finish function,
 it invokes finishTranslation method
-of ThreadContext.
+of ThreadContext
+when Fault has been raised as a consequence of TLB processing.
 
 ### WholeTranslationState class object contains translation related info
 When we look at the initiateMemRead function again,
@@ -1575,8 +1676,6 @@ When we look at the above code
 in the invoke function of X86FaultBase class,
 we can find that it updates upc field of the pcState 
 to location of the ROM code.
-Note that romMicroPC function sets flag to specify upc 
-points to start address of ROM code.
 
 *gem5/src/base/types.hh*
 ```cpp
@@ -1603,17 +1702,45 @@ points to start address of ROM code.
 164 }
 ```
 
+Note that romMicroPC function sets flag to specify upc 
+points to start address of ROM code.
+Here the flag is just bit-wise ored to the upc address.
 
-After that, 
-by invoking tc->pcState(pcState),
-it update its member field _pcState 
+*arch/generic/types.hh*
+```cpp
+193 // A PC and microcode PC.
+194 template <class MachInst>
+195 class UPCState : public SimplePCState<MachInst>
+196 {
+197   protected:
+198     typedef SimplePCState<MachInst> Base;
+199 
+200     MicroPC _upc;
+201     MicroPC _nupc;
+202 
+203   public:
+204 
+205     MicroPC upc() const { return _upc; }
+206     void upc(MicroPC val) { _upc = val; }
+207 
+208     MicroPC nupc() const { return _nupc; }
+209     void nupc(MicroPC val) { _nupc = val; }
+```
+After the upc address is generated,
+it needs to update the pcState variable to change the 
+current upc address. You can also update the upc address of the 
+current processor's pcState variable, it is recommended to pass
+newly initialized pcState object to the processor context. 
+Therefore, new pcState variable invokes upc function
+to update its upc address.
+After that, by invoking tc->pcState(pcState),
+it update member field _pcState of a threadContexts
 to a new pcState,
 which makes the processor run 
 from the updated micro pc address
 when the next fetch happens.
 
-However, note that 
-this function just updates 
+However, note that this function just updates 
 _pcState member field of the ThreadContex.
 Then who actually redirects the pipeline to 
 fetch the new instructions from the ROM

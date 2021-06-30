@@ -2123,7 +2123,7 @@ static int of_platform_notify(struct notifier_block *nb,
 
 
 
-##Detect and add platform devices
+## Detect and add platform devices
 So far we explored how the platform bus has been initialized 
 as sub-system of the entire driver system of the Linux kernel.
 Then how can we detect the devices that needs to be registered as platform device

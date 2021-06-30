@@ -1991,12 +1991,11 @@ devices in the whole Linux driver system.
 
 
 
-###Add notifier block to device file notifier chain
+### Add notifier block to device file notifier chain
 Because device file heavily make use of platform device,
 it needs to register notifer of platform device,
 platform_of_notifer,
 to the devie file's notifier chain.
-%
 Before we take a look at 
 which platform related function 
 of the notifier block will be added 
@@ -2621,7 +2620,7 @@ klist_add_tail(&dev->p->knode_bus, &bus->p->klist_devices)
 macro adds the current device to the 
 klist_devices klist which are managed by the target bus.
 Note that the private field of the bus is used to register the device to the bus subsystem.
-%
+
 Remember that
 we allocated a private platform bus subsystem 
 using the platform_bus_type
@@ -2632,7 +2631,7 @@ whenever any device who wants to be attached to that bus
 should make the bus member field of the device 
 to reference platform_bus_type. 
 
-###Binding the device to the driver
+### Binding the device to the driver
 ```c
 /**      
  * bus_probe_device - probe drivers for a new device
@@ -2797,7 +2796,7 @@ This function is a simple macro
 that invokes the *match* function
 of the bus attached to the device. 
 
-###Platform device match function
+### Platform device match function
 ```c
 struct bus_type platform_bus_type = {
         .name           = "platform",
@@ -2877,7 +2876,7 @@ When the driver does not support the device tree,
 then other matching functions 
 should be in charge of device-to-driver matching.
 
-###Binding the matching driver and device
+### Binding the matching driver and device
 If the matching function finds a driver claiming that it can support 
 currently being registered device,
 __device_attach_driver function invokes the 
@@ -3172,7 +3171,6 @@ we can retrieve the matching driver's object
 Because platform_probe function is a generic wrapper probe for all platform devices,
 it invokes several functions to manage the device as platform device
 such as attaching power domain or setting the clk for the device.
-%
 After those generic settings are done,
 the real probe function of the matching driver is invoked. 
 Although, the platform_probe function only passes
@@ -3180,13 +3178,12 @@ the platform device object to the probe function,
 different buses can support different prototype of probe function.
 In that case the bus' probe function will feed those operands 
 before the driver's probe function is invoked.
-%
+
 For the probe function of the matching driver,
 you should take a look at the implementation of the probe function
 in the corresponding device driver.
 We are not going to take a look at probe function of 
 one particular device in this posting.
-%
 After the probing function of the matching driver is invoked,
 rest part of the device_register function.
 

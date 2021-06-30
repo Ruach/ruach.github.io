@@ -2536,7 +2536,7 @@ as *platform_bus_type* which has been registered as bus
 for platform devices at 
 platform_bus_init function.
 
-###Adding generated platform_device 
+### Adding generated platform_device 
 Then let's take a look at how the generated platform device can be added
 to the driver sub-system.
 

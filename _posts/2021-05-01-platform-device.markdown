@@ -1493,7 +1493,7 @@ because platform_bus device has no parent device,
 and kobj points to the platform_bus device itself. 
 First conditional statement confirms whether the 
 device structure has been initialized 
-by checking state_initialized field of kobject of platform_bus device.  
+by checking state_initialized field of kobject of platform_bus device.
 This field has been initialized at the first part of device_register function,
 device_initialize.
 
@@ -1643,7 +1643,8 @@ it invokes device_initial_probe
 that will actually searches the device driver and binding.
 The details will be coverd in this post.
 
-###Bus registration
+### Bus registration
+
 What we have done for platform_bus so far is 
 registering platform_bus as device 
 to the driver sub-system.

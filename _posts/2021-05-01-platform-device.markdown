@@ -628,7 +628,7 @@ Here device tree parsing means that register the devices
 specified in the device tree to the 
 kernel driver system. 
 
-###Initialization of driver subsystem
+### Initialization of driver subsystem
 Before we assign the devices and bind the driver associated with,
 we have to initialize the driver subsystem of the kernel.
 
@@ -714,7 +714,6 @@ initializing driver related structures to manage
 device, driver, bus, etc 
 which represent resources 
 that can be registered on the driver sub-system. 
-%
 Those resources are managed with the kset and kobjects.
 For example, 
 devices_init function allocates
@@ -722,7 +721,6 @@ kset for managing all device resource
 registered to the system. 
 It has root kobject, dev, and block and char devices are
 manages ad its children resource. 
-%
 Other init functions are mostly same,
 allocating kset and kobjects associated with specific resources used in driver sub-system.
 
@@ -794,7 +792,7 @@ int __init platform_bus_init(void)
 Now finally we have some more complex routines 
 that XXX
 
-###Registering bus device
+### Registering bus device
 **drivers/base/core.c**
 ```c
 /**     
@@ -1171,12 +1169,13 @@ enum dl_dev_state {
 };
 ```
 
-###Add platform_bus device to the driver subsystem
+### Add platform_bus device to the driver subsystem
 After initializing kobject and some fields of the 
 platform_bus device,
 device_add function will register the device
 to the driver sub-system. 
 
+```c
 /**
  * device_add - add device to device hierarchy.
  * @dev: device.
@@ -1377,6 +1376,7 @@ name_error:
 }
 EXPORT_SYMBOL_GPL(device_add);
 ```
+
 We can easily find that weird behavior of the device_add,
 which invokes get_device(dev) function to retrieve the 
 reference to the device even though we have an access to it.

@@ -1,10 +1,10 @@
 ---
 layout: post
-titile: "Linux usb core driver interface
+titile: "Linux usb core driver interface, part1"
 categories: linux, embedded-linux
 ---
 
-#Initializing usb subsystem 
+# Initializing usb subsystem 
 ```c
 /*
  * Init
@@ -65,13 +65,13 @@ out:
 subsys_initcall(usb_init);
 ```
 
-###Usb bus registration
+### Usb bus registration
 Based on the previous postings,
 we can know that a bus_type object 
 representing a specific bus sub-system
 should be initialized and registered
 by invoking bus_register function. 
-Let's take a look at which filed of bus_type 
+Let's take a look at which field of bus_type 
 has been statically provided by the usb core first.
 
 ```c
@@ -86,7 +86,7 @@ Compared to the bus_type object used for the platform bus,
 usb bus_type object provides only handful of information.
 Note that even the probe function has not been provided. 
 
-###Registering notifier block for usb bus
+### Registering notifier block for usb bus
 We doesn't utilize the notifier block for the platform bus, 
 but usb bus utilize the notifier block.
 The bus_register_notifier set the usb_bus_nb notifier block 
@@ -128,7 +128,7 @@ with the action parameter.
 Based on the action, 
 it hanldes usb device management on the sysfs.
 
-###register usb filesystem driver, usbfs
+### Register usb filesystem driver, usbfs
 
 ```c
 struct usb_driver usbfs_driver = {
@@ -205,8 +205,8 @@ usb_register macro invokes usb_register_driver
 which register the usb related driver to the usb bus.
 
 
-###Initializing usb devio
-```
+### Initializing usb devio
+```c
 static struct cdev usb_device_cdev;
         
 int __init usb_devio_init(void)
@@ -276,7 +276,7 @@ The usb_dev_file_operations provides
 file operations related callback functions for that purpose. 
 XXX: how the other devices are accessed ? does it through the devio??????
 
-###Registering usb hub device driver
+### Registering usb hub device driver
 ```c
 int usb_hub_init(void)
 {       
@@ -339,7 +339,7 @@ static const struct usb_device_id hub_id_table[] = {
 };      
 ```
 
-##Register usb device drivers
+## Register usb device drivers
 ```c
 struct usb_device_driver usb_generic_driver = {
         .name = "usb",
@@ -415,7 +415,7 @@ The other biggest difference is
 it invokes __usb_bus_reprobe_drivers function 
 for devices registered on the usb bus.
 
-#Long journey to understand how the USB device can be hot-plugged
+# Long journey to understand how the USB device can be hot-plugged
 Although most basic usb core part and usb bus
 have been initialized at the boot-up,
 the internal usb controllers and another 
@@ -425,12 +425,12 @@ to fully manage the usb subsystem.
 Previous initializations are mostly focused on the 
 usb core parts that provides 
 generic software layers for usb management 
-regradless of the hardware specification of the internal usb controller.
+regardless of the hardware specification of the internal usb controller.
 
 However, the first layer that actually encounters
 usb attachment and detachment is the usb controller.
 As usb specification develops, 
-its controller implementing the specifications also evloved,
+its controller implementing the specifications also evolved,
 and linux supports various usb controllers. 
 
 First to understand the linux-supporting usb controllers,
@@ -464,7 +464,7 @@ take a look at usb directory.
 
 
 
-##The USB Host controller drivers
+## The USB Host controller drivers
 There are various usb controllers 
 implemented by the different vendors 
 even though they support same USB specification.
@@ -513,7 +513,7 @@ each host controller driver should provide
 all information required by generic usb_hcd structure.
 
 
-###xHCI usb specification 
+### xHCI usb specification 
 Let's switch gears and take a look at 
 USB specification, particularly xHCI. 
 At the time of writing this posting,
@@ -637,7 +637,7 @@ To acheive that, it exports function *xhci_init_driver*.
 When other device driver invokes this function,
 the xhci_hc_driver's reference is returned.
 
-###xHCI platform driver
+### xHCI platform driver
 ```c
 static struct platform_driver usb_xhci_driver = {
         .probe  = xhci_plat_probe,
@@ -684,7 +684,7 @@ Note that usb_xhci_driver is a driver for platform xHCI controller.
 
 
 
-###DWC3
+### DWC3
 DWC3 is a SuperSpeed USB 3.0 controller developed by 
 the Synopsys DesignWare.
 In this posting this USB controller is used in our SoC
@@ -720,7 +720,7 @@ When a device node in the device tree
 has compatilbe string one of "snps,dwc3" or "synopsys,dwc3"
 the pre-designated probe function, dwc3_probe will be invoked.
 
-###DWC3 probe function
+### DWC3 probe function
 Let's take a look at what happens when the DWC3 controller is found. 
 
 ```c
@@ -1031,7 +1031,7 @@ When the dr_mode is set as USB_DR_MODE_HOST,
 it invokes dwc_host_init function
 which register xHCI device!
 
-###dwc3 host init-allocate xhci-hcd platform device
+### dwc3 host init-allocate xhci-hcd platform device
 ```c
 int dwc3_host_init(struct dwc3 *dwc)
 {
@@ -1131,7 +1131,7 @@ This function invokes device_add function, and
 because the autoprobe flag is enabled for the platform bus,
 its corresponding driver's bind function will be invoked.  
 
-##Let's go back to usb_xhi_driver again!
+## Let's go back to usb_xhi_driver again!
 Because the generated platform device doesn't have of_match table,
 it will utilize the name of the device "xhci-hcd" and
 will bound to the usb_xhci_driver.
@@ -1380,7 +1380,7 @@ at the module loading time.
 
 
 
-###xHCI platform probe - registering root hub
+### xHCI platform probe - registering root hub
 
 
 

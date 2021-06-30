@@ -1,13 +1,14 @@
 ---
 layout: post
-titile: "Linux usb core driver interface
+titile: "Linux usb core driver interface, part2"
 categories: linux, embedded-linux
 ---
+
 # USB drivers are designed for interfaces
 
 For USB device,
 the drivers are not designed for the USB device itself,
-but for its interfaces that supported by the USB devices. 
+but for its interfaces provided by the USB devices. 
 Therefore, when a new USB device is plugged in to the usb-bus,
 the first thing needs to done by the usb core system is 
 enumerating configuration, interfaces, and endponints 
@@ -22,10 +23,10 @@ and processed by a single unified APIs to register the devices.
 In this posting,
 we will see how the Interface driver is designed
 and registered to the usb-bus,
-and how those usb drivers can be probed later 
+and how those usb drivers can be probed and bound later 
 when the new usb device is plugged in. 
 
-##Registering USB interface driver
+## Registering USB interface driver
 
 ```c
 /**
@@ -46,9 +47,9 @@ automatically implements the initialization function of the interface driver.
 This initialiation function only contains the usb_register macro
 that invokes usb_register_driver function.
 This usb_register_driver function actually registers the interface driver.
-For the detailed explanation about this function is described in previous posting. 
+The detailed explanation about this function was described in previous posting. 
 
-##How the USB sub-system matches the device to its associated driver?
+## How the USB sub-system matches the device to its associated driver?
 Whether the device is a real usb device or its interface,
 both should be registered on the usb-bus.
 Therefore, when the device and interfaces are added to the usb-bus,
@@ -111,7 +112,7 @@ is not a usb or interface specific device structure, but
 a generic device structure representing any device.
 
 
-###Device type for USB system
+### Device type for USB system
 ```c
 static inline int is_usb_device(const struct device *dev)
 {
@@ -177,7 +178,7 @@ type for USB endpoints and USB port.
 We will not cover them because they are not related to 
 binding the driver to the hot-plugged USB device and its interface. 
 
-###Driver type for USB drivers
+### Driver type for USB drivers
 ```c
 static inline int is_usb_device_driver(struct device_driver *drv)
 {                       
@@ -217,7 +218,7 @@ when the USB device wants to be registered to the USB bus.
 We will soon see how this macro is used 
 for the USB matching function.
 
-###USB interface device utilizes id_table
+### USB interface device utilizes id_table
 ```c
         } else if (is_usb_interface(dev)) {
                 struct usb_interface *intf;
@@ -423,7 +424,7 @@ it means that the current USB information stored in the Nth location of the id_t
 it returns 1 to the usb_match_id function.
 
 
-###USB device needs to be handled by the USB device driver
+### USB device needs to be handled by the USB device driver
 ```c
         if (is_usb_device(dev)) {
                 struct usb_device *udev;
@@ -464,13 +465,13 @@ And because usb_generic_driver doesn't have match function and id_table field
 it will return 1 and defer all the further job to its probe function,
 usb_generic_driver_probe.
 
-##After matching, invoke probe of the matching driver
+## After matching, invoke probe of the matching driver
 Note that based on the USB device type,
 USB device or USB interface,
 different probe function will be invoked. 
 
 
-###USB device is handled by the USB device driver
+### USB device is handled by the USB device driver
 For a USB device,
 it always matches with a USB device driver, usb_generic_driver.
 Therefore, 
@@ -519,7 +520,7 @@ Therefore, we should set the selected configuration
 to allow Linux USB subsystem can manage it 
 for further operations. 
 
-###usb_set_configuration, populating the interface devices
+### usb_set_configuration, populating the interface devices
 Because the usb_set_configuration is too complex to take a look at its entire operation in this posting,
 we will study only fractions of it related to the interface device allocation
 and binding to the driver. 

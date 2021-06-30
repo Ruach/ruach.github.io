@@ -2493,6 +2493,7 @@ is described in the device tree itself.
 Those information should be stored in the generated device structure
 to allow the device driver which will be bound to the current device 
 to manage the device properly. 
+
 One device tree node can contain two 
 important resource related to the device: register and interrupt.
 However, until the device tree has been parsed,
@@ -2502,7 +2503,6 @@ it needs number indication how many register and interrupt
 resources are available for the device. 
 Based on that information, it allocates a resource array and copies
 all resource from the device tree to the resource array.
-
 After the resource has been successfully parsed and stored in the resource array of the platform device, 
 it sets the device node of the current device
 to its of_node member field 

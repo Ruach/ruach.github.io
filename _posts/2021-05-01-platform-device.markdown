@@ -2267,6 +2267,7 @@ Although it passes 5 parameters,
 only child and matches parameters are meaningful because 
 others are set as NULL.
 
+```c
 /**
  * of_platform_bus_create() - Create a device for a node and its children.
  * @bus: device node of the bus to instantiate
@@ -2341,20 +2342,16 @@ static int of_platform_bus_create(struct device_node *bus,
 }
 ```
 
-Some readers might wonder 
-why the name of the function is
-not "of_platform_device_create",
-but *bus*. 
-
-Also,
-remember that the matches parameter passed to this function is 
+Some readers might wonder why the name of the function is
+not "of_platform_device_create", but *bus*. 
+Also, remember that the matches parameter passed to this function is 
 of_default_bus_match_table,
 and this is usually matches with a node 
 that has compatible string names "simple-bus" in most cases. 
 
 
 
-###Allocating and intializing platform device from device node
+### Allocating and intializing platform device from device node
 ```c
 /**
  * of_platform_device_create_pdata - Alloc, initialize and register an of_device

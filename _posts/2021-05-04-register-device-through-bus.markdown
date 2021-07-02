@@ -987,67 +987,6 @@ static int hub_probe(struct usb_interface *intf, const struct usb_device_id *id)
 5152                         hcd->driver->relinquish_port(hcd, port1);
 5153         }
 5154 }
-5155 
-5156 /* Handle physical or logical connection change events.
-5157  * This routine is called when:
-5158  *      a port connection-change occurs;
-5159  *      a port enable-change occurs (often caused by EMI);
-5160  *      usb_reset_and_verify_device() encounters changed descriptors (as from
-5161  *              a firmware download)
-5162  * caller already locked the hub
-5163  */
-5164 static void hub_port_connect_change(struct usb_hub *hub, int port1,
-5165                                         u16 portstatus, u16 portchange)
-5166                 __must_hold(&port_dev->status_lock)
-5167 {
-5168         struct usb_port *port_dev = hub->ports[port1 - 1];
-5169         struct usb_device *udev = port_dev->child;
-5170         int status = -ENODEV;
-5171 
-5172         dev_dbg(&port_dev->dev, "status %04x, change %04x, %s\n", portstatus,
-5173                         portchange, portspeed(hub, portstatus));
-5174 
-5175         if (hub->has_indicators) {
-5176                 set_port_led(hub, port1, HUB_LED_AUTO);
-5177                 hub->indicator[port1-1] = INDICATOR_AUTO;
-5178         }
-5179 
-5180 #ifdef  CONFIG_USB_OTG
-5181         /* during HNP, don't repeat the debounce */
-5182         if (hub->hdev->bus->is_b_host)
-5183                 portchange &= ~(USB_PORT_STAT_C_CONNECTION |
-5184                                 USB_PORT_STAT_C_ENABLE);
-5185 #endif
-5186 
-5187         /* Try to resuscitate an existing device */
-5188         if ((portstatus & USB_PORT_STAT_CONNECTION) && udev &&
-5189                         udev->state != USB_STATE_NOTATTACHED) {
-5190                 if (portstatus & USB_PORT_STAT_ENABLE) {
-5191                         status = 0;             /* Nothing to do */
-5192 #ifdef CONFIG_PM
-5193                 } else if (udev->state == USB_STATE_SUSPENDED &&
-5194                                 udev->persist_enabled) {
-5195                         /* For a suspended device, treat this as a
-5196                          * remote wakeup event.
-5197                          */
-5198                         usb_unlock_port(port_dev);
-5199                         status = usb_remote_wakeup(udev);
-5200                         usb_lock_port(port_dev);
-5201 #endif
-5202                 } else {
-5203                         /* Don't resuscitate */;
-5204                 }
-5205         }
-5206         clear_bit(port1, hub->change_bits);
-5207 
-5208         /* successfully revalidated the connection */
-5209         if (status == 0)
-5210                 return;
-5211 
-5212         usb_unlock_port(port_dev);
-5213         hub_port_connect(hub, port1, portstatus, portchange);
-5214         usb_lock_port(port_dev);
-5215 }
 ```
 
 

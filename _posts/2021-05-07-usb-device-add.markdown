@@ -454,6 +454,23 @@ Because usb_init function registers only one USB device driver,
 usb_generic_driver,
 until that driver is found, it will keep returning 0.
 
+```c
+bool usb_driver_applicable(struct usb_device *udev,
+			   struct usb_device_driver *udrv)
+{
+	if (udrv->id_table && udrv->match)
+		return usb_device_match_id(udev, udrv->id_table) != NULL &&
+		       udrv->match(udev);
+
+	if (udrv->id_table)
+		return usb_device_match_id(udev, udrv->id_table) != NULL;
+
+	if (udrv->match)
+		return udrv->match(udev);
+
+	return false;
+	}
+```
 When the USB device driver is found,
 it first checks whether the driver has 
 id_table and match callback function both

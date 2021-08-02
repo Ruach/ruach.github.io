@@ -934,6 +934,7 @@ the generated macroop containers *macroopDict* is used.
 
 *gem5/src/arch/x86/isa/macroop.isa*
 ```python
+{% raw %}
 333 let {{
 334     doModRMString = "env.doModRM(machInst);\n"
 335     noModRMString = "env.setSeg(machInst);\n"
@@ -953,6 +954,7 @@ the generated macroop containers *macroopDict* is used.
 349         blocks.decode_block = "return %s;\n" % macroop.getAllocator(env)
 350         return blocks
 351 }};
+{% endraw %}
 ```
 
 As shown in the above code,

@@ -44,11 +44,11 @@ GEM5 makes use of domain-specific-languages (DSL)
 built on top of the **python**
 to provide architecture independent 
 grammars used for defining macroop and microops.
-When an ISA of specific architecture is defined using the pre-defined DSL
+When an ISA of specific architecture is defined using the pre-defined DSL,
 GEM5 automatically translate your ISA definition to C++ classes.
 
-For translation,
-GEM5 provides *MicroAssembler* python class
+For the translation,
+GEM5 provides **MicroAssembler** python class
 that utilizes *lexer and parser* classes provided by 
 the *Python-Lex-Yacc(PLY)* package.
 Also, lexer and parser requires
@@ -76,12 +76,12 @@ We will take a look at how they are defined and provided.
 {% endraw %}
 ```
 Because GEM5 support various architecture emulation,
-it needs a generic interface that can conveys
+it needs a generic interface that can convey
 architecture specific information 
 based on the target architecture to be compiled.
 GEM5 provides *MicroAssembler* python class
 which contains not only a parser and lexer instance,
-but also the architecture specific meta-data 
+but also architecture specific meta-data 
 required for understanding specific ISAs
 (e.g., Macroop, Microop, ROM code). 
 Because we are focusing on the x86 ISA,
@@ -108,7 +108,9 @@ X86Macroop, microopClasses, mainRom, Rom_Macroop.
 Because the X86Macroop and microopClasses are actually 
 used for translating the macroop to microop 
 with the help of yacc,
-let's see what are provided by those classes.
+let's see what information is provided by those classes, and 
+each component can be combined together to compose 
+MicroAssembler instance. 
 
 ### X86Macroop: class representing one X86 macroop <a name="x86macroop"></a>
 *gem5/src/arch/x86/isa/macroop.isa*
@@ -242,8 +244,9 @@ let's see what are provided by those classes.
 261                    MacroDisassembly.subst(iop);
 {% endraw %}
 ```
-Yeah it is pretty long class definition, but 
-it is just abstraction class that can represent one X86Macroop mnemonic. 
+
+It is pretty long class definition, but 
+just an abstraction class that can **represent one X86Macroop mnemonic.**
 For example, when you define your custom mov instruction CUST_MOV,
 X86Macroop class instance for CUST_MOV will be generated 
 to represent that macroop. 
@@ -258,9 +261,19 @@ we need all definitions of the microops.
 *microopClasses* is a python dictionary 
 containing pair of microop mnemonic string and 
 class definition associated with the mnemonic.
+Note that each microop operation is also represented as a class. 
 We will see how the parser of the GEM5 will populate this dictionary soon.
 
 # Parse macroops with python yacc
+Now we understand that each architecture requires 
+their own classes defining each macroop operations 
+and corresponding microops dictionary that can be utilized to 
+represent all macroop operations. 
+Now, let's take a look at how the MicroAssembler class 
+will utilize those classes to actually parses 
+macroops in one specific architecture. 
+
+
 *gem5/src/arch/micro_asm.py*
 ```python
 489 class MicroAssembler(object):
@@ -313,7 +326,7 @@ Because of its confusing name, one can misunderstand
 microcode is a microops;
 however, the microcode is a string object 
 describing macroop semantics
-consisting of microcode (microops).
+consisting of microops.
 This microcode strings are collected 
 from each isa file 
 located in isa/insts directory
@@ -368,7 +381,7 @@ compiler understandable code, C++ statements in GEM5 case,
 keywords defined by the language.
 
 For example,
-as *def keyword* in the python syntax 
+as *def* keyword in the python syntax 
 is translated into function definition,
 it should be able to interpret the *macroop as another keyword*
 whenever it encounters *def macroop block*, 
@@ -379,7 +392,7 @@ Syntax of python lexer is defined in this link
 (https://www.dabeaz.com/ply/ply.html#ply_nn0).
 
 ### Context-free grammar of Microop
-To parse the microcode defining macroops.
+To parse the microops defining macroops.
 it needs to understand syntax of DSL of GEM5,
 which defines interpretation of one format to the other
 (python to C++ statements in GEM5 case)
@@ -422,7 +435,7 @@ the above microcode definition.
 360         handle_statement(t.parser, curop, statement)
 361     t.parser.macroops[t[3]] = curop
 ```
-When the *def macroop* block is found,
+When the *def macroop* block is encountered,
 it invokes one of *p_macroop_def* function
 based on the format of macroop block 
 (depending on the tokens comprising of the def block). 
@@ -434,34 +447,36 @@ we are looking at *def macroop MOV_R_MI* block, so
 *p_macroop_def_1* function will be invoked. 
 
 When we look at the line 355,
-we can find that *t[3]*, mnemonic of the currently parsed macroop 
-is used to reference a class defined in *X86Macroop* namespace.
-When you take a look at the 
+we can find that *t[3]*, mnemonic of the currently parsed macroop,
+is passed to macro_type function of the parser.
 Remember that 
-parser is an member field of MicroAssembler class, and 
-*X86Macroop* namespace has been assigned to parser.macro_type
-member field of the [MicroAssembler](#microassembler).
+the parser is an member field of [MicroAssembler class](#microassembler), and 
+*X86Macroop* namespace has been assigned to parser.macro_type.
 Therefore, 
-t.parser.macro_type(t[3]) is translated into *X86Macroop(MOV_R_MI)*.
-Yeah this statement is translated into [X86Macroop object constructor call](#x86macroop).
-This means that whenever the *def macroop* block is encountered during the parsing,
+t.parser.macro_type(t[3]) is translated into *X86Macroop(MOV_R_MI)*
+and invokes [X86Macroop object constructor call](#x86macroop).
+This means that whenever the *def macroop* block is found during the parsing,
 it populates a corresponding macroop object.
 
 You might remember that one X86Macroop object can contain 
-all information of one macroop operation including microops consisting of the macroop.
+all information of one macroop operation 
+including microops consisting of the macroop.
+However, right after the macroop instance is populated,
+it contains no information about is microops consisting of 
+the current macroop class instance. 
 As shown in the above code line 359-360, 
 the parser will parse the subsequent statements consisting of the def macroop block
-and translate each of them to the microop.
+and translate each microop operation into corresponding microop classes.
 
 ### Block token: Actual microcode implementation of macroop
 When the macroop def block is found,
 the parser tries to parse the tokens 
-consisting of the matched def block, **macroop_def : DEF MACROOP ID block SEMI**.
-Among the tokens, 
+Among the tokens in the def block,
+**DEF MACROOP ID block SEMI**,
 the most important one in this grammar rule is the *block*.
 In macroop parsing,
-each block token consists of string 
-composed of sequence of microop instructions
+each block token consists of multiple lines of string 
+,microop instructions,
 which actually defines semantic of macroop.
 
 ```python
@@ -579,7 +594,7 @@ let's take a look at microop grammars.
 437     t[0] = microop
 ```
 
-parser provides several microop grammars,
+The parser provides several microop grammars,
 but our case (i.e.,  limm t1, imm, dataSize=asz)
 matches with fourth grammar rule, p_microop_3.
 Whenever it sees a statement containing a microop
@@ -587,11 +602,11 @@ that consists of microop ID(mnemonic) and PARAMS(parameters of microop),
 it generates Microop instance and assigns 
 parsed mnemonic and params to corresponding fields of the Microop object.
 
-## The handle_statement: registering found microops as class object
+## The handle_statement: translating found microops as class object and registering it to macroop object
 Now we can understand how the GEM5 parses def block (defining macroop)
 and translate its statements to the microop objects.
 However, this is not the end of the parsing macroop.
-Let's go back to the parse function.
+Let's go back to the p_macroop_def_1 parse function. 
 
 ```python
 359     for statement in t[4].statements:
@@ -601,8 +616,9 @@ Let's go back to the parse function.
 As shown in the line 359-360 of the parse function,
 it iterates every statement(microop) discovered in the previous parsing,
 and invokes handle_statement function.
-Note that this function requires curop variable (X86Macroop object representing current macroop),
-and statements (representing microops consisting of one X86Macroop).
+Note that this function requires curop variable 
+(X86Macroop object representing current macroop),
+and statements (representing each microop consisting of this X86Macroop).
 
 ```python 
 126 def handle_statement(parser, container, statement):
@@ -642,6 +658,7 @@ and statements (representing microops consisting of one X86Macroop).
 160     else:
 161         raise Exception, "Didn't recognize the type of statement", statement
 ```
+
 As each statement can be either microop or directive,
 each statement is processed differently 
 based on the statement type. 
@@ -661,16 +678,15 @@ One might expect that
 parsed microop instructions are instantiated from a class 
 named as microop mnemonic (microop opcode) such as Ld.
 However, 
-we can easily find that 
-it is general class 
+we can find that 
+it is a general class 
 associated with that group of microop
 not exactly matching with that microop mnemonic.
 For microop ld,
 associated template class,
 LoadOp class is used instead of Ld.
-Importantly,
-note that the microop class is a python class
-not a CPP class.
+For the limm microop instruction, 
+LimmOp object is instantiated.
 
 ### Different parameter can be fed to one microop instruction
 Following *eval* statement(133-134) instantiates 
@@ -697,8 +713,9 @@ the first operand *t1*
 is translated into 
 *InstRegIndex(NUM_INTREGS+1)* 
 as a result of eval.
-And the translated operands are passed to constructor 
-of corresponding microop class based on microop mnemonic.
+And the translated operands are passed to 
+the constructor of corresponding microop class 
+based on microop mnemonic.
 
 *gem5/src/arch/x86/isa/microops/limop.isa*
 ```python
@@ -807,8 +824,8 @@ The parser.symbols dictionary defines this mapping
 ```
 When we look at the above code, 
 which is the part of the symbol update code,
-we can find lots of symbols 
-that translate string to actual referencing code.
+we can find lots of symbols are registered to the symbols of the assembler,
+which will be used to translate string to actual referencing code.
 When you cannot understand microop's string operand,
 you should look at symbol update code.
  
@@ -1074,11 +1091,43 @@ that should be replaced by proper ones
 (line 126-131).
 Most of the substituted part is excerpted from the 
 python microop class fields.
-When the LimmOp python class instance is generated,
-it sets *className* as Limm.
-Therefore, there should be Limm CPP class that can be instantiated.
-For the details,
-please refer XXX
+When the LimmOp python class object is instantiated,
+microop specific operands such as dest, imm are passed to
+the constructor of the LimmOp python class.
+Regardless of those differences in the microop instances, 
+one microop can be represented as a LimmOp python class,
+it should correctly set the different part of the 
+microop instances when they need to be translated into CPP class. 
+
+Because the allocString contains all the CPP formatted statements,
+the GEM5 should provide CPP counterpart to compile the 
+automatically generated CPP source code from the python.
+For example, *className* has been set as Limm, so 
+there should be Limm CPP class that can be instantiated.
+The Limm CPP class is also declared automatically by the GEM5.
+
+*gem5/build/X86/arch/x86/generated/decoder-ns.hh.inc*
+```cpp
+    class Limm : public X86ISA::X86MicroopBase
+    {
+      protected:
+        const RegIndex dest;
+        const uint64_t imm;
+        const uint8_t dataSize;
+        RegIndex foldOBit;
+
+        std::string generateDisassembly(Addr pc,
+            const SymbolTable *symtab) const;
+
+      public:
+        Limm(ExtMachInst _machInst,
+                const char * instMnem,
+                uint64_t setFlags, InstRegIndex _dest,
+                uint64_t _imm, uint8_t _dataSize);
+
+        Fault execute(ExecContext *, Trace::InstRecord *) const;
+    };
+```
 
 ### Finalize Macroop class definition with template substitution 
 Although microop constructions code is the most important part of 

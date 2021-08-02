@@ -38,7 +38,8 @@ categories: GEM5, Microops
 116     }
 117 }};
 ```
-Currently, we have a automatically generated class definition and its constructor.
+Currently, we have an automatically generated 
+class definition and its constructor.
 However, 
 it cannot make any change 
 to the micro architecture state,

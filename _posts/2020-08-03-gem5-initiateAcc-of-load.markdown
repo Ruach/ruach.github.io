@@ -1,43 +1,12 @@
 ---
 layout: post
-titile: "Microops in GEM5"
+titile: "GEM5 micro-load operation to actual memory access"
 categories: GEM5, Microops
 ---
+
 ## Method generation required for basic load operation
 
 ### execute: modify ExecContext based on instruction
-```python
-{% raw %}
- 90 def template MicroLoadExecute {{
- 91     Fault %(class_name)s::execute(ExecContext *xc,
- 92           Trace::InstRecord *traceData) const
- 93     {
-{% endraw %}
- 94         Fault fault = NoFault;
- 95         Addr EA;
- 96
- 97         %(op_decl)s;
- 98         %(op_rd)s;
- 99         %(ea_code)s;
-100         DPRINTF(X86, "%s : %s: The address is %#x\n", instMnem, mnemonic, EA);
-101
-102         fault = readMemAtomic(xc, traceData, EA, Mem, dataSize, memFlags);
-103
-104         if (fault == NoFault) {
-105             %(code)s;
-106         } else if (memFlags & Request::PREFETCH) {
-107             // For prefetches, ignore any faults/exceptions.
-108             return NoFault;
-109         }
-110         if(fault == NoFault)
-111         {
-112             %(op_wb)s;
-113         }
-114
-115         return fault;
-116     }
-117 }};
-```
 Currently, we have an automatically generated 
 class definition and its constructor.
 However, 

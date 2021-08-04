@@ -18,7 +18,8 @@ One of the important method is *execute*
 that actually changes the architecture state
 represented by *ExecContext*.
 
-*exec-ns.cc.inc*
+
+*gem5/build/X86/arch/x86/generated/exec-ns.cc.inc*
 ```cpp
 19101     Fault Ld::execute(ExecContext *xc,
 19102           Trace::InstRecord *traceData) const

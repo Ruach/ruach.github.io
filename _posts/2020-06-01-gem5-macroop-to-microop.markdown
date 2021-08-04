@@ -421,7 +421,7 @@ Let's try to understand
 how the GEM5 DSL context-free grammar interprets 
 the above microcode definition.
 
-*gem5/src/arc/micro_asm.py*
+*gem5/src/arch/micro_asm.py*
 ```python
 351 # Defines a macroop that is combinationally generated
 352 def p_macroop_def_1(t):
@@ -1047,6 +1047,12 @@ Each microop class instance generation code is retrieved
 from the *getAllocator* of each *microop* class, and
 the generated code is stored to allocMicroops variable.
 (line 236-238).
+Note that current getDefinition function is defined for 
+generating definition of one macroop, and 
+it needs to invoke getAllocator function of the microops 
+consists of the currently being generated macroop.
+Because macroop and microop both have getAllocator and similar other definitions,
+it can be confusing to understand which operation will be invoked. 
 
 ### getAllocatior of microop in detail
 The *getAllocator* function 
@@ -1102,7 +1108,7 @@ it should correctly set the different part of the
 microop instances when they need to be translated into CPP class. 
 
 Because the allocString contains all the CPP formatted statements,
-the GEM5 should provide CPP counterpart to compile the 
+the GEM5 should provide rest of the information to compile the 
 automatically generated CPP source code from the python.
 For example, *className* has been set as Limm, so 
 there should be Limm CPP class that can be instantiated.
@@ -1130,6 +1136,8 @@ The Limm CPP class is also declared automatically by the GEM5.
         Fault execute(ExecContext *, Trace::InstRecord *) const;
     };
 ```
+The details about how GEM5 automatically generates the CPP microop classes 
+and its associated methods, I will dedicate another post later. 
 
 ### Finalize Macroop class definition with template substitution 
 Although microop constructions code is the most important part of 

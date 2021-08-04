@@ -258,11 +258,23 @@ to the corresponding macroop object using this method.
 ### microopClasses: dictionary of microop class definition <a name="microopDict"></a>
 To associate one microop to macroop, 
 we need all definitions of the microops.
+
+*src/arch/x86/isa/microops/base.isa*
+```python
+let {{
+    # This will be populated with mappings between microop mnemonics and
+    # the classes that represent them.
+    microopClasses = {}
+}};
+```
 *microopClasses* is a python dictionary 
 containing pair of microop mnemonic string and 
 class definition associated with the mnemonic.
 Note that each microop operation is also represented as a class. 
+Also, the passed microopClasses will be assigned to the microops field 
+of the MicroAssembler class. 
 We will see how the parser of the GEM5 will populate this dictionary soon.
+
 
 # Parse macroops with python yacc
 Now we understand that each architecture requires 
@@ -619,6 +631,8 @@ and invokes handle_statement function.
 Note that this function requires curop variable 
 (X86Macroop object representing current macroop),
 and statements (representing each microop consisting of this X86Macroop).
+Because we are currently dealing with microops, 
+statement should be an instance of Microop clas.
 
 ```python 
 126 def handle_statement(parser, container, statement):
@@ -687,6 +701,48 @@ associated template class,
 LoadOp class is used instead of Ld.
 For the limm microop instruction, 
 LimmOp object is instantiated.
+The answer is on the below let block. 
+
+*gem5/src/arch/x86/isa/microops/limop.isa*
+```python
+105 let {{
+106     class LimmOp(X86Microop):
+107         def __init__(self, dest, imm, dataSize="env.dataSize"):
+108             self.className = "Limm"
+109             self.mnemonic = "limm"
+110             self.dest = dest
+111             if isinstance(imm, (int, long)):
+112                 imm = "ULL(%d)" % imm
+113             self.imm = imm
+114             self.dataSize = dataSize
+115
+116         def getAllocator(self, microFlags):
+117             allocString = '''
+118                 (%(dataSize)s >= 4) ?
+119                     (StaticInstPtr)(new %(class_name)sBig(machInst,
+120                         macrocodeBlock, %(flags)s, %(dest)s, %(imm)s,
+121                         %(dataSize)s)) :
+122                     (StaticInstPtr)(new %(class_name)s(machInst,
+123                         macrocodeBlock, %(flags)s, %(dest)s, %(imm)s,
+124                         %(dataSize)s))
+125             '''
+126             allocator = allocString % {
+127                 "class_name" : self.className,
+128                 "mnemonic" : self.mnemonic,
+129                 "flags" : self.microFlagsText(microFlags),
+130                 "dest" : self.dest, "imm" : self.imm,
+131                 "dataSize" : self.dataSize}
+132             return allocator
+133
+134     microopClasses["limm"] = LimmOp
+......
+159 }};
+```
+One of the most import thing in the above let block is that
+it assigns the defined class LimmOp to the python dictionary 
+**microopClasses** with its mnemonic (limm). 
+Therefore, whenever the dictionary is searched with microop's mnemonic, limm,
+the associated python class LimmOp will be found. 
 
 ### Different parameter can be fed to one microop instruction
 Following *eval* statement(133-134) instantiates 
@@ -719,6 +775,7 @@ based on microop mnemonic.
 
 *gem5/src/arch/x86/isa/microops/limop.isa*
 ```python
+105 let {{
 106     class LimmOp(X86Microop):
 107         def __init__(self, dest, imm, dataSize="env.dataSize"):
 108             self.className = "Limm"
@@ -748,10 +805,18 @@ based on microop mnemonic.
 132             return allocator
 133
 134     microopClasses["limm"] = LimmOp
+......
+159 }};
 ```
 Note that LimmOp python class requires three operands,
 and actual microcode of MOV_R_MI feeds 
 three operands when the limm microop is used.
+As a result of eval, the operands of limm microop is translated into a
+GEM5-understandable operands and fed to the __init__ definition of the LimmOp class.
+The instantiated LimmOp class object matching with the limm microop operation
+used to implement the MOV_R_MI macroop is stored to the X86Macroop object of the MOV_R_MI instruction
+using the add_microop definition of X86Macroop. 
+
 
 ### Symbols of parser
 When we talked about microop's operand translation
@@ -829,13 +894,56 @@ which will be used to translate string to actual referencing code.
 When you cannot understand microop's string operand,
 you should look at symbol update code.
  
-### Adding microops to macroop object and finishing macroop generation
-The generated microop objects are added 
-to the macroop object *container*
-through the *add_microop* method
+### Summary: handle_statement adds microop object to macroop object
+Let's go back to the handle_statement. 
+```python 
+126 def handle_statement(parser, container, statement):
+127     if statement.is_microop:
+128         if statement.mnemonic not in parser.microops.keys():
+129             raise Exception, "Unrecognized mnemonic: %s" % statement.mnemonic
+130         parser.symbols["__microopClassFromInsideTheAssembler"] = \
+131             parser.microops[statement.mnemonic]
+132         try: 
+133             microop = eval('__microopClassFromInsideTheAssembler(%s)' %
+134                     statement.params, {}, parser.symbols)
+135         except:
+136             print_error("Error creating microop object with mnemonic %s." % \
+137                     statement.mnemonic)
+138             raise
+139         try: 
+140             for label in statement.labels:
+141                 container.labels[label.text] = microop
+142                 if label.is_extern:
+143                     container.externs[label.text] = microop
+144             container.add_microop(statement.mnemonic, microop)
+145         except:
+146             print_error("Error adding microop.")
+147             raise
+148     elif statement.is_directive:
+149         if statement.name not in container.directives.keys():
+150             raise Exception, "Unrecognized directive: %s" % statement.name
+151         parser.symbols["__directiveFunctionFromInsideTheAssembler"] = \
+152             container.directives[statement.name]
+153         try: 
+154             eval('__directiveFunctionFromInsideTheAssembler(%s)' %
+155                     statement.params, {}, parser.symbols)
+156         except:
+157             print_error("Error executing directive.")
+158             print(container.directives)
+159             raise
+160     else:
+161         raise Exception, "Didn't recognize the type of statement", statement
+```
+
+Remember that we've instantiated microop object (LimmOp) 
+matching with the microop's mnemonic (limm).
+Also, to instantiate the object, 
+we translated the operands of the limm microop 
+used in the MOV_R_MI macroop instruction (line 130-134).
+The other important remaining goal of the handle_statement is 
+adding populated microop objects to the macroop object 
+called *container* in the above code
 (line 139-144).
-Note that the container is a macroop class 
-that possesses parsed microops. 
 
 Although this long procedure is required for parsing one macroop,
 we can describe it as two main procedures:
@@ -858,7 +966,8 @@ are also python class instances not the C++ class objects.
 
 However, when we look at the GEM5 compiled files
 we can find that 
-GEM5 automatically generates CPP classes for each macroop.
+GEM5 automatically generates CPP classes for each macroop and 
+corresponding microops.
 Let's take a look at how the python classes 
 can be automatically translated into C++ class
 with MOV_R_MI class as example.
@@ -920,17 +1029,16 @@ with MOV_R_MI class as example.
  28076         }
 ```
 (Although above code looks terrible, 
-it has been generated automatically 
-as a result of parsing macroop description)
+it has been generated automatically)
 
 Because
-we already populated python based macroop containers
-defining MOV_R_MI,
+we already have python based macroop containers
+defining MOV_R_MI macroop,
 we can naturally infer that
-the generated CPP class may be retrieved from there.
+the generated CPP class is retrieved from the corresponding python class.
 Therefore,
 let's take a look at the place where
-the generated macroop containers *macroopDict* is used.
+the generated macroop containers, *macroopDict*, are used.
 
 *gem5/src/arch/x86/isa/macroop.isa*
 ```python
@@ -962,9 +1070,10 @@ As shown in the above code,
 macroop container associated with a name of macroop.
 It invokes *getDeclaration*, *getDefinition*, and *getAllocator* functions
 through the retrieved macroop container.
-Note that retrieved container is an instance of *X86Macroop python class*.
+Note that the retrieved container is an instance of *X86Macroop python class*
+associated with MOV_R_MI macroop.
 
-### getDefinition: generate cpp class definition for macroop
+### getDefinition (X86Macroop): generate cpp class definition for macroop 
 *gem5/src/arch/x86/isa/macroop.isa*
 ```python
 205         def getDefinition(self, env):
@@ -1032,29 +1141,31 @@ of the macroop class, so
 we are going to focus on *getDefinition* function.
 The goal of getDefinition function is 
 generating definition of corresponding macroop.
-
 As we've seen before in the assemble function,
 all python microop class objects
 consisting of one macroop 
-were added to associated macroop container.
-And this microop objects are maintained in *self.microops*.
+were added to the associated macroop container.
+And this microop objects are maintained in *self.microops* of the X86Macroop object.
+
 Because one macroop can consist of multiple microops,
 each microop python class should be iterated one by one 
 to invoke C++ microop class
 associated with current python microop class
 (Line 210-239).
 Each microop class instance generation code is retrieved
-from the *getAllocator* of each *microop* class, and
+from the *getAllocator* of each *microop* python class, and
 the generated code is stored to allocMicroops variable.
 (line 236-238).
 Note that current getDefinition function is defined for 
 generating definition of one macroop, and 
-it needs to invoke getAllocator function of the microops 
-consists of the currently being generated macroop.
+it needs to invoke getAllocator function of the microop
+consisting of the current macroop. 
+Note that the microop *op* in the above code
+indicates the python class object associated with specific microop.
 Because macroop and microop both have getAllocator and similar other definitions,
 it can be confusing to understand which operation will be invoked. 
 
-### getAllocatior of microop in detail
+### getAllocator of microop in detail
 The *getAllocator* function 
 invoked through microop (not the macroop),
 generates CPP statements
@@ -1088,11 +1199,13 @@ of *LimmOp* class.
 {% endraw %}
 ```
 
-The getAllocator function in LimmOp creates 
+The getAllocator function in LimmOp python class creates 
 python doc string, *allocString* 
 that consists of CPP formatted
-microop object instantiation code (line 117-125).
+microop object initialization code (line 117-125).
 Note that these statements instantiate CPP classes of microop.
+Although we didn't cover how the CPP classes for microop are defined 
+in the GEM5, but the details will be covered in the next post. 
 
 However, the string contains unfinished part 
 that should be replaced by proper ones
@@ -1102,10 +1215,10 @@ python microop class fields.
 When the LimmOp python class object is instantiated,
 microop specific operands such as dest, imm are passed to
 the constructor of the LimmOp python class.
+Remember how the eval translates the operands of the microop and 
+instantiates the associated python object. 
 Regardless of those differences in the microop instances, 
-one microop can be represented as a LimmOp python class,
-it should correctly set the different part of the 
-microop instances when they need to be translated into CPP class. 
+one microop can be represented as a LimmOp python class.
 
 Because the allocString contains all the CPP formatted statements,
 the GEM5 should provide rest of the information to compile the 
@@ -1136,14 +1249,12 @@ The Limm CPP class is also declared automatically by the GEM5.
         Fault execute(ExecContext *, Trace::InstRecord *) const;
     };
 ```
-The details about how GEM5 automatically generates the CPP microop classes 
-and its associated methods, I will dedicate another post later. 
 
 ### Finalize Macroop class definition with template substitution 
-Although microop constructions code is the most important part of 
+Although microop constructions code is the most important part in
 generating CPP class definition of macroop,
-the generated CPP macroop class requires other part to be filled out by 
-the getDefinition function,
+the getDefinition function needs to fill out other parts of the 
+generated CPP macroop class. 
 
 Because every macroop in X86 is defined through
 replacing some part of MacroConstructor template,
@@ -1152,12 +1263,12 @@ that can retrieve CPP class definition
 of corresponding macroop.
 This macroop dependent substitution string is prepared as 
 **InstObjParams** shown in line 251-259 of getDefinition function.
-After it prepares substitution string,
-it can generate CPP formatted full macroop class definition
-by replacing 
-*MacroConstructor* and *MacroDisassembly* template
+After the substitution string is prepared,
+getDefinition function can finally retrieve 
+fully implemented CPP class definition for current macroop. 
+The *MacroConstructor* and *MacroDisassembly* template
 with the generated InstObjParams, iop
-(Line 260-261).
+(Line 260-261) will finalize the implementation.
 
 
 *gem5/src/arch/x86/isa/macroop.isa*
@@ -1203,12 +1314,11 @@ with the generated InstObjParams, iop
 As shown in the above code,
 MacroConstructor generates macroop class definition.
 Note that 
-%(alloc_microops)s on line 130 is replaced by 
-microop class instantiating code translated into CPP.
-Note that this code has been generated by 
-invocation of getAllocaotr of microops.
-And other required initialization statements and 
-are generated rest of the substitution
+%(alloc_microops)s (line 130) is replaced by 
+the constructor code of the microop classes 
+generated by the getAllocator of the python counterpart of the microops.
+And other required initialization statements
+are generated as a result of rest of the substitution
 such as %(adjust_env)s.
 And the MacroDisassembly template adds 
 generateDisassembly method of macroop class. 

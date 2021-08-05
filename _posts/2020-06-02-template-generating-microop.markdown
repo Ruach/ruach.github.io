@@ -3,13 +3,23 @@ layout: post
 titile: "GEM5 Template to replace code-literal"
 categories: GEM5, Microops
 ---
-
-## Continues on Parser required for parsing macroop and microop
+# Generating microop CPP Classes automatically
 We took a look at essential part of the parser required for
 parsing the macroop and their corresponding microops in the previous posting. 
+Remember that we could generate CPP classes for macroop utilizing 
+template and python classes defined for the macroop.
+Also, the microop python classes and its getAllocator functions are used
+to generate CPP statements that instantiate associated microop CPP classes
+by invoking their constructors. 
+
 In this posting, we continuously utilize the parser and its 
-grammar defined for understanding Domain Specific Language (DSL) of 
-GEM5 defining the ISA including macroop and microop. 
+grammar defined for understanding Domain Specific Language (DSL) of GEM5,
+but we will specifically focus on microop python class to microop CPP Class transitions. 
+
+## Continues on Parser required for parsing macroop and microop
+Before we will take a deeper look at the microop,
+we will cover some details of parser and GEM5 DSL 
+to understand automatic CPP statement generations. 
 
 *gem5/src/arch/isa_parser.py*
 ```python
@@ -80,18 +90,19 @@ GEM5 defining the ISA including macroop and microop.
 1960                          | global_let
 1961                          | split'''
 ```
-Following the documentation, we can easily understand that 
-entire large chunk of DSA defining one microarchitecture's ISA consists of 
+Following the documentation, we can understand that 
+GEM5 DSA defining one microarchitecture's ISA consists of 
 two main parts: *opt_defs_and_outputs and top_level_decode_block*.
 Because we have interest in def blocks and others (e.g., let block)
 instead of decode blocks,
-Let's take a look at how the opt_defs_and_outputs block will be parsed further
+let's take a look at how the opt_defs_and_outputs block will be parsed further
 following the grammar rules. 
 
 ### Populating Template object instance per def template 
 Whenever the *def template* style of definition is encountered during the parsing,
 it will matches the below grammar rule and populate Template objects
 
+*gem5/src/arch/isa_parser.py*
 ```python 
 2127     def p_def_template(self, t):
 2128         'def_template : DEF TEMPLATE ID CODELIT SEMI'
@@ -103,10 +114,12 @@ it will matches the below grammar rule and populate Template objects
 As shown in the grammar rule, 
 Template object is instantiated with the code literal 
 of the def template block, t[4].
-The new Template object will be maintained 
-by the templateMap, and its template name (t[3], ID) 
+The newly instantiated Template objects will be maintained 
+by the templateMap of the parser.
+Note that its template name (t[3], ID) 
 will be used to index the generated Template object 
 inside the map. 
+The GEM5 parser defines Template python class for this purpose. 
 
 ```python
  106 ####################
@@ -226,23 +239,30 @@ inside the map.
  220     def __str__(self):
  221         return self.template
 ```
+
 When the Template object is instantiated, 
-its code-literal passed from the parser will be stored
-in the self.template field of the Template. 
+its code-literal will be stored
+in the self.template field of the Template object. 
 This template field will be used later in the subst method 
 to substitute code-literal following the substitution string.
 
-As shown in the subst definition of the Template class,
-we can see that it returns template 
+One important definition provided by the Template class is **subst**. 
+You can see that it returns template (code literal string)
 substituted with myDict. 
-Therefore, the subst function manages 
-myDict based on the object passed to the subst 
-and replace the template which is the code-literal.
+Note that the passed code literal contains unfinished parts 
+that should be replaced before generating complete CPP statements. 
+Therefore, the subst function creates the myDict 
+based on the object passed to the subst, d.
+Usually, this passed object is InstObjParams providing 
+microop or macroop specific information to complete 
+general implementation provided by the template. 
 Note that subst function manages myDict dictionary differently 
 based on the type of the object passed to the subst function.
 When the InstObjParams type of object is passed,
-it needs extra manage to generate myDict 
-suitable for substituting the template. 
+depending on the information provided by the items 
+such as whether it is used for declaration, op_decl,
+or for data write-back, op_wb,
+it prepares myDict dictionary properly for later substitution.  
 
 ## Automatically define CPP classes and associated methods for microop using template
 In the previous posting, we took a look at how the python class dedicated for 
@@ -256,10 +276,10 @@ of the microop python class generates CPP code snippets instantiating
 We will see how those CPP classes for microops are generated by utilizing templates. 
 
 ### defineMicroLoadOp: define micro-load operations using templates
-Let's take a look at how the *def template* method will be used 
-to generate different microop operations.
-Mainly, the **subst** method provided by the Template object 
-will be used to populated different microop operations.
+To understand how the CPP class for one microop can be implemented,
+we will take a look at the load related micro instructions in x86 architecture. 
+The most important function of this microop class generation is 
+the **subst** method provided by the Template object.
 GEM5 utilize the substitution a lot to populate 
 various instructions having similar semantics.
 
@@ -356,13 +376,12 @@ defineMicroLoadOp python function.
 Because those microops have similar semantics 
 which loads data from memory, 
 defineMicroLoadOp function generates different 
-microop by substituting generic template.
+microops by substituting generic template with microop-specific code-literals.
 You can find that multiple subst definitions from
-multiple templates are invoked
-in the line 472-476 to generate actual implementation
-of each microop. 
+multiple templates are invoked in the defineMicroLoadOp function (line 472-476)
+to generate complete implementation of each microop. 
 
-# Parameter system and parsing in GEM5
+## Operands and its children classes can handle all operands in GEM5
 Before we take a look at how the template is used to generate 
 actual code for the microops, we should understand what is the 
 InstObjParams and why it is necessary for template substitutions.
@@ -371,12 +390,11 @@ about parameter system deployed by the GEM5.
 This includes generic classes to represent parameters of microop and macroop, and 
 architecture specific operands and its parsing.
 
-## Generic classes representing various types of operands in GEM5
+### Generic classes representing various types of operands in GEM5
 First of all, we need to understand that GEM5 provide common classes
 that can define multiple types of operands regardless of architecture.
 We will take a look at the class hierarchies representing various operands. 
 
-### Operand base class and its children
 *gem5/src/arch/isa_parser.py*
 ```python 
  396 class Operand(object):
@@ -514,6 +532,9 @@ The **Operand** class is a generic class provides various definitions
 that can be overridden by its children classes.
 Only handful of them are overridden to tell 
 a type of the current operand class represents.
+Let's take a look at IntRegOperand class which inherits the 
+base Operand class.
+
 ```python
  528 class IntRegOperand(Operand):
  529     reg_class = 'IntRegClass'
@@ -543,21 +564,19 @@ a type of the current operand class represents.
  553 
  554         return c_src + c_dest
 ```
-For example, IntRegOperand class which represents Integer type operand 
-overrides isReg definition.
+The IntRegOperand class represents Integer type operand, 
+thus it overrides isReg and isIntReg definition.
 One operand can be stored in a register or presented as a constant. 
-In this example, IntRegOperand represents 
-Integer type operand stored in the register,
-it also needs to override isIntReg definition. 
+Note that the IntRegOperand represents 
+Integer type operand stored in the register.
 
 ### Finalize function generates actual code statements for operand
 One most important definition provided by the base class is **finalize**. 
-Because we are dealing with generic python classes 
-representing each type of operands,
+Note that all the Operands and its children classes and methods are defined as python syntax.
+Therefore, 
 we should require a method to convert python representation to 
 CPP which can be understandable by the GEM5. 
 The finalize definition does this!
-
 Although different version of finalize implementation exists
 depending on the operand type,
 we will take a look at the finalize of the Operand class. 
@@ -587,8 +606,9 @@ doesn't override the finalize method.
 
 The finalize method generates mainly two code bloks:
 initialization code for operands generated by *makeConstructor*
-and operands accessing code retrieved by *makeRead* and *makeWrite*.
-Based on the operand type such as source or destination,
+and code accessing operands such as register read or write 
+retrieved by *makeRead* and *makeWrite*.
+Based on the operand type such as source and destination,
 either markeRead or makeWrite will be invoked.
 As a result, the actual CPP code statement that can access 
 the operands will be generated. 
@@ -645,7 +665,7 @@ provided by the IntRegOperand class as an example.
 The above two definitions check whether the current operands type 
 matches the type represented by the IntRegOperand class. 
 After that, it generates CPP statements 
-which allow accesses to the operands.
+which allow accesses to the operands and returns the string.
 
 ## Populating proper operand class instances 
 We now understand GEM5 utilizes various types of operand classes 
@@ -679,6 +699,7 @@ Now it is time to go back to InstObjParams again!
 475             exec_output += MicroLoadInitiateAcc.subst(iop)
 476             exec_output += MicroLoadCompleteAcc.subst(iop)
 ```
+
 You might remember that InstObjParams is used for substituting the template.
 As shown in the code line 461-470 of the defineMicroLoadOp python definition,
 it defines iops which is the array of InstObjParams.
@@ -687,17 +708,9 @@ subst function of each template shown in the line 471-476.
 The subst function will replace the microop specific part of the implementation
 with the information provided by the passed InstObjParams instance.
 Note that the code snippets defined as python dictionary using { } are passed to
-init definition of InstObjParams python class.
+the constructor of the InstObjParams python class.
 When you look up the code and calculateEA variables of the defineMicroLoadOp definition,
-you can easily find that they are code snippets.
-
-```python
-defineMicroLoadOp('Ld', 'Data = merge(Data, Mem, dataSize);',
-```
-
-For example, code variable is the second argument of the defineMicroLoadOp definition,
-which represents current microcode's input and output operands. 
-To understand details, 
+you can easily find that they are code snippets also.
 Let's take a look at InstObjParams python class. 
 
 *gem5/src/arch/isa_parser.py*
@@ -792,17 +805,29 @@ The main purpose of InstObjParams is defining a particular dictionary.
 This dictionary stores all the passed information including class name and 
 code snippets, which will be used later in subst definition of template object
 to replace microcode specific parts of the microcode implementation template. 
-One of the important information managed by the InstObjParams is the operands field (line 1424)
+One of the important information managed by the InstObjParams is the operands field (line 1424).
+Note that constructor of the InstObjParams instantiate another object called **OperandList**.
 
 ### OperandList parses operands from code snippets
-OperandList parses code snippets of microop
+The OperandList parses code snippets of microop
 and generates **Operand** objects.
 Yeah this is one of the location where the Operand objects are populated.
-Because each Operand provides useful information to
-constructor creation and defining execute function of one microop,
-it should be parsed before substituting templates
-that defines classes and behavior of one microop.
+Each Operand provides useful information to
+constructor creation and defining multiple definitions required for implementing one microop.
+The OperandList can generate Operand classes 
+based on the operand keywords specified in the code-snippet. 
+Note that OperandList takes second argument of the defineMicroLoadOp definition.
 
+```python 
+defineMicroLoadOp('Ld', 'Data = merge(Data, Mem, dataSize);',
+```
+
+For example, in the above defineMicroLoadOp invocation, 
+'Data = merge(Data, Mem, dataSize);' is passed to the OperandList's constructor 
+and stored to the operands field of the InstObjParams (populated in the defineMicroLoadOp).
+Note that this code snippet represents microop's input and output operands.
+To understand details,
+Let's take a look at OperandList python class.
 
 {% raw %}
 ```python
@@ -932,7 +957,6 @@ that defines classes and behavior of one microop.
 1250             op_desc.finalize(self.predRead, self.predWrite)
 ```
 {% endraw %}
-
 
 OperandList parses code snippets with regular expression.
 Whenever a new keyword matches, 
@@ -1117,10 +1141,76 @@ stored in the operand field of the **InstObjParams**
 Remember that InstObjParams is used to replace generic template 
 to generate microcode implementation!
 
+## In a nutshell: generating CPP class for microop
+Although we spent a lot of times to cover many details of parser 
+such as Template and Operands, the one of the most important goal of this posting is 
+understanding how the CPP class associated with one microop 
+can be automatically generated. 
+In the previous posting, we only found that the getAllocator of the python class 
+associated with one microop generates constructor code for initiating 
+CPP class defined for the microop. 
+However, to implement the CPP class, we also need class definition 
+and member functions required to implement semantics of the microop 
+in addition to the constructor method of the class. 
 
-### MicroLoadExecute: template used to implement micro-load operation 
-Let's take a look at the MicroLoadExecute template as an example of 
-generating microcode implementation using the InstObjParams. 
+### MicroLdStOpDeclare: generating CPP class for micro-load operations 
+Although there are several microops related with load operations, 
+the skeleton of those microops are same (represented as Template) 
+because they have similarities because of the characteristics of the load operation.
+First of all, the MicroLdStOpDeclare template is used to generate 
+CPP class declaration. 
+
+def template MicroLdStOpDeclare {{
+    class %(class_name)s : public %(base_class)s
+    {
+      public:
+        %(class_name)s(ExtMachInst _machInst,
+                const char * instMnem, uint64_t setFlags,
+                uint8_t _scale, InstRegIndex _index, InstRegIndex _base,
+                uint64_t _disp, InstRegIndex _segment,
+                InstRegIndex _data,
+                uint8_t _dataSize, uint8_t _addressSize,
+                Request::FlagsType _memFlags);
+
+        Fault execute(ExecContext *, Trace::InstRecord *) const;
+        Fault initiateAcc(ExecContext *, Trace::InstRecord *) const;
+        Fault completeAcc(PacketPtr, ExecContext *, Trace::InstRecord *) const;
+    };
+}};
+
+Based on the InstObjParams passed to the defineMicroLoadOp, 
+microop specific strings will finish the uncompleted parts of the template.
+Note that the generated class also have the constructor 
+which we were looking for. 
+
+```python
+271 def template MicroLdStOpConstructor {{
+272     %(class_name)s::%(class_name)s(
+273             ExtMachInst machInst, const char * instMnem, uint64_t setFlags,
+274             uint8_t _scale, InstRegIndex _index, InstRegIndex _base,
+275             uint64_t _disp, InstRegIndex _segment,
+276             InstRegIndex _data,
+277             uint8_t _dataSize, uint8_t _addressSize,
+278             Request::FlagsType _memFlags) :
+279         %(base_class)s(machInst, "%(mnemonic)s", instMnem, setFlags,
+280                 _scale, _index, _base,
+281                 _disp, _segment, _data,
+282                 _dataSize, _addressSize, _memFlags, %(op_class)s)
+283     {
+284         %(constructor)s;
+285     }
+286 }};
+```
+
+The constructor's implementation itself can be also generated 
+with the help of another Template substitution, MicroLdStOpConstructor.
+
+
+## MicroLoadExecute: template used to implement micro-load operation 
+More importantly, in addition to the constructor for the microop, 
+each microop should implement several definitions 
+to have proper semantics of the microop.  
+Let's take a look at the MicroLoadExecute template. 
 The definition generated by this template is called **execute**, and 
 most of the Ld style microcode implements this function. 
 However, depending on the semantics of micro-load instructions,

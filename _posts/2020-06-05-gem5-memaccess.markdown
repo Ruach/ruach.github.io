@@ -3,21 +3,345 @@ layout: post
 titile: "GEM5 micro-load operation to actual memory access"
 categories: GEM5, Microops
 ---
+In the previous postings, 
+I have explained how the CPP classes for macroop and microop can be 
+automatically generated with the help of several GEM5's tool 
+such as python based parser and string based template substitution.
+Also,
+as an example, 
+I explained how a class definition and its constructor
+of the micro-load instructions are generated. 
+Furthermore, I showed several definitions that implements
+actual semantic of micro-load operations such as execute definition.
 
-## Method generation required for basic load operation
+The instructions are designed to change internal state of the system.
+Specifically, be executing some instructions, it can introduce 
+particular state change to register, memory, or internal states 
+represented as architecture. 
+Because GEM5 is an architecture-level emulator, 
+as a result of execution of one microop, 
+it should change specific data structure representing some part of the architecture.
+For that purpose, GEM5 provides **ExecContext** class which emulates
+entire underlying architecture. 
+Also, the **execute** method and other definitions of the microops 
+are designed to changes the ExecContext as a result of execution. 
+In other words, those definitions emulate the semantics of the instruction. 
+Therefore,
+we will see how the execution of microop can change the underlying architecture state.
+Also, to understand how the GEM5 execute microop,
+we will briefly take a look at the pipeline of the simple processor. 
 
+## CPU pipeline of the simple processor: fetch-decode-execute
+To understand how the GEM5 emulates the entire architecture, 
+one of the important question is *When and how the GEM5 execute the next instruction?*
+In other words, we have to answer the question,  
+who makes use of those automatically generated functions of microop?
+Each CPU model have different architecture, and 
+it makes huge difference in executing those instructions in the pipeline. 
+Therefore, we are going to look at the TimingSimple cpu model
+which is simplest but basic CPU model supported by the GEM5. 
+Because the simple cpu model is one cycle CPU model,
+it doesn't have multiple pipeline stages and execute one instruction at one cycle. 
+Although it has no pipeline stages,
+entire execution process can be presented as 
+three separate functions.
+
+### Processor invokes fetch at every clock tick 
+To understand how the TimingSimple processor process the events,
+we should understand which function will be invoked at the schedule event. 
+Scheduling a specific event requires a EventFunctionWrapper instance
+which contains information about event handler function.
+
+
+*gem5/src/cpu/simple/timing.hh*
+```cpp
+ 51 class TimingSimpleCPU : public BaseSimpleCPU
+ 52 {
+......
+325   private:
+326 
+327     EventFunctionWrapper fetchEvent;
+```
+
+As shown in the above class declaration of the TimingSimpleCPU, 
+I can find that fetchEvent member field is declared as EventFunctionWrapper.
+To utilize the wrapper to schedule event, 
+proper initialization code is required.
+
+*gem5/src/cpu/simple/timing.cc*
+```cpp
+  82 TimingSimpleCPU::TimingSimpleCPU(TimingSimpleCPUParams *p)
+  83     : BaseSimpleCPU(p), fetchTranslation(this), icachePort(this),
+  84       dcachePort(this), ifetch_pkt(NULL), dcache_pkt(NULL), previousCycle(0),
+  85       fetchEvent([this]{ fetch(); }, name())
+  86 {
+  87     _status = Idle;
+  88 }
+```
+
+As shown in the constructor of the TimingSimpleCPU, 
+it initialize the fetchEvent member field with a function called **fetch**.
+Therefore, whenever the fetchEvent is scheduled, 
+the GEM5 will invoke the fetch function and start to fetch the instruction
+from the memory (or cache).
+
+### fetch: retrieving next instruction to execute from memory
+*gem5/src/cpu/simple/timing.cc*
+```cpp
+ 653 void
+ 654 TimingSimpleCPU::fetch()
+ 655 {
+ 656     // Change thread if multi-threaded
+ 657     swapActiveThread();
+ 658
+ 659     SimpleExecContext &t_info = *threadInfo[curThread];
+ 660     SimpleThread* thread = t_info.thread;
+ 661
+ 662     DPRINTF(SimpleCPU, "Fetch\n");
+ 663
+ 664     if (!curStaticInst || !curStaticInst->isDelayedCommit()) {
+ 665         checkForInterrupts();
+ 666         checkPcEventQueue();
+ 667     }
+ 668
+ 669     // We must have just got suspended by a PC event
+ 670     if (_status == Idle)
+ 671         return;
+ 672
+ 673     TheISA::PCState pcState = thread->pcState();
+ 674     bool needToFetch = !isRomMicroPC(pcState.microPC()) &&
+ 675                        !curMacroStaticInst;
+ 676
+ 677     if (needToFetch) {
+ 678         _status = BaseSimpleCPU::Running;
+ 679         RequestPtr ifetch_req = std::make_shared<Request>();
+ 680         ifetch_req->taskId(taskId());
+ 681         ifetch_req->setContext(thread->contextId());
+ 682         setupFetchRequest(ifetch_req);
+ 683         DPRINTF(SimpleCPU, "Translating address %#x\n", ifetch_req->getVaddr());
+ 684         thread->itb->translateTiming(ifetch_req, thread->getTC(),
+ 685                 &fetchTranslation, BaseTLB::Execute);
+ 686     } else {
+ 687         _status = IcacheWaitResponse;
+ 688         completeIfetch(NULL);
+ 689
+ 690         updateCycleCounts();
+ 691         updateCycleCounters(BaseCPU::CPU_STATE_ON);
+ 692     }
+ 693 }
+```
+### decode
+Processor can decode the memory blocks as instruction
+after the memory has been fetched from the cache or memory.
+Because timing simple CPU assume memory access takes more than single cycle,
+it wants to be notified
+when the requested memory block has been brought to the processor.
+
+```cpp
+ 874 void
+ 875 TimingSimpleCPU::IcachePort::ITickEvent::process()
+ 876 {
+ 877     cpu->completeIfetch(pkt);
+ 878 }
+ 879 
+ 880 bool
+ 881 TimingSimpleCPU::IcachePort::recvTimingResp(PacketPtr pkt)
+ 882 {
+ 883     DPRINTF(SimpleCPU, "Received fetch response %#x\n", pkt->getAddr());
+ 884     // we should only ever see one response per cycle since we only
+ 885     // issue a new request once this response is sunk
+ 886     assert(!tickEvent.scheduled());
+ 887     // delay processing of returned data until next CPU clock edge
+ 888     tickEvent.schedule(pkt, cpu->clockEdge());
+ 889 
+ 890     return true;
+ 891 }
+```
+
+As a processor is connected to a memory subsystem through the bus,
+bus should be programmed to invoke a function
+that can handle the fetched instruction, *completeIfetch*.
+When IcachePort receive response from 
+memory subsystem, 
+it schedule event with received packet.
+Because it is scheduled to fire at right next cycle, 
+it ends up invoking completeIfetch function of the TimingSimpleCPU.
+
+
+
+```cpp
+ 775 void
+ 776 TimingSimpleCPU::completeIfetch(PacketPtr pkt)
+ 777 {
+ 778     SimpleExecContext& t_info = *threadInfo[curThread];
+ 779
+ 780     DPRINTF(SimpleCPU, "Complete ICache Fetch for addr %#x\n", pkt ?
+ 781             pkt->getAddr() : 0);
+ 782
+ 783     // received a response from the icache: execute the received
+ 784     // instruction
+ 785     assert(!pkt || !pkt->isError());
+ 786     assert(_status == IcacheWaitResponse);
+ 787
+ 788     _status = BaseSimpleCPU::Running;
+ 789
+ 790     updateCycleCounts();
+ 791     updateCycleCounters(BaseCPU::CPU_STATE_ON);
+ 792
+ 793     if (pkt)
+ 794         pkt->req->setAccessLatency();
+ 795
+ 796
+ 797     preExecute();
+ 798     if (curStaticInst && curStaticInst->isMemRef()) {
+ 799         // load or store: just send to dcache
+ 800         Fault fault = curStaticInst->initiateAcc(&t_info, traceData);
+ 801
+ 802         // If we're not running now the instruction will complete in a dcache
+ 803         // response callback or the instruction faulted and has started an
+ 804         // ifetch
+ 805         if (_status == BaseSimpleCPU::Running) {
+ 806             if (fault != NoFault && traceData) {
+ 807                 // If there was a fault, we shouldn't trace this instruction.
+ 808                 delete traceData;
+ 809                 traceData = NULL;
+ 810             }
+ 811
+ 812             postExecute();
+ 813             // @todo remove me after debugging with legion done
+ 814             if (curStaticInst && (!curStaticInst->isMicroop() ||
+ 815                         curStaticInst->isFirstMicroop()))
+ 816                 instCnt++;
+ 817             advanceInst(fault);
+ 818         }
+ 819     } else if (curStaticInst) {
+ 820         // non-memory instruction: execute completely now
+ 821         Fault fault = curStaticInst->execute(&t_info, traceData);
+ 822
+ 823         // keep an instruction count
+ 824         if (fault == NoFault)
+ 825             countInst();
+ 826         else if (traceData && !DTRACE(ExecFaulting)) {
+ 827             delete traceData;
+ 828             traceData = NULL;
+ 829         }
+ 830
+ 831         postExecute();
+ 832         // @todo remove me after debugging with legion done
+ 833         if (curStaticInst && (!curStaticInst->isMicroop() ||
+ 834                 curStaticInst->isFirstMicroop()))
+ 835             instCnt++;
+ 836         advanceInst(fault);
+ 837     } else {
+ 838         advanceInst(NoFault);
+ 839     }
+ 840
+ 841     if (pkt) {
+ 842         delete pkt;
+ 843     }
+ 844 }
+```
+CompleteIfetch instruction consists of four parts:
+preExecute, instruction execution, postExecute, and advanceInst.
+By the way, although we cannot see any decoding logic
+it makes use of curStaticInst to execute fetched instruction.
+Who decodes the fetched packet and generate curStaticInst?
+that is a *preExecute* function.
+
+*gem5/src/cpu/simple/base.cc*
+```cpp
+481 void
+482 BaseSimpleCPU::preExecute()
+483 {
+484     SimpleExecContext &t_info = *threadInfo[curThread];
+485     SimpleThread* thread = t_info.thread;
+486
+487     // maintain $r0 semantics
+488     thread->setIntReg(ZeroReg, 0);
+489 #if THE_ISA == ALPHA_ISA
+490     thread->setFloatReg(ZeroReg, 0);
+491 #endif // ALPHA_ISA
+492
+493     // resets predicates
+494     t_info.setPredicate(true);
+495     t_info.setMemAccPredicate(true);
+496
+497     // check for instruction-count-based events
+498     thread->comInstEventQueue.serviceEvents(t_info.numInst);
+499
+500     // decode the instruction
+501     TheISA::PCState pcState = thread->pcState();
+502
+503     if (isRomMicroPC(pcState.microPC())) {
+504         t_info.stayAtPC = false;
+505         curStaticInst = microcodeRom.fetchMicroop(pcState.microPC(),
+506                                                   curMacroStaticInst);
+507     } else if (!curMacroStaticInst) {
+508         //We're not in the middle of a macro instruction
+509         StaticInstPtr instPtr = NULL;
+510
+511         TheISA::Decoder *decoder = &(thread->decoder);
+512
+513         //Predecode, ie bundle up an ExtMachInst
+514         //If more fetch data is needed, pass it in.
+515         Addr fetchPC = (pcState.instAddr() & PCMask) + t_info.fetchOffset;
+516         //if (decoder->needMoreBytes())
+517             decoder->moreBytes(pcState, fetchPC, inst);
+518         //else
+519         //    decoder->process();
+520
+521         //Decode an instruction if one is ready. Otherwise, we'll have to
+522         //fetch beyond the MachInst at the current pc.
+523         instPtr = decoder->decode(pcState);
+524         if (instPtr) {
+525             t_info.stayAtPC = false;
+526             thread->pcState(pcState);
+527         } else {
+528             t_info.stayAtPC = true;
+529             t_info.fetchOffset += sizeof(MachInst);
+530         }
+531
+532         //If we decoded an instruction and it's microcoded, start pulling
+533         //out micro ops
+534         if (instPtr && instPtr->isMacroop()) {
+535             curMacroStaticInst = instPtr;
+536             curStaticInst =
+537                 curMacroStaticInst->fetchMicroop(pcState.microPC());
+538         } else {
+539             curStaticInst = instPtr;
+540         }
+541     } else {
+542         //Read the next micro op from the macro op
+543         curStaticInst = curMacroStaticInst->fetchMicroop(pcState.microPC());
+544     }
+545
+546     //If we decoded an instruction this "tick", record information about it.
+547     if (curStaticInst) {
+548 #if TRACING_ON
+549         traceData = tracer->getInstRecord(curTick(), thread->getTC(),
+550                 curStaticInst, thread->pcState(), curMacroStaticInst);
+551
+552         DPRINTF(Decode,"Decode: Decoded %s instruction: %#x\n",
+553                 curStaticInst->getName(), curStaticInst->machInst);
+554 #endif // TRACING_ON
+555     }
+556
+557     if (branchPred && curStaticInst &&
+558         curStaticInst->isControl()) {
+559         // Use a fake sequence number since we only have one
+560         // instruction in flight at the same time.
+561         const InstSeqNum cur_sn(0);
+562         t_info.predPC = thread->pcState();
+563         const bool predict_taken(
+564             branchPred->predict(curStaticInst, cur_sn, t_info.predPC,
+565                                 curThread));
+566
+567         if (predict_taken)
+568             ++t_info.numPredictedBranches;
+569     }
+570 }
+```
 ### execute: modify ExecContext based on instruction
-Currently, we have an automatically generated 
-class definition and its constructor.
-However, 
-it cannot make any change 
-to the micro architecture state,
-which means 
-we need a method that can define semantic of a microop.
-One of the important method is *execute* 
-that actually changes the architecture state
-represented by *ExecContext*.
-
 
 *gem5/build/X86/arch/x86/generated/exec-ns.cc.inc*
 ```cpp
@@ -422,274 +746,6 @@ from the pkt data structure.
 Because memory operation reads 64bytes of data at once 
 it should be properly feed to the pipeline depending on the data read size.
 
-#CPU pipeline: fetch-decode-execute
-Then who makes use of those automatically generated functions of microop?
-Each CPU model makes use of the generated methods differently,
-so we are going to look at simple/timing cpu model
-which is simple one cycle cpu.
-
-Because simple cpu model is one cycle CPU model,
-it doesn't implement multiple pipeline stages.
-Although it has no pipeline stages,
-entire execution process can be represented as 
-three separate functions.
-
-
-###fetch
-*gem5/src/cpu/simple/timing.cc*
-```cpp
- 653 void
- 654 TimingSimpleCPU::fetch()
- 655 {
- 656     // Change thread if multi-threaded
- 657     swapActiveThread();
- 658
- 659     SimpleExecContext &t_info = *threadInfo[curThread];
- 660     SimpleThread* thread = t_info.thread;
- 661
- 662     DPRINTF(SimpleCPU, "Fetch\n");
- 663
- 664     if (!curStaticInst || !curStaticInst->isDelayedCommit()) {
- 665         checkForInterrupts();
- 666         checkPcEventQueue();
- 667     }
- 668
- 669     // We must have just got suspended by a PC event
- 670     if (_status == Idle)
- 671         return;
- 672
- 673     TheISA::PCState pcState = thread->pcState();
- 674     bool needToFetch = !isRomMicroPC(pcState.microPC()) &&
- 675                        !curMacroStaticInst;
- 676
- 677     if (needToFetch) {
- 678         _status = BaseSimpleCPU::Running;
- 679         RequestPtr ifetch_req = std::make_shared<Request>();
- 680         ifetch_req->taskId(taskId());
- 681         ifetch_req->setContext(thread->contextId());
- 682         setupFetchRequest(ifetch_req);
- 683         DPRINTF(SimpleCPU, "Translating address %#x\n", ifetch_req->getVaddr());
- 684         thread->itb->translateTiming(ifetch_req, thread->getTC(),
- 685                 &fetchTranslation, BaseTLB::Execute);
- 686     } else {
- 687         _status = IcacheWaitResponse;
- 688         completeIfetch(NULL);
- 689
- 690         updateCycleCounts();
- 691         updateCycleCounters(BaseCPU::CPU_STATE_ON);
- 692     }
- 693 }
-```
-###decode
-Processor can decode the memory blocks as instruction
-after the memory has been fetched from the cache or memory.
-Because timing simple CPU assume memory access takes more than single cycle,
-it wants to be notified
-when the requested memory block has been brought to the processor.
-
-```cpp
- 846 void
- 847 TimingSimpleCPU::IcachePort::ITickEvent::process()
- 848 {                                                                                                                                                                                                                                                                                     849     cpu->completeIfetch(pkt);
- 850 }
- 851
- 852 bool
- 853 TimingSimpleCPU::IcachePort::recvTimingResp(PacketPtr pkt)
- 854 {
- 855     DPRINTF(SimpleCPU, "Received fetch response %#x\n", pkt->getAddr());
- 856     // we should only ever see one response per cycle since we only
- 857     // issue a new request once this response is sunk
- 858     assert(!tickEvent.scheduled());
- 859     // delay processing of returned data until next CPU clock edge
- 860     tickEvent.schedule(pkt, cpu->clockEdge());
- 861
- 862     return true;
- 863 }
-```
-
-As a processor is connected to a memory subsystem through the bus,
-bus should be programmed to invoke a function
-that can handle the fetched instruction, *completeIfetch*.
-When IcachePort receive response from 
-memory subsystem, 
-it schedule event with received packet.
-Because it is scheduled to fire at right next cycle, 
-it ends up invoking completeIfetch function of the TimingSimpleCPU.
-
-
-
-```cpp
- 775 void
- 776 TimingSimpleCPU::completeIfetch(PacketPtr pkt)
- 777 {
- 778     SimpleExecContext& t_info = *threadInfo[curThread];
- 779
- 780     DPRINTF(SimpleCPU, "Complete ICache Fetch for addr %#x\n", pkt ?
- 781             pkt->getAddr() : 0);
- 782
- 783     // received a response from the icache: execute the received
- 784     // instruction
- 785     assert(!pkt || !pkt->isError());
- 786     assert(_status == IcacheWaitResponse);
- 787
- 788     _status = BaseSimpleCPU::Running;
- 789
- 790     updateCycleCounts();
- 791     updateCycleCounters(BaseCPU::CPU_STATE_ON);
- 792
- 793     if (pkt)
- 794         pkt->req->setAccessLatency();
- 795
- 796
- 797     preExecute();
- 798     if (curStaticInst && curStaticInst->isMemRef()) {
- 799         // load or store: just send to dcache
- 800         Fault fault = curStaticInst->initiateAcc(&t_info, traceData);
- 801
- 802         // If we're not running now the instruction will complete in a dcache
- 803         // response callback or the instruction faulted and has started an
- 804         // ifetch
- 805         if (_status == BaseSimpleCPU::Running) {
- 806             if (fault != NoFault && traceData) {
- 807                 // If there was a fault, we shouldn't trace this instruction.
- 808                 delete traceData;
- 809                 traceData = NULL;
- 810             }
- 811
- 812             postExecute();
- 813             // @todo remove me after debugging with legion done
- 814             if (curStaticInst && (!curStaticInst->isMicroop() ||
- 815                         curStaticInst->isFirstMicroop()))
- 816                 instCnt++;
- 817             advanceInst(fault);
- 818         }
- 819     } else if (curStaticInst) {
- 820         // non-memory instruction: execute completely now
- 821         Fault fault = curStaticInst->execute(&t_info, traceData);
- 822
- 823         // keep an instruction count
- 824         if (fault == NoFault)
- 825             countInst();
- 826         else if (traceData && !DTRACE(ExecFaulting)) {
- 827             delete traceData;
- 828             traceData = NULL;
- 829         }
- 830
- 831         postExecute();
- 832         // @todo remove me after debugging with legion done
- 833         if (curStaticInst && (!curStaticInst->isMicroop() ||
- 834                 curStaticInst->isFirstMicroop()))
- 835             instCnt++;
- 836         advanceInst(fault);
- 837     } else {
- 838         advanceInst(NoFault);
- 839     }
- 840
- 841     if (pkt) {
- 842         delete pkt;
- 843     }
- 844 }
-```
-CompleteIfetch instruction consists of four parts:
-preExecute, instruction execution, postExecute, and advanceInst.
-By the way, although we cannot see any decoding logic
-it makes use of curStaticInst to execute fetched instruction.
-Who decodes the fetched packet and generate curStaticInst?
-that is a *preExecute* function.
-
-*gem5/src/cpu/simple/base.cc*
-```cpp
-481 void
-482 BaseSimpleCPU::preExecute()
-483 {
-484     SimpleExecContext &t_info = *threadInfo[curThread];
-485     SimpleThread* thread = t_info.thread;
-486
-487     // maintain $r0 semantics
-488     thread->setIntReg(ZeroReg, 0);
-489 #if THE_ISA == ALPHA_ISA
-490     thread->setFloatReg(ZeroReg, 0);
-491 #endif // ALPHA_ISA
-492
-493     // resets predicates
-494     t_info.setPredicate(true);
-495     t_info.setMemAccPredicate(true);
-496
-497     // check for instruction-count-based events
-498     thread->comInstEventQueue.serviceEvents(t_info.numInst);
-499
-500     // decode the instruction
-501     TheISA::PCState pcState = thread->pcState();
-502
-503     if (isRomMicroPC(pcState.microPC())) {
-504         t_info.stayAtPC = false;
-505         curStaticInst = microcodeRom.fetchMicroop(pcState.microPC(),
-506                                                   curMacroStaticInst);
-507     } else if (!curMacroStaticInst) {
-508         //We're not in the middle of a macro instruction
-509         StaticInstPtr instPtr = NULL;
-510
-511         TheISA::Decoder *decoder = &(thread->decoder);
-512
-513         //Predecode, ie bundle up an ExtMachInst
-514         //If more fetch data is needed, pass it in.
-515         Addr fetchPC = (pcState.instAddr() & PCMask) + t_info.fetchOffset;
-516         //if (decoder->needMoreBytes())
-517             decoder->moreBytes(pcState, fetchPC, inst);
-518         //else
-519         //    decoder->process();
-520
-521         //Decode an instruction if one is ready. Otherwise, we'll have to
-522         //fetch beyond the MachInst at the current pc.
-523         instPtr = decoder->decode(pcState);
-524         if (instPtr) {
-525             t_info.stayAtPC = false;
-526             thread->pcState(pcState);
-527         } else {
-528             t_info.stayAtPC = true;
-529             t_info.fetchOffset += sizeof(MachInst);
-530         }
-531
-532         //If we decoded an instruction and it's microcoded, start pulling
-533         //out micro ops
-534         if (instPtr && instPtr->isMacroop()) {
-535             curMacroStaticInst = instPtr;
-536             curStaticInst =
-537                 curMacroStaticInst->fetchMicroop(pcState.microPC());
-538         } else {
-539             curStaticInst = instPtr;
-540         }
-541     } else {
-542         //Read the next micro op from the macro op
-543         curStaticInst = curMacroStaticInst->fetchMicroop(pcState.microPC());
-544     }
-545
-546     //If we decoded an instruction this "tick", record information about it.
-547     if (curStaticInst) {
-548 #if TRACING_ON
-549         traceData = tracer->getInstRecord(curTick(), thread->getTC(),
-550                 curStaticInst, thread->pcState(), curMacroStaticInst);
-551
-552         DPRINTF(Decode,"Decode: Decoded %s instruction: %#x\n",
-553                 curStaticInst->getName(), curStaticInst->machInst);
-554 #endif // TRACING_ON
-555     }
-556
-557     if (branchPred && curStaticInst &&
-558         curStaticInst->isControl()) {
-559         // Use a fake sequence number since we only have one
-560         // instruction in flight at the same time.
-561         const InstSeqNum cur_sn(0);
-562         t_info.predPC = thread->pcState();
-563         const bool predict_taken(
-564             branchPred->predict(curStaticInst, cur_sn, t_info.predPC,
-565                                 curThread));
-566
-567         if (predict_taken)
-568             ++t_info.numPredictedBranches;
-569     }
-570 }
-```
 
 ###execute
 
@@ -697,7 +753,7 @@ that is a *preExecute* function.
 
 
 
-###Instruction execution: execute decoded microop instruction
+### Instruction execution: execute decoded microop instruction
 For memory operation (line 798-819),
 it invokes *initiateAcc* method of current microop 
 represented by the curStaticInst (line 800).

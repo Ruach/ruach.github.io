@@ -1,0 +1,229 @@
+---
+layout: post
+titile: "GEM5: BaseCPU"
+categories: GEM5
+---
+
+*gem5/src/cpu/BaseCPU.py*
+```python 
+ 65 if buildEnv['TARGET_ISA'] == 'alpha':
+ 66     from m5.objects.AlphaTLB import AlphaDTB as ArchDTB, AlphaITB as ArchITB
+ 67     from m5.objects.AlphaInterrupts import AlphaInterrupts as ArchInterrupts
+ 68     from m5.objects.AlphaISA import AlphaISA as ArchISA
+ 69     ArchISAsParam = VectorParam.AlphaISA
+ 70 elif buildEnv['TARGET_ISA'] == 'sparc':
+ 71     from m5.objects.SparcTLB import SparcTLB as ArchDTB, SparcTLB as ArchITB
+ 72     from m5.objects.SparcInterrupts import SparcInterrupts as ArchInterrupts
+ 73     from m5.objects.SparcISA import SparcISA as ArchISA
+ 74     ArchISAsParam = VectorParam.SparcISA
+ 75 elif buildEnv['TARGET_ISA'] == 'x86':
+ 76     from m5.objects.X86TLB import X86TLB as ArchDTB, X86TLB as ArchITB
+ 77     from m5.objects.X86LocalApic import X86LocalApic as ArchInterrupts
+ 78     from m5.objects.X86ISA import X86ISA as ArchISA
+ 79     ArchISAsParam = VectorParam.X86ISA
+ 80 elif buildEnv['TARGET_ISA'] == 'mips':
+ 81     from m5.objects.MipsTLB import MipsTLB as ArchDTB, MipsTLB as ArchITB
+ 82     from m5.objects.MipsInterrupts import MipsInterrupts as ArchInterrupts
+ 83     from m5.objects.MipsISA import MipsISA as ArchISA
+ 84     ArchISAsParam = VectorParam.MipsISA
+ 85 elif buildEnv['TARGET_ISA'] == 'arm':
+ 86     from m5.objects.ArmTLB import ArmDTB as ArchDTB, ArmITB as ArchITB
+ 87     from m5.objects.ArmInterrupts import ArmInterrupts as ArchInterrupts
+ 88     from m5.objects.ArmISA import ArmISA as ArchISA
+ 89     ArchISAsParam = VectorParam.ArmISA
+ 90 elif buildEnv['TARGET_ISA'] == 'power':
+ 91     from m5.objects.PowerTLB import PowerTLB as ArchDTB, PowerTLB as ArchITB
+ 92     from m5.objects.PowerInterrupts import PowerInterrupts as ArchInterrupts
+ 93     from m5.objects.PowerISA import PowerISA as ArchISA
+ 94     ArchISAsParam = VectorParam.PowerISA
+ 95 elif buildEnv['TARGET_ISA'] == 'riscv':
+ 96     from m5.objects.RiscvTLB import RiscvTLB as ArchDTB, RiscvTLB as ArchITB
+ 97     from m5.objects.RiscvInterrupts import RiscvInterrupts as ArchInterrupts
+ 98     from m5.objects.RiscvISA import RiscvISA as ArchISA
+ 99     ArchISAsParam = VectorParam.RiscvISA
+100 else:
+101     print("Don't know what object types to use for ISA %s" %
+102             buildEnv['TARGET_ISA'])
+103     sys.exit(1)
+104 
+```
+
+
+
+
+*gem5/src/cpu/BaseCPU.py*
+```python
+105 class BaseCPU(ClockedObject):
+106     type = 'BaseCPU'
+107     abstract = True
+108     cxx_header = "cpu/base.hh"
+......
+143     system = Param.System(Parent.any, "system object")
+144     cpu_id = Param.Int(-1, "CPU identifier")
+145     socket_id = Param.Unsigned(0, "Physical Socket identifier")
+146     numThreads = Param.Unsigned(1, "number of HW thread contexts")
+147     pwr_gating_latency = Param.Cycles(300,
+148         "Latency to enter power gating state when all contexts are suspended")
+149 
+150     power_gating_on_idle = Param.Bool(False, "Control whether the core goes "\
+151         "to the OFF power state after all thread are disabled for "\
+152         "pwr_gating_latency cycles")
+153 
+154     function_trace = Param.Bool(False, "Enable function trace")
+155     function_trace_start = Param.Tick(0, "Tick to start function trace")
+156 
+157     checker = Param.BaseCPU(NULL, "checker CPU")
+158 
+159     syscallRetryLatency = Param.Cycles(10000, "Cycles to wait until retry")
+160 
+161     do_checkpoint_insts = Param.Bool(True,
+162         "enable checkpoint pseudo instructions")
+163     do_statistics_insts = Param.Bool(True,
+164         "enable statistics pseudo instructions")
+165 
+166     profile = Param.Latency('0ns', "trace the kernel stack")
+167     do_quiesce = Param.Bool(True, "enable quiesce instructions")
+168 
+169     wait_for_remote_gdb = Param.Bool(False,
+170         "Wait for a remote GDB connection");
+171 
+172     workload = VectorParam.Process([], "processes to run")
+173 
+174     dtb = Param.BaseTLB(ArchDTB(), "Data TLB")
+175     itb = Param.BaseTLB(ArchITB(), "Instruction TLB")
+```
+
+As shown in the line 174-175, to instantiate the TLBs for data and instruction,
+it invokes the constructor of the BaseTLB class. Note that this is not the 
+python class yet, but a python class!
+Also, X86TLB has been imported as ArchDTB and ArchITB.
+Therefore, on the above code, BaseTLB instances are populated with 
+X86TLB class. 
+
+
+```python
+class BaseTLB(SimObject):
+    type = 'BaseTLB'
+    abstract = True
+    cxx_header = "arch/generic/tlb.hh"
+    # Ports to connect with other TLB levels
+    slave  = VectorSlavePort("Port closer to the CPU side")
+    master = MasterPort("Port closer to memory side")
+
+class X86TLB(BaseTLB):
+    type = 'X86TLB'
+    cxx_class = 'X86ISA::TLB'
+    cxx_header = 'arch/x86/tlb.hh'
+    size = Param.Unsigned(64, "TLB size")
+    system = Param.System(Parent.any, "system object")
+    walker = Param.X86PagetableWalker(\
+            X86PagetableWalker(), "page table walker")
+```
+
+Because BaseTLB class doesn't have any constructor definition dedicated for
+X86TLB class, it will invoke the SimObject's constructor.
+
+
+### Generated Params
+*gem5/build/X86/params/BaseTLB.hh*
+```cpp
+  1 #ifndef __PARAMS__BaseTLB__
+  2 #define __PARAMS__BaseTLB__
+  3 
+  4 class BaseTLB;
+  5 
+  6 #include "params/SimObject.hh"
+  7 
+  8 struct BaseTLBParams
+  9     : public SimObjectParams
+ 10 {
+ 11     unsigned int port_master_connection_count;
+ 12     unsigned int port_slave_connection_count;
+ 13 };
+ 14 
+ 15 #endif // __PARAMS__BaseTLB__
+```
+
+*gem5/build/X86/params/X86TLB.hh*
+```cpp
+#ifndef __PARAMS__X86TLB__
+#define __PARAMS__X86TLB__
+
+namespace X86ISA {
+class TLB;
+} // namespace X86ISA
+#include <cstddef>
+#include "base/types.hh"
+#include <cstddef>
+#include "params/System.hh"
+#include <cstddef>
+#include "params/X86PagetableWalker.hh"
+
+#include "params/BaseTLB.hh"
+
+struct X86TLBParams
+    : public BaseTLBParams
+{
+    X86ISA::TLB * create();
+    unsigned size;
+    System * system;
+    X86ISA::Walker * walker;
+};
+
+#endif // __PARAMS__X86TLB__
+```
+
+
+### How to generate params?
+*gem5/src/python/m5/params.py*
+```python
+2074 # Port description object.  Like a ParamDesc object, this represents a
+2075 # logical port in the SimObject class, not a particular port on a
+2076 # SimObject instance.  The latter are represented by PortRef objects.
+2077 class Port(object):
+2078     # Port("role", "description")
+2079 
+2080     _compat_dict = { }
+2081 
+2082     @classmethod
+2083     def compat(cls, role, peer):
+2084         cls._compat_dict.setdefault(role, set()).add(peer)
+2085         cls._compat_dict.setdefault(peer, set()).add(role)
+2086 
+2087     @classmethod
+2088     def is_compat(cls, one, two):
+2089         for port in one, two:
+2090             if not port.role in Port._compat_dict:
+2091                 fatal("Unrecognized role '%s' for port %s\n", port.role, port)
+2092         return one.role in Port._compat_dict[two.role]
+2093 
+2094     def __init__(self, role, desc, is_source=False):
+2095         self.desc = desc
+2096         self.role = role
+2097         self.is_source = is_source
+2098 
+2099     # Generate a PortRef for this port on the given SimObject with the
+2100     # given name
+2101     def makeRef(self, simobj):
+2102         return PortRef(simobj, self.name, self.role, self.is_source)
+2103 
+2104     # Connect an instance of this port (on the given SimObject with
+2105     # the given name) with the port described by the supplied PortRef
+2106     def connect(self, simobj, ref):
+2107         self.makeRef(simobj).connect(ref)
+2108 
+2109     # No need for any pre-declarations at the moment as we merely rely
+2110     # on an unsigned int.
+2111     def cxx_predecls(self, code):
+2112         pass
+2113 
+2114     def pybind_predecls(self, code):
+2115         cls.cxx_predecls(self, code)
+2116 
+2117     # Declare an unsigned int with the same name as the port, that
+2118     # will eventually hold the number of connected ports (and thus the
+2119     # number of elements for a VectorPort).
+2120     def cxx_decl(self, code):
+2121         code('unsigned int port_${{self.name}}_connection_count;')
+
+```

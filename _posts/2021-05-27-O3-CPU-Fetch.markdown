@@ -1,0 +1,165 @@
+### Fetch
+```cpp
+ 895 template <class Impl>
+ 896 void
+ 897 DefaultFetch<Impl>::tick()
+ 898 {
+ 899     list<ThreadID>::iterator threads = activeThreads->begin();
+ 900     list<ThreadID>::iterator end = activeThreads->end();
+ 901     bool status_change = false;
+ 902 
+ 903     wroteToTimeBuffer = false;
+ 904 
+ 905     for (ThreadID i = 0; i < numThreads; ++i) {
+ 906         issuePipelinedIfetch[i] = false;
+ 907     }
+ 908 
+ 909     while (threads != end) {
+ 910         ThreadID tid = *threads++;
+ 911 
+ 912         // Check the signals for each thread to determine the proper status
+ 913         // for each thread.
+ 914         bool updated_status = checkSignalsAndUpdate(tid);
+ 915         status_change =  status_change || updated_status;
+ 916     }
+ 917 
+ 918     DPRINTF(Fetch, "Running stage.\n");
+ 919 
+ 920     if (FullSystem) {
+ 921         if (fromCommit->commitInfo[0].interruptPending) {
+ 922             interruptPending = true;
+ 923         }
+ 924 
+ 925         if (fromCommit->commitInfo[0].clearInterrupt) {
+ 926             interruptPending = false;
+ 927         }
+ 928     }
+ 929 
+ 930     for (threadFetched = 0; threadFetched < numFetchingThreads;
+ 931          threadFetched++) {
+ 932         // Fetch each of the actively fetching threads.
+ 933         fetch(status_change);
+ 934     }
+ 935 
+ 936     // Record number of instructions fetched this cycle for distribution.
+ 937     fetchNisnDist.sample(numInst);
+ 938 
+ 939     if (status_change) {
+ 940         // Change the fetch stage status if there was a status change.
+ 941         _status = updateFetchStatus();
+ 942     }
+ 943 
+ 944     // Issue the next I-cache request if possible.
+ 945     for (ThreadID i = 0; i < numThreads; ++i) {
+ 946         if (issuePipelinedIfetch[i]) {
+ 947             pipelineIcacheAccesses(i);
+ 948         }
+ 949     }
+ 950 
+ 951     // Send instructions enqueued into the fetch queue to decode.
+ 952     // Limit rate by fetchWidth.  Stall if decode is stalled.
+ 953     unsigned insts_to_decode = 0;
+ 954     unsigned available_insts = 0;
+ 955 
+ 956     for (auto tid : *activeThreads) {
+ 957         if (!stalls[tid].decode) {
+ 958             available_insts += fetchQueue[tid].size();
+ 959         }
+ 960     }
+ 961 
+ 962     // Pick a random thread to start trying to grab instructions from
+ 963     auto tid_itr = activeThreads->begin();
+ 964     std::advance(tid_itr, random_mt.random<uint8_t>(0, activeThreads->size() - 1));
+ 965 
+ 966     while (available_insts != 0 && insts_to_decode < decodeWidth) {
+ 967         ThreadID tid = *tid_itr;
+ 968         if (!stalls[tid].decode && !fetchQueue[tid].empty()) {
+ 969             const auto& inst = fetchQueue[tid].front();
+ 970             toDecode->insts[toDecode->size++] = inst;
+ 971             DPRINTF(Fetch, "[tid:%i] [sn:%llu] Sending instruction to decode "
+ 972                     "from fetch queue. Fetch queue size: %i.\n",
+ 973                     tid, inst->seqNum, fetchQueue[tid].size());
+ 974 
+ 975             wroteToTimeBuffer = true;
+ 976             fetchQueue[tid].pop_front();
+ 977             insts_to_decode++;
+ 978             available_insts--;
+ 979         }
+ 980 
+ 981         tid_itr++;
+ 982         // Wrap around if at end of active threads list
+ 983         if (tid_itr == activeThreads->end())
+ 984             tid_itr = activeThreads->begin();
+ 985     }
+ 986 
+ 987     // If there was activity this cycle, inform the CPU of it.
+ 988     if (wroteToTimeBuffer) {
+ 989         DPRINTF(Activity, "Activity this cycle.\n");
+ 990         cpu->activityThisCycle();
+ 991     }
+ 992 
+ 993     // Reset the number of the instruction we've fetched.
+ 994     numInst = 0;
+ 995 }
+
+
+```
+
+
+
+
+###
+
+```cpp
+ 602 template <class Impl>
+ 603 bool
+ 604 DefaultFetch<Impl>::fetchCacheLine(Addr vaddr, ThreadID tid, Addr pc)
+ 605 {   
+ 606     Fault fault = NoFault;
+ 607     
+ 608     assert(!cpu->switchedOut());
+ 609     
+ 610     // @todo: not sure if these should block translation.
+ 611     //AlphaDep
+ 612     if (cacheBlocked) {
+ 613         DPRINTF(Fetch, "[tid:%i] Can't fetch cache line, cache blocked\n",
+ 614                 tid);
+ 615         return false;
+ 616     } else if (checkInterrupt(pc) && !delayedCommit[tid]) {
+ 617         // Hold off fetch from getting new instructions when:
+ 618         // Cache is blocked, or
+ 619         // while an interrupt is pending and we're not in PAL mode, or
+ 620         // fetch is switched out.
+ 621         DPRINTF(Fetch, "[tid:%i] Can't fetch cache line, interrupt pending\n",
+ 622                 tid);
+ 623         return false;
+ 624     }
+ 625     
+ 626     // Align the fetch address to the start of a fetch buffer segment.
+ 627     Addr fetchBufferBlockPC = fetchBufferAlignPC(vaddr);
+ 628     
+ 629     DPRINTF(Fetch, "[tid:%i] Fetching cache line %#x for addr %#x\n",
+ 630             tid, fetchBufferBlockPC, vaddr);
+ 631     
+ 632     // Setup the memReq to do a read of the first instruction's address.
+ 633     // Set the appropriate read size and flags as well.
+ 634     // Build request here.
+ 635     RequestPtr mem_req = std::make_shared<Request>(
+ 636         tid, fetchBufferBlockPC, fetchBufferSize, 
+ 637         Request::INST_FETCH, cpu->instMasterId(), pc,
+ 638         cpu->thread[tid]->contextId());
+ 639     
+ 640     mem_req->taskId(cpu->taskId());
+ 641     
+ 642     memReq[tid] = mem_req;
+ 643     
+ 644     // Initiate translation of the icache block
+ 645     fetchStatus[tid] = ItlbWait;
+ 646     FetchTranslation *trans = new FetchTranslation(this);
+ 647     cpu->itb->translateTiming(mem_req, cpu->thread[tid]->getTC(),
+ 648                               trans, BaseTLB::Execute);
+ 649     return true;
+ 650 }
+
+```
+

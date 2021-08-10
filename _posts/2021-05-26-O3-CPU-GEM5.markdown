@@ -1,114 +1,425 @@
+## Python derives O3CPU through DerivO3CPU class
+To understand particular processor in the GEM5, 
+it is easy to start from the script that instantiate the processor. 
+We can easily find that lots of GEM5 provided default script utilize 
+DerivO3CPU to attach the O3 CPU to the system. 
 
-**cpu/o3/impl.hh**
+
+*gem5/src/cpu/o3/O3CPU.py*
+```python
+ 61 class DerivO3CPU(BaseCPU):
+ 62     type = 'DerivO3CPU'
+ 63     cxx_header = 'cpu/o3/deriv.hh'
+ 64 
+ 65     @classmethod
+ 66     def memory_mode(cls):
+ 67         return 'timing'
+ 68 
+ 69     @classmethod
+ 70     def require_caches(cls):
+ 71         return True
+ 72 
+ 73     @classmethod
+ 74     def support_take_over(cls):
+ 75         return True
+ 76 
+ 77     activity = Param.Unsigned(0, "Initial count")
+ 78 
+ 79     cacheStorePorts = Param.Unsigned(200, "Cache Ports. "
+ 80           "Constrains stores only.")
+ 81     cacheLoadPorts = Param.Unsigned(200, "Cache Ports. "
+ 82           "Constrains loads only.")
+ 83 
+ 84     decodeToFetchDelay = Param.Cycles(1, "Decode to fetch delay")
+ 85     renameToFetchDelay = Param.Cycles(1 ,"Rename to fetch delay")
+ 86     iewToFetchDelay = Param.Cycles(1, "Issue/Execute/Writeback to fetch "
+ 87                                    "delay")
+ 88     commitToFetchDelay = Param.Cycles(1, "Commit to fetch delay")
+ 89     fetchWidth = Param.Unsigned(8, "Fetch width")
+ 90     fetchBufferSize = Param.Unsigned(64, "Fetch buffer size in bytes")
+ 91     fetchQueueSize = Param.Unsigned(32, "Fetch queue size in micro-ops "
+ 92                                     "per-thread")
+```
+**DerivO3CPU** is used to instantiate the O3CPU in the runscript of the GEM5.
+Similar to other m5 objects of the processors, it also inherits from the BaseCPU m5 class. 
+Also it sets the parameters of the O3CPU which will be accessed by the DerivO3CPUParams later 
+in the CPP implementation of this class. 
+
+*gem5/src/cpu/o3/derive.hh*
 ```cpp
-// Forward declarations.
-template <class Impl>
-class BaseO3DynInst;
+#ifndef __CPU_O3_DERIV_HH__
+#define __CPU_O3_DERIV_HH__
 
-template <class Impl>
-class FullO3CPU;
+#include "cpu/o3/cpu.hh"
+#include "cpu/o3/impl.hh"
+#include "params/DerivO3CPU.hh"
 
-/** Implementation specific struct that defines several key types to the
- *  CPU, the stages within the CPU, the time buffers, and the DynInst.
- *  The struct defines the ISA, the CPU policy, the specific DynInst, the
- *  specific O3CPU, and all of the structs from the time buffers to do
- *  communication.
- *  This is one of the key things that must be defined for each hardware
- *  specific CPU implementation.
- */
-struct O3CPUImpl
+class DerivO3CPU : public FullO3CPU<O3CPUImpl>
 {
-    /** The type of MachInst. */
-    typedef TheISA::MachInst MachInst;
-
-    /** The CPU policy to be used, which defines all of the CPU stages. */
-    typedef SimpleCPUPolicy<O3CPUImpl> CPUPol;
-
-    /** The DynInst type to be used. */
-    typedef BaseO3DynInst<O3CPUImpl> DynInst;
-
-    /** The refcounted DynInst pointer to be used.  In most cases this is
-     *  what should be used, and not DynInst *.
-     */
-    typedef RefCountingPtr<DynInst> DynInstPtr;
-    typedef RefCountingPtr<const DynInst> DynInstConstPtr;
-
-    /** The O3CPU type to be used. */
-    typedef FullO3CPU<O3CPUImpl> O3CPU;
-
-    /** Same typedef, but for CPUType.  BaseDynInst may not always use
-     * an O3 CPU, so it's clearer to call it CPUType instead in that
-     * case.
-     */
-    typedef O3CPU CPUType;
-
-    enum {
-      MaxWidth = 8,
-      MaxThreads = 4
-    };
+  public:
+    DerivO3CPU(DerivO3CPUParams *p)
+        : FullO3CPU<O3CPUImpl>(p)
+    { }
 };
+#endif // __CPU_O3_DERIV_HH__
+```
+Contrary to my expectation, the DerivO3CPU class doesn't have any definitions to 
+emulate the O3CPU, but just inherits from the FullO3CPU with O3CPUImpl for the class template instantiation. 
+Therefore, we can reasonably guess that all the implementations are done by the FullO3CPU. 
+Before we go deep down, let's take a look at the class hierarchies of this CPU.
+
+*gem5/src/o3/cpu.hh*
+```cpp
+83 class BaseO3CPU : public BaseCPU
+ 84 {
+ 85     //Stuff that's pretty ISA independent will go here.
+ 86   public:
+ 87     BaseO3CPU(BaseCPUParams *params);
+ 88 
+ 89     void regStats();
+ 90 };
+ 91 
+ 92 /**
+ 93  * FullO3CPU class, has each of the stages (fetch through commit)
+ 94  * within it, as well as all of the time buffers between stages.  The
+ 95  * tick() function for the CPU is defined here.
+ 96  */
+ 97 template <class Impl>
+ 98 class FullO3CPU : public BaseO3CPU
+ 99 {
+100   public:
+101     // Typedefs from the Impl here.
+102     typedef typename Impl::CPUPol CPUPolicy;
+103     typedef typename Impl::DynInstPtr DynInstPtr;
+104     typedef typename Impl::O3CPU O3CPU;
+105 
+106     using VecElem =  TheISA::VecElem;
+107     using VecRegContainer =  TheISA::VecRegContainer;
+108 
+109     using VecPredRegContainer = TheISA::VecPredRegContainer;
+110 
+111     typedef O3ThreadState<Impl> ImplState;
+112     typedef O3ThreadState<Impl> Thread;
+113 
+114     typedef typename std::list<DynInstPtr>::iterator ListIt;
+115 
+116     friend class O3ThreadContext<Impl>;
+......
 ```
 
+The FullO3CPU is the main CPU class for the O3 CPU. We can find that this FullO3CPU 
+inherits BaseO3CPU inheriting BaseCPU. In GEM5, all the CPU classes basically 
+inherits the BaseCPU class. Remember that the DerivO3CPU also inherits from the BaseCPU m5 object,
+which generates the proper interfaces to access the parameters of the DerivO3CPU and BaseCPU in the 
+CPP implementation of those classes. To understand the relationship of those two classes, 
+it would be good to take a look at the constructor of those two classes. 
 
-
-**cpu/o3/cpu_policy.hh**
+*gem5/src/o3/cpu.cc*
 ```cpp
-/**
- * Struct that defines the key classes to be used by the CPU.  All
- * classes use the typedefs defined here to determine what are the
- * classes of the other stages and communication buffers.  In order to
- * change a structure such as the IQ, simply change the typedef here
- * to use the desired class instead, and recompile.  In order to
- * create a different CPU to be used simultaneously with this one, see
- * the alpha_impl.hh file for instructions.
- */
-template<class Impl>
-struct SimpleCPUPolicy
-{
-    /** Typedef for the freelist of registers. */
-    typedef UnifiedFreeList FreeList;
-    /** Typedef for the rename map. */
-    typedef UnifiedRenameMap RenameMap;
-    /** Typedef for the ROB. */
-    typedef ::ROB<Impl> ROB;
-    /** Typedef for the instruction queue/scheduler. */
-    typedef InstructionQueue<Impl> IQ;
-    /** Typedef for the memory dependence unit. */
-    typedef ::MemDepUnit<StoreSet, Impl> MemDepUnit;
-    /** Typedef for the LSQ. */
-    typedef ::LSQ<Impl> LSQ;
-    /** Typedef for the thread-specific LSQ units. */
-    typedef ::LSQUnit<Impl> LSQUnit;
+  82 BaseO3CPU::BaseO3CPU(BaseCPUParams *params)
+  83     : BaseCPU(params)
+  84 {
+  85 }
+......
+  93 template <class Impl>
+  94 FullO3CPU<Impl>::FullO3CPU(DerivO3CPUParams *params)
+  95     : BaseO3CPU(params),
+  96       itb(params->itb),
+  97       dtb(params->dtb),
+  98       tickEvent([this]{ tick(); }, "FullO3CPU tick",
+  99                 false, Event::CPU_Tick_Pri),
+ 100       threadExitEvent([this]{ exitThreads(); }, "FullO3CPU exit threads",
+ 101                 false, Event::CPU_Exit_Pri),
+ 102 #ifndef NDEBUG
+ 103       instcount(0),
+ 104 #endif
+ 105       removeInstsThisCycle(false),
+ 106       fetch(this, params),
+ 107       decode(this, params),
+ 108       rename(this, params),
+ 109       iew(this, params),
+ 110       commit(this, params),
+ 111 
+ 112       /* It is mandatory that all SMT threads use the same renaming mode as
+ 113        * they are sharing registers and rename */
+ 114       vecMode(RenameMode<TheISA::ISA>::init(params->isa[0])),
+ 115       regFile(params->numPhysIntRegs,
+ 116               params->numPhysFloatRegs,
+ 117               params->numPhysVecRegs,
+ 118               params->numPhysVecPredRegs,
+ 119               params->numPhysCCRegs,
+ 120               vecMode),
+ 121 
+ 122       freeList(name() + ".freelist", &regFile),
+ 123 
+ 124       rob(this, params),
+ 125 
+ 126       scoreboard(name() + ".scoreboard",
+ 127                  regFile.totalNumPhysRegs()),
+ 128 
+ 129       isa(numThreads, NULL),
+ 130 
+ 131       timeBuffer(params->backComSize, params->forwardComSize),
+ 132       fetchQueue(params->backComSize, params->forwardComSize),
+ 133       decodeQueue(params->backComSize, params->forwardComSize),
+ 134       renameQueue(params->backComSize, params->forwardComSize),
+ 135       iewQueue(params->backComSize, params->forwardComSize),
+ 136       activityRec(name(), NumStages,
+ 137                   params->backComSize + params->forwardComSize,
+ 138                   params->activity),
+ 139 
+ 140       globalSeqNum(1),
+ 141       system(params->system),
+ 142       lastRunningCycle(curCycle())
+```
 
-    /** Typedef for fetch. */
-    typedef DefaultFetch<Impl> Fetch;
-    /** Typedef for decode. */
-    typedef DefaultDecode<Impl> Decode;
-    /** Typedef for rename. */
-    typedef DefaultRename<Impl> Rename;
-    /** Typedef for Issue/Execute/Writeback. */
-    typedef DefaultIEW<Impl> IEW;
-    /** Typedef for commit. */
-    typedef DefaultCommit<Impl> Commit;
+Note that FullO3CPU passes the params to the BaseO3CPU which further passes the params
+to the BaseCPU's constructor. Remember that all the processors on the GEM5 should implement the 
+BaseCPU in addition to their additional semantic. Therefore, after FullO3CPU first initializes 
+its member field using the passed parameters, it should pass the parameter to the BaseCPU to 
+finish base processor configurations. 
+One interesting thing to note is that FullO3CPU is a template class which adopts 
+another class called Impl that should be replaced with proper class to be used. 
+Therefore, DerivO3CPU inherits the FullO3CPU<O3CPUImpl> not the FullO3CPU alone. 
+Let's take a look at what is the O3CPUImpl. 
 
-    /** The struct for communication between fetch and decode. */
-    typedef DefaultFetchDefaultDecode<Impl> FetchStruct;
+*gem5/src/cpu/o3/impl.hh*
+```cpp
+ 38 // Forward declarations.
+ 39 template <class Impl>
+ 40 class BaseO3DynInst;
+ 41 
+ 42 template <class Impl>
+ 43 class FullO3CPU;
+ 44 
+ 45 /** Implementation specific struct that defines several key types to the
+ 46  *  CPU, the stages within the CPU, the time buffers, and the DynInst.
+ 47  *  The struct defines the ISA, the CPU policy, the specific DynInst, the
+ 48  *  specific O3CPU, and all of the structs from the time buffers to do
+ 49  *  communication.
+ 50  *  This is one of the key things that must be defined for each hardware
+ 51  *  specific CPU implementation.
+ 52  */
+ 53 struct O3CPUImpl
+ 54 {
+ 55     /** The type of MachInst. */
+ 56     typedef TheISA::MachInst MachInst;
+ 57 
+ 58     /** The CPU policy to be used, which defines all of the CPU stages. */
+ 59     typedef SimpleCPUPolicy<O3CPUImpl> CPUPol;
+ 60 
+ 61     /** The DynInst type to be used. */
+ 62     typedef BaseO3DynInst<O3CPUImpl> DynInst;
+ 63 
+ 64     /** The refcounted DynInst pointer to be used.  In most cases this is
+ 65      *  what should be used, and not DynInst *.
+ 66      */
+ 67     typedef RefCountingPtr<DynInst> DynInstPtr;
+ 68     typedef RefCountingPtr<const DynInst> DynInstConstPtr;
+ 69 
+ 70     /** The O3CPU type to be used. */
+ 71     typedef FullO3CPU<O3CPUImpl> O3CPU;
+ 72 
+ 73     /** Same typedef, but for CPUType.  BaseDynInst may not always use
+ 74      * an O3 CPU, so it's clearer to call it CPUType instead in that
+ 75      * case.
+ 76      */
+ 77     typedef O3CPU CPUType;
+ 78 
+ 79     enum {
+ 80       MaxWidth = 8,
+ 81       MaxThreads = 4
+ 82     };
+ 83 };
+```
 
-    /** The struct for communication between decode and rename. */
-    typedef DefaultDecodeDefaultRename<Impl> DecodeStruct;
+GEM5 defines structure called O3CPUImpl 
+that instantiates all template classes associated with O3 CPU. 
+One of the instantiated template class is FullO3CPU (Line 71).
+By instantiating the FullO3CPU class with the O3CPUImpl class, 
+it defines complete FullO3CPU class called O3CPU. The O3CPU type will be used later frequently 
+to indicate the O3CPU in the other parts of the O3CPU implementations. 
+Also, other uncompleted class templates are instantiated with the O3CPUImpl class.
+Let's revisit the FullO3CPU class once again to take a look at how the 
+O3CPUImpl class will be utilized as an Impl template. 
 
-    /** The struct for communication between rename and IEW. */
-    typedef DefaultRenameDefaultIEW<Impl> RenameStruct;
+*gem5/src/o3/cpu.hh*
+```cpp
+ 97 template <class Impl>
+ 98 class FullO3CPU : public BaseO3CPU
+ 99 {
+100   public:
+101     // Typedefs from the Impl here.
+102     typedef typename Impl::CPUPol CPUPolicy;
+103     typedef typename Impl::DynInstPtr DynInstPtr;
+104     typedef typename Impl::O3CPU O3CPU;
+......
+558   protected:
+559     /** The fetch stage. */
+560     typename CPUPolicy::Fetch fetch;
+561 
+562     /** The decode stage. */
+563     typename CPUPolicy::Decode decode;
+564 
+565     /** The dispatch stage. */
+566     typename CPUPolicy::Rename rename;
+567 
+568     /** The issue/execute/writeback stages. */
+569     typename CPUPolicy::IEW iew;
+570 
+571     /** The commit stage. */
+572     typename CPUPolicy::Commit commit;
+```
 
-    /** The struct for communication between IEW and commit. */
-    typedef DefaultIEWDefaultCommit<Impl> IEWStruct;
+First of all, it defines new typenames by utilizing the member field of the 
+Impl class. Note that those are also typedef of some classes 
+retrieved by instantiating specific class templates defined for O3 CPU. 
+For example, CPUPolicy is set an alias of Impl::CPUPol which is a
+typedef of SimpleCPUPolicy<O3CPUImpl> defined in the O3CPUImpl.
+Therefore, in short, CPUPolicy equals SimpleCPUPolicy<O3CPUImpl>. 
+Those types in the FullO3CPU class will be used in declaring pipeline stages of the O3CPU. 
+As shown in the line 558-572, it utilizes the CPUPolicy type 
+to define different pipeline stages (e.g., fetch, decode).
+Therefore, to understand the each stage of the pipeline of the O3CPU, we should 
+take a look at the SimpleCPUPolicy class. 
 
-    /** The struct for communication within the IEW stage. */
-    typedef ::IssueStruct<Impl> IssueStruct;
+*gem5/src/cpu/o3/cpu_policy.hh*
+```cpp
+ 51 /**
+ 52  * Struct that defines the key classes to be used by the CPU.  All
+ 53  * classes use the typedefs defined here to determine what are the
+ 54  * classes of the other stages and communication buffers.  In order to
+ 55  * change a structure such as the IQ, simply change the typedef here
+ 56  * to use the desired class instead, and recompile.  In order to
+ 57  * create a different CPU to be used simultaneously with this one, see
+ 58  * the alpha_impl.hh file for instructions.
+ 59  */
+ 60 template<class Impl>
+ 61 struct SimpleCPUPolicy
+ 62 {
+ 63     /** Typedef for the freelist of registers. */
+ 64     typedef UnifiedFreeList FreeList;
+ 65     /** Typedef for the rename map. */
+ 66     typedef UnifiedRenameMap RenameMap;
+ 67     /** Typedef for the ROB. */
+ 68     typedef ::ROB<Impl> ROB;
+ 69     /** Typedef for the instruction queue/scheduler. */
+ 70     typedef InstructionQueue<Impl> IQ;
+ 71     /** Typedef for the memory dependence unit. */
+ 72     typedef ::MemDepUnit<StoreSet, Impl> MemDepUnit;
+ 73     /** Typedef for the LSQ. */
+ 74     typedef ::LSQ<Impl> LSQ;
+ 75     /** Typedef for the thread-specific LSQ units. */
+ 76     typedef ::LSQUnit<Impl> LSQUnit;
+ 77 
+ 78     /** Typedef for fetch. */
+ 79     typedef DefaultFetch<Impl> Fetch;
+ 80     /** Typedef for decode. */
+ 81     typedef DefaultDecode<Impl> Decode;
+ 82     /** Typedef for rename. */
+ 83     typedef DefaultRename<Impl> Rename;
+ 84     /** Typedef for Issue/Execute/Writeback. */
+ 85     typedef DefaultIEW<Impl> IEW;
+ 86     /** Typedef for commit. */
+ 87     typedef DefaultCommit<Impl> Commit;
+ 88 
+ 89     /** The struct for communication between fetch and decode. */
+ 90     typedef DefaultFetchDefaultDecode<Impl> FetchStruct;
+ 91 
+ 92     /** The struct for communication between decode and rename. */
+ 93     typedef DefaultDecodeDefaultRename<Impl> DecodeStruct;
+ 94 
+ 95     /** The struct for communication between rename and IEW. */
+ 96     typedef DefaultRenameDefaultIEW<Impl> RenameStruct;
+ 97 
+ 98     /** The struct for communication between IEW and commit. */
+ 99     typedef DefaultIEWDefaultCommit<Impl> IEWStruct;
+100 
+101     /** The struct for communication within the IEW stage. */
+102     typedef ::IssueStruct<Impl> IssueStruct;
+103 
+104     /** The struct for all backwards communication. */
+105     typedef TimeBufStruct<Impl> TimeStruct;
+106 
+107 };
+```
 
-    /** The struct for all backwards communication. */
-    typedef TimeBufStruct<Impl> TimeStruct;
+In the above code, I can find that each stage is defined as an instantiation 
+of one class template. For example, Fetch type is defined as an DefaultFetch<Impl>
+and Decode type is defined as an DefaultDecode<Impl>. Remember that 
+we are currently looking at this class because of the instantiation, SimpleCPUPolicy<O3CPUImpl>.
+Therefore, DefaultDecode<Impl> can be translated into DefaultDecode<O3CPUImpl>.
+In the FullO3CPU, instead of implementing entire pipeline in one class, 
+it embeds different classes' instances implementing each part of the O3CPU's pipeline. 
+Therefore, to understand the fetch part of the O3CPU, we should take a look at the DefaultFetch class.
 
-};
+
+## Fetch of the O3CPU 
+
+
+
+
+
+
+## Tick  
+```cpp
+529 template <class Impl>
+ 530 void
+ 531 FullO3CPU<Impl>::tick()
+ 532 {
+ 533     DPRINTF(O3CPU, "\n\nFullO3CPU: Ticking main, FullO3CPU.\n");
+ 534     assert(!switchedOut());
+ 535     assert(drainState() != DrainState::Drained);
+ 536 
+ 537     ++numCycles;
+ 538     updateCycleCounters(BaseCPU::CPU_STATE_ON);
+ 539 
+ 540 //    activity = false;
+ 541 
+ 542     //Tick each of the stages
+ 543     fetch.tick();
+ 544 
+ 545     decode.tick();
+ 546 
+ 547     rename.tick();
+ 548 
+ 549     iew.tick();
+ 550 
+ 551     commit.tick();
+ 552 
+ 553     // Now advance the time buffers
+ 554     timeBuffer.advance();
+ 555 
+ 556     fetchQueue.advance();
+ 557     decodeQueue.advance();
+ 558     renameQueue.advance();
+ 559     iewQueue.advance();
+ 560 
+ 561     activityRec.advance();
+ 562 
+ 563     if (removeInstsThisCycle) {
+ 564         cleanUpRemovedInsts();
+ 565     }
+ 566 
+ 567     if (!tickEvent.scheduled()) {
+ 568         if (_status == SwitchedOut) {
+ 569             DPRINTF(O3CPU, "Switched out!\n");
+ 570             // increment stat
+ 571             lastRunningCycle = curCycle();
+ 572         } else if (!activityRec.active() || _status == Idle) {
+ 573             DPRINTF(O3CPU, "Idle!\n");
+ 574             lastRunningCycle = curCycle();
+ 575             timesIdled++;
+ 576         } else {
+ 577             schedule(tickEvent, clockEdge(Cycles(1)));
+ 578             DPRINTF(O3CPU, "Scheduling next tick!\n");
+ 579         }
+ 580     }
+ 581 
+ 582     if (!FullSystem)
+ 583         updateThreadPriority();
+ 584 
+ 585     tryDrain();
+ 586 }
 
 ```

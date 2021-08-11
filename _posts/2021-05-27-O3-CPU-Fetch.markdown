@@ -478,6 +478,15 @@ different thread based on the current status of threads.
  650 }
 ```
 
+One can ask how the fetch stage can understand when the translation is finished.
+Note that **FetchTranslation** object is instantiated and sent to the 
+Instruction TLB (itb) which conveys functions that should be invoked 
+after the Translation is resolved. Therefore, when the instruction TLB finishes
+the translation, it invokes the function provided by the passed FetchTranslation object and 
+let the fetch stage to process next step, accessing the cache. 
+Anyway, let's take a look at which function is provided to the TLB.
+
+*gem5/src/cpu/o3/fetch.hh*
 ```cpp
 115     class FetchTranslation : public BaseTLB::Translation
 116     {
@@ -501,21 +510,20 @@ different thread based on the current status of threads.
 134             fetch->finishTranslation(fault, req);
 135             delete this;
 136         }
-137     };
-
-u
-ㅕu
-
-
-OBOAOA
-:w
-:
-:W
-:w
-[O[I[O[I[O
+137     };
 ```
 
-### Finishing TLB access and generate cache access
+You might remember that the TLB invokes the **finish** function at the end of the translation
+Yes the FetchTranslation object provide the finish function. When the TLB finishes translation,
+by invoking finish function, it can let the processor know the translation is resolved. 
+The finish function further invokes the **finishTranslation** function defined in the 
+DefaultFetch class. 
+
+### finishTranslation: finishing TLB access and generate cache access
+After the request to the TLB has been resolved, the remaining job is accessing the cache 
+to read the instruction to fetch. Let's take a look at how the fetch stage of the O3 CPU 
+access the instruction cache.
+
 ```cpp
  652 template <class Impl>
  653 void
@@ -537,8 +545,15 @@ different thread based on the current status of threads.
  669         ++fetchTlbSquashes;
  670         return;
  671     }
- 672 
- 673 
+```
+Compared to simple processor which doesn't provide speculative execution, 
+O3 processor utilize the branch prediction and out-of-order execution. 
+Therefore, if the current TLB completion is notified to the O3CPU because of a
+misspeculation, it should drop the TLB response and stop accessing the cache.
+Note that the speculation can turn out to be false while it waits TLB response.
+Line 665-670 checks the misspeculation. 
+
+```cpp
  674     // If translation was successful, attempt to read the icache block.
  675     if (fault == NoFault) {
  676         // Check that we're not going off into random memory
@@ -561,7 +576,7 @@ different thread based on the current status of threads.
  693         DPRINTF(Fetch, "Fetch: Doing instruction read.\n");
  694 
  695         fetchedCacheLines++;
- 696 
+ 696
  697         // Access the cache.
  698         if (!icachePort.sendTimingReq(data_pkt)) {
  699             assert(retryPkt == NULL);
@@ -582,6 +597,26 @@ different thread based on the current status of threads.
  714             // request is successfully sent
  715             ppFetchRequestSent->notify(mem_req);
  716         }
+ 717     } else {
+```
+If the current TLB resolution response is valid and speculated successfully, 
+it should generate read request packet and send it to the Instruction Cache. 
+Line 687-695 builds the packet and send buffer to be used for containing 
+instructions read from the cache. 
+When the cache access request cannot be sent to the instruction cache (line 698-707)
+because of the cache is busy for handling previous requests,
+it should retry when the Instruction cache is available later. 
+Based on the line 701, we can guess that the cache supports multiple cache accesses simultaneously,
+but the request can exceed the capacity of its simultaneous processing.
+We will see whether the GEM5 supports blocking cache access or non-blocking cache accesses in another posting.
+Anyway when the retry is required, it memorizes the request packet and tid. 
+Also it changes current status as **IcacheWaitRetry**.
+When the Instruction cache is available to process the request (line 708-716), 
+it sets current status as  **IcacheWaitResponse** and waits 
+until the Instruction cache resolves the request and send the actual instructions. 
+
+
+```cpp
  717     } else {
  718         // Don't send an instruction to decode if we can't handle it.
  719         if (!(numInst < fetchWidth) || !(fetchQueue[tid].size() < fetchQueueSize)) {
@@ -623,19 +658,113 @@ different thread based on the current status of threads.
  755     }
  756     _status = updateFetchStatus();
  757 }
-
-
-
 ```
 
+When the TLB translation emits fault instead of successful translation, 
+it should be handled based on the reason of the fault. 
+When the fetchQeueue is already full or XXX (line 719-726),
+instead of issuing cache access, it postpone the operation to later 
+by scheduling the finishTranslationEvent. 
+Note that the request packet received from the ITLB and fault structure 
+is also included in the finishTranslationEvent to process it later. 
 
 
+```cpp
+140     /* Event to delay delivery of a fetch translation result in case of
+141      * a fault and the nop to carry the fault cannot be generated
+142      * immediately */
+143     class FinishTranslationEvent : public Event
+144     { 
+145       private:
+146         DefaultFetch<Impl> *fetch;
+147         Fault fault;
+148         RequestPtr req;
+149       
+150       public:
+151         FinishTranslationEvent(DefaultFetch<Impl> *_fetch)
+152             : fetch(_fetch), req(nullptr)
+153         {}
+154         
+155         void setFault(Fault _fault)
+156         {   
+157             fault = _fault;
+158         }
+159         
+160         void setReq(const RequestPtr &_req)
+161         {   
+162             req = _req;
+163         }
+164         
+165         /** Process the delayed finish translation */
+166         void process()
+167         {   
+168             assert(fetch->numInst < fetch->fetchWidth);
+169             fetch->finishTranslation(fault, req);
+170         }
+171         
+172         const char *description() const
+173         {   
+174             return "FullO3CPU FetchFinishTranslation";
+175         }   
+176       };
+```
+In detail, when the FinishTranslationEvent happens after the designated cycles passed,
+it invokes the process function defined in the class. As shown in the above code line 166-170,
+it calls finishTranslation with the passed fault and request again. 
 
+For the other reason of faults, 
+\TODO{explanation required for the rest of the faulting code}.
+After the fetch stage handles the response from the ITLB, 
+it should update the current status of the fetch stage by invoking the updateFetchStatus function.
 
-
-
+```cpp
+ 841 template<class Impl>
+ 842 typename DefaultFetch<Impl>::FetchStatus
+ 843 DefaultFetch<Impl>::updateFetchStatus()
+ 844 {
+ 845     //Check Running
+ 846     list<ThreadID>::iterator threads = activeThreads->begin();
+ 847     list<ThreadID>::iterator end = activeThreads->end();
+ 848 
+ 849     while (threads != end) {
+ 850         ThreadID tid = *threads++;
+ 851 
+ 852         if (fetchStatus[tid] == Running ||
+ 853             fetchStatus[tid] == Squashing ||
+ 854             fetchStatus[tid] == IcacheAccessComplete) {
+ 855 
+ 856             if (_status == Inactive) {
+ 857                 DPRINTF(Activity, "[tid:%i] Activating stage.\n",tid);
+ 858 
+ 859                 if (fetchStatus[tid] == IcacheAccessComplete) {
+ 860                     DPRINTF(Activity, "[tid:%i] Activating fetch due to cache"
+ 861                             "completion\n",tid);
+ 862                 }
+ 863 
+ 864                 cpu->activateStage(O3CPU::FetchIdx);
+ 865             }
+ 866 
+ 867             return Active;
+ 868         }
+ 869     }
+ 870 
+ 871     // Stage is switching from active to inactive, notify CPU of it.
+ 872     if (_status == Active) {
+ 873         DPRINTF(Activity, "Deactivating stage.\n");
+ 874 
+ 875         cpu->deactivateStage(O3CPU::FetchIdx);
+ 876     }
+ 877 
+ 878     return Inactive;
+ 879 }
+```
 
 ### processCacheCompletion: completing ICache access 
+When the sendTimingReq is invoked through the icachePort, which means 
+cache access request sent to the Instruction cache successfully, 
+after few cycles elapsed, the O3CPU will be notified that the cache read completes.
+The cache access completion is handled by the recvTimingResp of the IcachePort 
+allocated for the O3CPU. 
 
 ```cpp
 1676 template<class Impl>
@@ -651,6 +780,10 @@ different thread based on the current status of threads.
 1686     return true;
 1687 }
 ```
+
+When it receives the instructions from the cache, it invokes the 
+processCacheCompletion function and ask this function to handle the 
+response arrived from the cache. 
 
 
 ```cpp
@@ -695,6 +828,19 @@ different thread based on the current status of threads.
  427     delete pkt;
  428     memReq[tid] = NULL;
  429 }
-
 ```
+
+When the instructions from the cache arrives, it could be the case where 
+the misspeculation had initiated the cache access. 
+In that case, it should drop the cache access by deleting the response packet.
+In other cases, the read instructions should be copied from the packet to the 
+**fetchBuffer** containing the fetched instructions (line 405-406). 
+When the current tid is stalled because of some events (we will cover which condition
+makes the thread to be stalled), it should be blocked until the stall is resolved.
+If there is no stall, then the fetchStatus can be changed to IcacheAccessComplete,
+which means the thread can finish the fetch stage.
+Now let's go back to the fetch function again!
+
+## Revisiting fetch stage to handle the instructions fetched from the cache
+
 

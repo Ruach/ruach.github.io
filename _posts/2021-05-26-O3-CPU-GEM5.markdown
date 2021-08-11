@@ -363,7 +363,7 @@ Therefore, to understand the fetch part of the O3CPU, we should take a look at t
 
 ## Tick  
 ```cpp
-529 template <class Impl>
+ 529 template <class Impl>
  530 void
  531 FullO3CPU<Impl>::tick()
  532 {

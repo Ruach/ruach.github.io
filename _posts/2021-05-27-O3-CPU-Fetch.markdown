@@ -777,6 +777,7 @@ because the fetchStatus has been changed to IcacheAccessComplete,
 the fetch stage can execute the rest of the fetch function at this moment. 
 Let's take a look at the rest of the fetch function in detail. 
 
+### fetchBuffer contains actual instructions for a particular hardware thread
 ```cpp
 1235     //when a requested instruction cache block is arrived(IcacheAccessComplete)
 1236     ++fetchCycles;
@@ -802,15 +803,51 @@ Let's take a look at the rest of the fetch function in detail.
 1256 
 1257     TheISA::MachInst *cacheInsts =
 1258         reinterpret_cast<TheISA::MachInst *>(fetchBuffer[tid]);
-1259 
+1259
 1260     const unsigned numInsts = fetchBufferSize / instSize;
 1261     unsigned blkOffset = (fetchAddr - fetchBufferPC[tid]) / instSize;
-1262 
+```
+
+Remember that the fetchBuffer[tid] contains the actual instructions read from
+the ICache. Note that cacheInsts variable which is the TheISA::MachInst * type 
+references the instruction buffer, fetchBuffer[tid].
+This variable is passed to the decoder to pass the instruction stream read from the ICache. 
+Also, the TheISA::MachInst is a uint64_t in the x86 architecture (TheISA will be changes to the X86 namespace). 
+Because X86 architecture adopts variable instruction length, it approximately 
+set the instruction length as 8bytes and calculate the number of instructions 
+in the instruction stream fetched from the ICache. 
+Note that the numInsts is approximated as fetchBufferSize / instSize.
+
+### The main fetchloop processing instructions
+```cpp
 1263     // Loop through instruction memory from the cache.
 1264     // Keep issuing while fetchWidth is available and branch is not
 1265     // predicted taken
 1266     while (numInst < fetchWidth && fetchQueue[tid].size() < fetchQueueSize
 1267            && !predictedBranch && !quiesce) {
+```
+
+The while loop (line 1266-1267) is the main body of processing instructions 
+stored in the fetchBuffer. Be careful not to confuse numInst with numInsts.
+numInst means the number of instructions fetched at this cycle, and numInsts means 
+the number of instructions that can possibly reside in the fetchBuffer. 
+Also, fetchQueue is the CPP standard deque managing DynInstPtr which is the pointer 
+of one macroop instruction. Therefore, the loop checks first whether the number of 
+fetched instructions at this cycle exceed the deisgnated fetchWidth and examine 
+whether the fetchQueue is overflowed, which means too many instructions have been fetched 
+from the instruction cache. Because the instruction length can vary but the capacity 
+of fetchQueue is limited, sometimes depending on which instructions actually reside
+in the fetched instruction cache, it cannot process all instructions at that cycle. 
+Based on the fact that it checks if the fetchQueue is overflowed at every iteration, 
+we can assume that the loop insert instruction to the fetchQueue. We will take a look at 
+the details soon!
+Also it checks the type of the previous instruction handled by the loop, 
+whether it is predictedBranch or quiesce. If the previous instruction turns out to 
+one of these type of instruction, then the loop should not process the instruction
+in the fetchBuffer further and stop. 
+
+### Decoder
+```cpp
 1268         // We need to process more memory if we aren't going to get a
 1269         // StaticInst from the rom, the current macroop, or what's already
 1270         // in the decoder.
@@ -840,7 +877,135 @@ Let's take a look at the rest of the fetch function in detail.
 1294                 pcOffset += instSize;
 1295             }
 1296         }
-1297 
+```
+
+After the all conditions are met, each iteration of the loop processes the instruction 
+one by one. For the first execution of the fetch stage, the inRom and curMacroop are set 
+as false and NULL respectively. Also, when the decoder object embedded in the fetch stage 
+is initialized, the instDone variable of the decoder is set as false, which will be returned 
+as the result of instReady function of the decoder. 
+Therefore, the needMem should be set for the initial execution. 
+When the needMem flag is set, which means \TODO{XXX},
+it invokes moreBytes function of the decoder to decode the instruction. 
+
+
+
+```cpp
+306     //Use this to give data to the decoder. This should be used
+307     //when there is control flow.
+308     void moreBytes(const PCState &pc, Addr fetchPC, MachInst data)
+309     {
+310         DPRINTF(Decoder, "Getting more bytes.\n");
+311         basePC = fetchPC;
+312         offset = (fetchPC >= pc.instAddr()) ? 0 : pc.instAddr() - fetchPC;
+313         fetchChunk = letoh(data);
+314         outOfBytes = false;
+315         process();
+316     }
+```
+
+
+```cpp
+ 74 Decoder::process()
+ 75 {
+ 76     //This function drives the decoder state machine.
+ 77 
+ 78     //Some sanity checks. You shouldn't try to process more bytes if
+ 79     //there aren't any, and you shouldn't overwrite an already
+ 80     //decoder ExtMachInst.
+ 81     assert(!outOfBytes);
+ 82     assert(!instDone);
+ 83 
+ 84     if (state == ResetState)
+ 85         state = doResetState();
+ 86     if (state == FromCacheState) {
+ 87         state = doFromCacheState();
+ 88     } else {
+ 89         instBytes->chunks.push_back(fetchChunk);
+ 90     }
+ 91 
+ 92     //While there's still something to do...
+ 93     while (!instDone && !outOfBytes) {
+ 94         uint8_t nextByte = getNextByte();
+ 95         switch (state) {
+ 96           case PrefixState:
+ 97             state = doPrefixState(nextByte);
+ 98             break;
+ 99           case Vex2Of2State:
+100             state = doVex2Of2State(nextByte);
+101             break;
+102           case Vex2Of3State:
+103             state = doVex2Of3State(nextByte);
+104             break;
+105           case Vex3Of3State:
+106             state = doVex3Of3State(nextByte);
+107             break;
+108           case VexOpcodeState:
+109             state = doVexOpcodeState(nextByte);
+110             break;
+111           case OneByteOpcodeState:
+112             state = doOneByteOpcodeState(nextByte);
+113             break;
+114           case TwoByteOpcodeState:
+115             state = doTwoByteOpcodeState(nextByte);
+116             break;
+117           case ThreeByte0F38OpcodeState:
+118             state = doThreeByte0F38OpcodeState(nextByte);
+119             break;
+120           case ThreeByte0F3AOpcodeState:
+121             state = doThreeByte0F3AOpcodeState(nextByte);
+122             break;
+123           case ModRMState:
+124             state = doModRMState(nextByte);
+125             break;
+126           case SIBState:
+127             state = doSIBState(nextByte);
+128             break;
+129           case DisplacementState:
+130             state = doDisplacementState();
+131             break;
+132           case ImmediateState:
+133             state = doImmediateState();
+134             break;
+135           case ErrorState:
+136             panic("Went to the error state in the decoder.\n");
+137           default:
+138             panic("Unrecognized state! %d\n", state);
+139         }
+140     }
+141 }
+```
+Based on the instruction format, different doXXX function will be invoked to parse
+the macroop instruction. First of all, it invokes doResetState for every macroop to 
+initialize the variables representing the parsed instruction. Also it sets the 
+origPC field as the PC address of the macroop instruction,. 
+After the initialization, based on the instruction format, it will invoke 
+different parsing code. Based on the n-1 byte(s) of the instruction,
+next n(+1) bytes of the instruction's format will be determined. 
+Therefore, by parsing each byte one by one, different format of the instruction
+can be fully decoded by the above process function.
+During the parsing, it invokes consumeByte(s) function when a particular 
+part of the instruction could be successfully decoded. 
+The consumeByte function increases the offset variable of the decoder to present 
+the length of the currently being parsed macroop. 
+
+
+### The second loop to process each instruction
+The most important variable in the second loop is **curMacroop**. 
+As implied by its name, this variable contains current macroop of the selected thread,
+StaticInstPtr.
+
+```cpp
+1378         } while ((curMacroop || decoder[tid]->instReady()) &&
+1379                  numInst < fetchWidth &&
+1380                  fetchQueue[tid].size() < fetchQueueSize);
+```
+
+As shown in the above code, the second loop continues until the curMacroop is not set as NULL
+or decoder finish to decode the instruction. 
+Let's take a look at the details of the second loop. 
+
+```cpp
 1298         // Extract as many instructions and/or microops as we can from
 1299         // the memory we've processed so far.
 1300         do {
@@ -862,6 +1027,15 @@ Let's take a look at the rest of the fetch function in detail.
 1316                     break;
 1317                 }
 1318             }
+```
+
+Note that we are currently doesn't have a curMacroop and not executing the ROM code (microops).
+Also, decoder[tid]->instReady is now true because the moreBytes function successfully decoded the 
+macroop instruction. Therefore, it will invoke the decode function.
+UpdateNPC should be expalined!!!
+
+
+```cpp
 1319             // Whether we're moving to a new macroop because we're at the
 1320             // end of the current one, or the branch predictor incorrectly
 1321             // thinks we are...
@@ -967,3 +1141,109 @@ Let's take a look at the rest of the fetch function in detail.
 
 
 ### buildInst: parsing instruction from the retrieved Instruction cache 
+```cpp
+1102 template<class Impl>
+1103 typename Impl::DynInstPtr
+1104 DefaultFetch<Impl>::buildInst(ThreadID tid, StaticInstPtr staticInst,
+1105                               StaticInstPtr curMacroop, TheISA::PCState thisPC,
+1106                               TheISA::PCState nextPC, bool trace)
+1107 {
+1108     // Get a sequence number.
+1109     InstSeqNum seq = cpu->getAndIncrementInstSeq();
+1110 
+1111     // Create a new DynInst from the instruction fetched.
+1112     DynInstPtr instruction =
+1113         new DynInst(staticInst, curMacroop, thisPC, nextPC, seq, cpu);
+1114     instruction->setTid(tid);
+1115 
+1116     instruction->setASID(tid);
+1117 
+1118     instruction->setThreadState(cpu->thread[tid]);
+1119 
+1120     DPRINTF(Fetch, "[tid:%i] Instruction PC %#x (%d) created "
+1121             "[sn:%lli].\n", tid, thisPC.instAddr(),
+1122             thisPC.microPC(), seq);
+1123 
+1124     DPRINTF(Fetch, "[tid:%i] Instruction is: %s\n", tid,
+1125             instruction->staticInst->
+1126             disassemble(thisPC.instAddr()));
+1127 
+1128 #if TRACING_ON
+1129     if (trace) {
+1130         instruction->traceData =
+1131             cpu->getTracer()->getInstRecord(curTick(), cpu->tcBase(tid),
+1132                     instruction->staticInst, thisPC, curMacroop);
+1133     }
+1134 #else
+1135     instruction->traceData = NULL;
+1136 #endif
+1137 
+1138     // Add instruction to the CPU's list of instructions.
+1139     instruction->setInstListIt(cpu->addInst(instruction));
+1140 
+1141     // Write the instruction to the first slot in the queue
+1142     // that heads to decode.
+1143     assert(numInst < fetchWidth);
+1144     fetchQueue[tid].push_back(instruction);
+1145     assert(fetchQueue[tid].size() <= fetchQueueSize);
+1146     DPRINTF(Fetch, "[tid:%i] Fetch queue entry created (%i/%i).\n",
+1147             tid, fetchQueue[tid].size(), fetchQueueSize);
+1148     //toDecode->insts[toDecode->size++] = instruction;
+1149 
+1150     // Keep track of if we can take an interrupt at this boundary
+1151     delayedCommit[tid] = instruction->isDelayedCommit();
+1152 
+1153     return instruction;
+1154 }
+```
+
+
+
+###
+```cpp
+ 556 template <class Impl>
+ 557 bool
+ 558 DefaultFetch<Impl>::lookupAndUpdateNextPC(
+ 559         const DynInstPtr &inst, TheISA::PCState &nextPC)
+ 560 {
+ 561     // Do branch prediction check here.
+ 562     // A bit of a misnomer...next_PC is actually the current PC until
+ 563     // this function updates it.
+ 564     bool predict_taken;
+ 565 
+ 566     if (!inst->isControl()) {
+ 567         TheISA::advancePC(nextPC, inst->staticInst);
+ 568         inst->setPredTarg(nextPC);
+ 569         inst->setPredTaken(false);
+ 570         return false;
+ 571     }
+ 572 
+ 573     ThreadID tid = inst->threadNumber;
+ 574     predict_taken = branchPred->predict(inst->staticInst, inst->seqNum,
+ 575                                         nextPC, tid);
+ 576 
+ 577     if (predict_taken) {
+ 578         DPRINTF(Fetch, "[tid:%i] [sn:%llu] Branch at PC %#x "
+ 579                 "predicted to be taken to %s\n",
+ 580                 tid, inst->seqNum, inst->pcState().instAddr(), nextPC);
+ 581     } else {
+ 582         DPRINTF(Fetch, "[tid:%i] [sn:%llu] Branch at PC %#x "
+ 583                 "predicted to be not taken\n",
+ 584                 tid, inst->seqNum, inst->pcState().instAddr());
+ 585     }
+ 586 
+ 587     DPRINTF(Fetch, "[tid:%i] [sn:%llu] Branch at PC %#x "
+ 588             "predicted to go to %s\n",
+ 589             tid, inst->seqNum, inst->pcState().instAddr(), nextPC);
+ 590     inst->setPredTarg(nextPC);
+ 591     inst->setPredTaken(predict_taken);
+ 592 
+ 593     ++fetchedBranches;
+ 594 
+ 595     if (predict_taken) {
+ 596         ++predictedBranches;
+ 597     }
+ 598 
+ 599     return predict_taken;
+ 600 }
+```

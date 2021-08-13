@@ -1177,6 +1177,7 @@ from the associated places.
 Regardless where the microop should be fetched, GEM5 utilize the interface called **fetchMicroop**.
 When the processor is in the midst of execution of ROM code, then 
 it invokes the fetchMicroop function from the microcodeRom. 
+
 *gem5/src/arch/x86/microcode_rom.hh*
 ```cpp
  60         StaticInstPtr
@@ -1203,6 +1204,13 @@ it should ask the macroop to return microops consisting of it.
  83             return microops[microPC];
  84     }
 ```
+
+Note that the return value of the fetchMicroop function will be stored in the 
+staticInst. It is easy to be confused because of the staticInst. 
+Previously, when we decode the macroop using the moreBytes and decode,
+the generates instruction was stored in the staticInst. 
+However, the staticInst variable is used to contain the microops 
+instead of the macroops. 
 
 ### Populating dynamic instruction object 
 ```cpp
@@ -1504,7 +1512,7 @@ It just updates the _pc as the _npc which has been measured as a result of addin
 to the current pc. In other words, if it is not a control flow instruction, just adding the 
 size of current instruction to the pc is enough to get the next pc address. 
 
-### Asking branch predictor when a control flow instruction comes
+### Asking branch predictor for a control flow instruction
 Now let's go back to the rest of the lookupAndUpdateNextPC function to understand
 what happens if the current instruction turns out to be control flow instruction. 
 
@@ -1540,19 +1548,21 @@ what happens if the current instruction turns out to be control flow instruction
  600 }
 ```
 
+It invokes the predict function and store the return value to the predict_taken.
+The predict function returns the prediction result, whether the branching instruction
+should be taken or not-taken. Also, note that the reference of the nextPC is passed
+to the branch predictor. This is because the prediction affects the next instruction's address.
+Therefore, based on the prediction result, it changes the nextPC 
+to make the fetch stage to fetch instructions from the proper location. 
 
 
-```cpp
-1381 
+## End of the first loop and rest
+```cpp 
 1382         // Re-evaluate whether the next instruction to fetch is in micro-op ROM
 1383         // or not.
 1384         inRom = isRomMicroPC(thisPC.microPC());
 1385     }
-```
-
-
-### After the first loop 
-```cpp 
+1386
 1387     if (predictedBranch) {
 1388         DPRINTF(Fetch, "[tid:%i] Done fetching, predicted branch "
 1389                 "instruction encountered.\n", tid);

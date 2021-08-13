@@ -988,21 +988,34 @@ During the parsing, it invokes consumeByte(s) function when a particular
 part of the instruction could be successfully decoded. 
 The consumeByte function increases the offset variable of the decoder to present 
 the length of the currently being parsed macroop. 
+After the moreBytes finish the early decoding of the macroop instruction,
+it sets the instDone as true. However, not that moreBytes and process function
+just parses the macroop instruction to excerpt some bytes dedicated for 
+each part of the instruction such as Rex and modRM in x86 architecture. 
+Therefore, we still need to decode the parsed instruction to understand what is this instruction!
 
-
-### The second loop to process each instruction
-The most important variable in the second loop is **curMacroop**. 
-As implied by its name, this variable contains current macroop of the selected thread,
-StaticInstPtr.
+## The second loop to process each instruction
+After the decoder finishing early-decode of the macroop instruction, 
+it encounters another loop that translate the macroop instruction 
+into multiple microops if possible. Note that the processor pipeline 
+executes the microops not the macroop instructions. 
+Therefore, instead of the macroop, the microops should be inserted 
+into the fetch queue. 
 
 ```cpp
+1298         // Extract as many instructions and/or microops as we can from
+1299         // the memory we've processed so far.
+1300         do {
+......
 1378         } while ((curMacroop || decoder[tid]->instReady()) &&
 1379                  numInst < fetchWidth &&
 1380                  fetchQueue[tid].size() < fetchQueueSize);
 ```
 
-As shown in the above code, the second loop continues until the curMacroop is not set as NULL
-or decoder finish to decode the instruction. 
+As shown in the above code, the second loop continues 
+until the curMacroop is not a NULL
+or until the translation from the current macroop to the microops is fished 
+and the fetchQueue is available to contain translated microops. 
 Let's take a look at the details of the second loop. 
 
 ```cpp
@@ -1029,12 +1042,115 @@ Let's take a look at the details of the second loop.
 1318             }
 ```
 
-Note that we are currently doesn't have a curMacroop and not executing the ROM code (microops).
-Also, decoder[tid]->instReady is now true because the moreBytes function successfully decoded the 
-macroop instruction. Therefore, it will invoke the decode function.
-UpdateNPC should be expalined!!!
+Note that we haven't assigned anything to curMacroop and executed the ROM code.
+Also, decoder[tid]->instReady is true 
+because the moreBytes function successfully pre-decoded the macroop instruction. 
+Therefore, it will invoke the decode function to understand which instruction actually it is.
+The decode function of the decoder generates the **StaticInstPtr** which has information
+about the current instruction located at thisPC. 
+In our case, because we are firstly executing the macroop instruction,
+it should return the reference of the macroop instruction.
+Let's briefly take a look at the decode function. 
+
+*gem5/src/arch/x86/decode.cc*
+```cpp
+693 StaticInstPtr
+694 Decoder::decode(PCState &nextPC)
+695 {
+696     if (!instDone)
+697         return NULL;
+698     instDone = false;
+699     updateNPC(nextPC);
+700 
+701     StaticInstPtr &si = instBytes->si;
+702     if (si)
+703         return si;
+704 
+705     // We didn't match in the AddrMap, but we still populated an entry. Fix
+706     // up its byte masks.
+707     const int chunkSize = sizeof(MachInst);
+708 
+709     instBytes->lastOffset = offset;
+710 
+711     Addr firstBasePC = basePC - (instBytes->chunks.size() - 1) * chunkSize;
+712     Addr firstOffset = origPC - firstBasePC;
+713     Addr totalSize = instBytes->lastOffset - firstOffset +
+714         (instBytes->chunks.size() - 1) * chunkSize;
+715     int start = firstOffset;
+716     instBytes->masks.clear();
+717 
+718     while (totalSize) {
+719         int end = start + totalSize;
+720         end = (chunkSize < end) ? chunkSize : end;
+721         int size = end - start;
+722         int idx = instBytes->masks.size();
+723 
+724         MachInst maskVal = mask(size * 8) << (start * 8);
+725         assert(maskVal);
+726 
+727         instBytes->masks.push_back(maskVal);
+728         instBytes->chunks[idx] &= instBytes->masks[idx];
+729         totalSize -= size;
+730         start = 0;
+731     }
+732 
+733     si = decode(emi, origPC);
+734     return si;
+735 }
+```
+
+There are two important things to be done by the decode function. 
+First, it invokes updateNPC to update the next pc based on the current instruction.
+Also remember that the basePC has been set as fetchAddr when the moreBytes has been invoked. 
+
+```cpp
+328     void
+329     updateNPC(X86ISA::PCState &nextPC)
+330     {
+331         if (!nextPC.size()) {
+332             int size = basePC + offset - origPC;
+333             DPRINTF(Decoder,
+334                     "Calculating the instruction size: "
+335                     "basePC: %#x offset: %#x origPC: %#x size: %d\n",
+336                     basePC, offset, origPC, size);
+337             nextPC.size(size);
+338             nextPC.npc(nextPC.pc() + size);
+339         }
+340     }
+```
+
+Because decoder already knows the length of the instruction,
+it can calculate the size of the instruction and set the nextPC value as 
+current PC + sizeof instruction. 
+Second, the decode function invokes actual decode function.
+
+```cpp
+681 StaticInstPtr
+682 Decoder::decode(ExtMachInst mach_inst, Addr addr)
+683 {
+684     auto iter = instMap->find(mach_inst);
+685     if (iter != instMap->end())
+686         return iter->second;
+687 
+688     StaticInstPtr si = decodeInst(mach_inst);
+689     (*instMap)[mach_inst] = si;
+690     return si;
+691 }
+```
+
+It traverses decode cache instMap to find 
+the instruction object if the same instruction has been decoded earlier.
+If not, it invoked decodeInst function which is automatically generated 
+based on the python parser on the GEM5. 
+We will not cover the details of the decodeInst function in this posting.
+Anyway let's go back to the second loop again!
+After the decode function is executed, we can finally have the object 
+associated with the currently decoded instruction. 
+If the decoded instruction is the macroop, then it sets the curMacroop 
+as the returned staticInst. 
 
 
+### fetchMicroop: Fetching microops from the macroop or ROM
 ```cpp
 1319             // Whether we're moving to a new macroop because we're at the
 1320             // end of the current one, or the branch predictor incorrectly
@@ -1049,6 +1165,47 @@ UpdateNPC should be expalined!!!
 1329                 }
 1330                 newMacro |= staticInst->isLastMicroop();
 1331             }
+```
+Because curMacroop is set as the macroop instruction pointed to by the PC,
+we can retrieve microops consisting of the current Macroop. 
+You might remember that the macroop consists of multiple microops. 
+Also, it might reminds you of the ROM code that we've covered regarding the fault handling.
+Yeah, there are two places the microops are used. 
+Therefore, based on the current status of the processor, whether 
+it executes the macroop or ROM code, it needs to fetch the microops 
+from the associated places. 
+Regardless where the microop should be fetched, GEM5 utilize the interface called **fetchMicroop**.
+When the processor is in the midst of execution of ROM code, then 
+it invokes the fetchMicroop function from the microcodeRom. 
+*gem5/src/arch/x86/microcode_rom.hh*
+```cpp
+ 60         StaticInstPtr
+ 61         fetchMicroop(MicroPC microPC, StaticInstPtr curMacroop)
+ 62         {
+ 63             microPC = normalMicroPC(microPC);
+ 64             if (microPC >= numMicroops)
+ 65                 return X86ISA::badMicroop;
+ 66             else
+ 67                 return genFuncs[microPC](curMacroop);
+ 68         }
+```
+
+Also when the processor is in the middle of executing the macroop,
+it should ask the macroop to return microops consisting of it. 
+*gem5/src/arch/x86/insts/macroop.hh*
+```cpp
+ 77     StaticInstPtr
+ 78     fetchMicroop(MicroPC microPC) const
+ 79     {
+ 80         if (microPC >= numMicroops)
+ 81             return badMicroop;
+ 82         else
+ 83             return microops[microPC];
+ 84     }
+```
+
+### Populating dynamic instruction object 
+```cpp
 1332 
 1333             DynInstPtr instruction =
 1334                 buildInst(tid, staticInst, curMacroop,
@@ -1062,7 +1219,155 @@ UpdateNPC should be expalined!!!
 1342                 instruction->fetchTick = curTick();
 1343             }
 1344 #endif
-1345 
+```
+Now we have a **macroop as the curMacroop** variable and its associated **microop
+as the staticInst**. Using this information, the **buildInst** function 
+populates the dynamic object representing one instruction. 
+One might ask why we need another object for instruction although we already 
+have the objects for the macroop and microop. However, note that these objects are 
+static instruction object, but we need a dynamic instruction object 
+that can contains all information required for executing the instruction.
+After the instruction is fetched and decoded, the instruction should go through 
+all the rest of the pipeline stages. The dynamic instruction objects are populated for 
+passing information of the instruction in between different pipeline stages. 
+Therefore, the buildInst function generates the dynamic instruction 
+and enqueues the instruction into the fetch queue to pass the instruction information
+to the next pipeline stages. Let's take a look at how the buildInst generates the 
+dynamic instruction. 
+
+## buildInst: populating microops from the macroop
+```cpp
+1102 template<class Impl>
+1103 typename Impl::DynInstPtr
+1104 DefaultFetch<Impl>::buildInst(ThreadID tid, StaticInstPtr staticInst,
+1105                               StaticInstPtr curMacroop, TheISA::PCState thisPC,
+1106                               TheISA::PCState nextPC, bool trace)
+1107 {
+1108     // Get a sequence number.
+1109     InstSeqNum seq = cpu->getAndIncrementInstSeq();
+1110 
+1111     // Create a new DynInst from the instruction fetched.
+1112     DynInstPtr instruction =
+1113         new DynInst(staticInst, curMacroop, thisPC, nextPC, seq, cpu);
+1114     instruction->setTid(tid);
+1115 
+1116     instruction->setASID(tid);
+1117 
+1118     instruction->setThreadState(cpu->thread[tid]);
+1119 
+1120     DPRINTF(Fetch, "[tid:%i] Instruction PC %#x (%d) created "
+1121             "[sn:%lli].\n", tid, thisPC.instAddr(),
+1122             thisPC.microPC(), seq);
+1123 
+1124     DPRINTF(Fetch, "[tid:%i] Instruction is: %s\n", tid,
+1125             instruction->staticInst->
+1126             disassemble(thisPC.instAddr()));
+```
+The instruction variable contain the dynamic instruction object populated 
+based on the macroop and microop passed to the buildInst function (line 1112-1113).
+After the instruction is generated, it set the thread specific information
+of the instruction (tid, ASID). Those information is required later in the execution stage
+to understand which instruction has been issued by which thread. 
+Also, it prints out some useful information about the instruction (Line 1120-1126)
+As shown in the line 1112-1113, DynInstPtr and DynInst type is utilized 
+to declare variable and populate a dynamic instruction object respectively. 
+You might remember that O3CPUImpl defines several types used by the O3CPU. 
+The DynInst is one of them.
+
+```cpp
+ 53 struct O3CPUImpl
+ 54 {
+ 55     /** The type of MachInst. */
+ 56     typedef TheISA::MachInst MachInst;
+ 57
+ 58     /** The CPU policy to be used, which defines all of the CPU stages. */
+ 59     typedef SimpleCPUPolicy<O3CPUImpl> CPUPol;
+ 60
+ 61     /** The DynInst type to be used. */
+ 62     typedef BaseO3DynInst<O3CPUImpl> DynInst;
+ 63
+ 64     /** The refcounted DynInst pointer to be used.  In most cases this is
+ 65      *  what should be used, and not DynInst *.
+ 66      */
+ 67     typedef RefCountingPtr<DynInst> DynInstPtr;
+```
+
+The constructor call of the DynInst invokes the constructor of the 
+BaseO3DynInst class and initialize its member field as described in the following constructor. 
+
+*gem5/src/cpu/o3/dyn_inst_impl.hh*
+```cpp
+ 50 template <class Impl>
+ 51 BaseO3DynInst<Impl>::BaseO3DynInst(const StaticInstPtr &staticInst,
+ 52                                    const StaticInstPtr &macroop,
+ 53                                    TheISA::PCState pc, TheISA::PCState predPC,
+ 54                                    InstSeqNum seq_num, O3CPU *cpu)
+ 55     : BaseDynInst<Impl>(staticInst, macroop, pc, predPC, seq_num, cpu)
+ 56 {
+ 57     initVars();
+ 58 }
+```
+
+Let's take a look at who derives the DynInstPtr then. 
+```cpp
+ 97 template <class Impl>
+ 98 class FullO3CPU : public BaseO3CPU
+ 99 {
+100   public:
+101     // Typedefs from the Impl here.
+102     typedef typename Impl::CPUPol CPUPolicy;
+103     typedef typename Impl::DynInstPtr DynInstPtr;
+104     typedef typename Impl::O3CPU O3CPU;
+```
+As shown in the above code, the DynInstPtr is the Impl::DynInstPtr, 
+which is the RefCountingPtr<DynInst> defined in the O3CPUImpl. 
+The RefCountingPtr is the CPP template class that defines all operations
+such as equal sign that can assign new object of the template type and 
+member field reference operator -> to access the assigned object.
+The only additional work done by this class is counting the reference for this object, 
+and it can be utilized as the template typed object. 
+Therefore, without knowing the details, the instruction variable can be utilized 
+as a pointer referencing DynInst objects. 
+
+### Inserting generated dynamic instructions into the fetchQueue 
+```cpp
+1127 
+1128 #if TRACING_ON
+1129     if (trace) {
+1130         instruction->traceData =
+1131             cpu->getTracer()->getInstRecord(curTick(), cpu->tcBase(tid),
+1132                     instruction->staticInst, thisPC, curMacroop);
+1133     }
+1134 #else
+1135     instruction->traceData = NULL;
+1136 #endif
+1137 
+1138     // Add instruction to the CPU's list of instructions.
+1139     instruction->setInstListIt(cpu->addInst(instruction));
+1140 
+1141     // Write the instruction to the first slot in the queue
+1142     // that heads to decode.
+1143     assert(numInst < fetchWidth);
+1144     fetchQueue[tid].push_back(instruction);
+1145     assert(fetchQueue[tid].size() <= fetchQueueSize);
+1146     DPRINTF(Fetch, "[tid:%i] Fetch queue entry created (%i/%i).\n",
+1147             tid, fetchQueue[tid].size(), fetchQueueSize);
+1148     //toDecode->insts[toDecode->size++] = instruction;
+1149 
+1150     // Keep track of if we can take an interrupt at this boundary
+1151     delayedCommit[tid] = instruction->isDelayedCommit();
+1152 
+1153     return instruction;
+1154 }
+```
+
+After the dynamic instruction is populated, it should be inserted into the 
+fetchQueue to pass the generated instructions to the next stage. 
+Now let's go back to the second loop of the fetch function and 
+finish the analysis. 
+
+## Updating nextPC and handling branch instruction
+```cpp
 1346             nextPC = thisPC;
 1347 
 1348             // If we're branching after this instruction, quit fetching
@@ -1098,12 +1403,155 @@ UpdateNPC should be expalined!!!
 1378         } while ((curMacroop || decoder[tid]->instReady()) &&
 1379                  numInst < fetchWidth &&
 1380                  fetchQueue[tid].size() < fetchQueueSize);
+```
+
+Until now, we have populated the microops and 
+enqueued the generated instructions into the fetchQueue. 
+To repeat this sequence of operations and fill the fetchQueue, 
+the second loop should determine the nextPC to lookup. 
+First of all, if the current instruction is one of the branching instructions,
+then the nextPC should be determined based on the execution result of 
+branch prediction speculatively. 
+
+### lookupAndUpdateNextPC: determine the nextPC based on control flow instruction
+The **lookupAndUpdateNextPC** determines the nextPC by checking 
+whether the current instruction is the control flow instruction. 
+Also, because O3 processor adopts branch predictor,
+the lookupAndUpdateNextPC asks branch predictor whether it needs to change 
+the nextPC if the current instruction is the branching instruction. 
+Note that the lookupAndUpdateNextPC accepts the dynamic instruction we generated 
+in the buildInst function. 
+
+```cpp
+ 556 template <class Impl>
+ 557 bool
+ 558 DefaultFetch<Impl>::lookupAndUpdateNextPC(
+ 559         const DynInstPtr &inst, TheISA::PCState &nextPC)
+ 560 {
+ 561     // Do branch prediction check here.
+ 562     // A bit of a misnomer...next_PC is actually the current PC until
+ 563     // this function updates it.
+ 564     bool predict_taken;
+ 565 
+ 566     if (!inst->isControl()) {
+ 567         TheISA::advancePC(nextPC, inst->staticInst);
+ 568         inst->setPredTarg(nextPC);
+ 569         inst->setPredTaken(false);
+ 570         return false;
+ 571     }
+```
+
+First of all, it can simply check the current instruction affects execution control 
+by invoking isControl method of the dynamic instruction. 
+The isControl function of the dynamic instruction
+just invokes the same method of the **staticInst** of the DynInst,
+which is the static class representing **microop operation**. 
+When the current instruction is not a control flow instruction,
+then it just updates nextPC by invoking advancePC function with the staticInst 
+of the current dynamic instruction. 
+
+*gem5/src/arch/generic/types.hh*
+```cpp
+// The most basic type of PC.
+template <class MachInst>
+class SimplePCState : public PCStateBase
+{   
+  protected:
+    typedef PCStateBase Base; 
+    
+  public:
+    
+    Addr pc() const { return _pc; }
+    void pc(Addr val) { _pc = val; }
+        
+    Addr npc() const { return _npc; }
+    void npc(Addr val) { _npc = val; }
+
+    void
+    set(Addr val)
+    {
+        pc(val);
+        npc(val + sizeof(MachInst));
+    };
+    
+    void
+    setNPC(Addr val)
+    {
+        npc(val);
+    }
+        
+    SimplePCState() {}
+    SimplePCState(Addr val) { set(val); }
+    
+    bool
+    branching() const
+    {
+        return this->npc() != this->pc() + sizeof(MachInst);
+    }   
+    
+    // Advance the PC.
+    void
+    advance()
+    {
+        _pc = _npc;
+        _npc += sizeof(MachInst);
+    }
+};
+
+```
+The advancePC function will end up invoking the advance of the base class, SimplePCState.
+It just updates the _pc as the _npc which has been measured as a result of adding size of instruction
+to the current pc. In other words, if it is not a control flow instruction, just adding the 
+size of current instruction to the pc is enough to get the next pc address. 
+
+### Asking branch predictor when a control flow instruction comes
+Now let's go back to the rest of the lookupAndUpdateNextPC function to understand
+what happens if the current instruction turns out to be control flow instruction. 
+
+```cpp
+ 572 
+ 573     ThreadID tid = inst->threadNumber;
+ 574     predict_taken = branchPred->predict(inst->staticInst, inst->seqNum,
+ 575                                         nextPC, tid);
+ 576 
+ 577     if (predict_taken) {
+ 578         DPRINTF(Fetch, "[tid:%i] [sn:%llu] Branch at PC %#x "
+ 579                 "predicted to be taken to %s\n",
+ 580                 tid, inst->seqNum, inst->pcState().instAddr(), nextPC);
+ 581     } else {
+ 582         DPRINTF(Fetch, "[tid:%i] [sn:%llu] Branch at PC %#x "
+ 583                 "predicted to be not taken\n",
+ 584                 tid, inst->seqNum, inst->pcState().instAddr());
+ 585     }
+ 586 
+ 587     DPRINTF(Fetch, "[tid:%i] [sn:%llu] Branch at PC %#x "
+ 588             "predicted to go to %s\n",
+ 589             tid, inst->seqNum, inst->pcState().instAddr(), nextPC);
+ 590     inst->setPredTarg(nextPC);
+ 591     inst->setPredTaken(predict_taken);
+ 592 
+ 593     ++fetchedBranches;
+ 594 
+ 595     if (predict_taken) {
+ 596         ++predictedBranches;
+ 597     }
+ 598 
+ 599     return predict_taken;
+ 600 }
+```
+
+
+
+```cpp
 1381 
 1382         // Re-evaluate whether the next instruction to fetch is in micro-op ROM
 1383         // or not.
 1384         inRom = isRomMicroPC(thisPC.microPC());
 1385     }
-1386 
+
+
+### After the first loop 
+```cpp 
 1387     if (predictedBranch) {
 1388         DPRINTF(Fetch, "[tid:%i] Done fetching, predicted branch "
 1389                 "instruction encountered.\n", tid);
@@ -1140,62 +1588,6 @@ UpdateNPC should be expalined!!!
 
 
 
-### buildInst: parsing instruction from the retrieved Instruction cache 
-```cpp
-1102 template<class Impl>
-1103 typename Impl::DynInstPtr
-1104 DefaultFetch<Impl>::buildInst(ThreadID tid, StaticInstPtr staticInst,
-1105                               StaticInstPtr curMacroop, TheISA::PCState thisPC,
-1106                               TheISA::PCState nextPC, bool trace)
-1107 {
-1108     // Get a sequence number.
-1109     InstSeqNum seq = cpu->getAndIncrementInstSeq();
-1110 
-1111     // Create a new DynInst from the instruction fetched.
-1112     DynInstPtr instruction =
-1113         new DynInst(staticInst, curMacroop, thisPC, nextPC, seq, cpu);
-1114     instruction->setTid(tid);
-1115 
-1116     instruction->setASID(tid);
-1117 
-1118     instruction->setThreadState(cpu->thread[tid]);
-1119 
-1120     DPRINTF(Fetch, "[tid:%i] Instruction PC %#x (%d) created "
-1121             "[sn:%lli].\n", tid, thisPC.instAddr(),
-1122             thisPC.microPC(), seq);
-1123 
-1124     DPRINTF(Fetch, "[tid:%i] Instruction is: %s\n", tid,
-1125             instruction->staticInst->
-1126             disassemble(thisPC.instAddr()));
-1127 
-1128 #if TRACING_ON
-1129     if (trace) {
-1130         instruction->traceData =
-1131             cpu->getTracer()->getInstRecord(curTick(), cpu->tcBase(tid),
-1132                     instruction->staticInst, thisPC, curMacroop);
-1133     }
-1134 #else
-1135     instruction->traceData = NULL;
-1136 #endif
-1137 
-1138     // Add instruction to the CPU's list of instructions.
-1139     instruction->setInstListIt(cpu->addInst(instruction));
-1140 
-1141     // Write the instruction to the first slot in the queue
-1142     // that heads to decode.
-1143     assert(numInst < fetchWidth);
-1144     fetchQueue[tid].push_back(instruction);
-1145     assert(fetchQueue[tid].size() <= fetchQueueSize);
-1146     DPRINTF(Fetch, "[tid:%i] Fetch queue entry created (%i/%i).\n",
-1147             tid, fetchQueue[tid].size(), fetchQueueSize);
-1148     //toDecode->insts[toDecode->size++] = instruction;
-1149 
-1150     // Keep track of if we can take an interrupt at this boundary
-1151     delayedCommit[tid] = instruction->isDelayedCommit();
-1152 
-1153     return instruction;
-1154 }
-```
 
 
 

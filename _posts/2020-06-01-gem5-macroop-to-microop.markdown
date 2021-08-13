@@ -261,11 +261,13 @@ we need all definitions of the microops.
 
 *src/arch/x86/isa/microops/base.isa*
 ```python
+{% raw %}
 let {{
     # This will be populated with mappings between microop mnemonics and
     # the classes that represent them.
     microopClasses = {}
 }};
+{% endraw %}
 ```
 *microopClasses* is a python dictionary 
 containing pair of microop mnemonic string and 

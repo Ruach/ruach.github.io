@@ -1435,8 +1435,49 @@ The isControl function of the dynamic instruction
 just invokes the same method of the **staticInst** of the DynInst,
 which is the static class representing **microop operation**. 
 When the current instruction is not a control flow instruction,
-then it just updates nextPC by invoking advancePC function with the staticInst 
+then it just updates nextPC by invoking **advancePC** function with the staticInst 
 of the current dynamic instruction. 
+
+
+*gem5/src/arch/x86/utility.hh*
+```cpp
+ 78     inline void
+ 79     advancePC(PCState &pc, const StaticInstPtr &inst)
+ 80     {
+ 81         inst->advancePC(pc);
+ 82     }
+```
+
+Because we are targeting X86 architecture,
+the inst should be the object of the X86StaticInst class. 
+And it will invoke the advancePC of the X86StaticInst with the nextPC. 
+
+*gem5/src/arch/x86/insts/static_inst.hh*
+```cpp
+ 77     /**
+ 78      * Base class for all X86 static instructions.
+ 79      */
+ 80 
+ 81     class X86StaticInst : public StaticInst
+ 82     {
+ 83       protected:
+ 84         // Constructor.
+ 85         X86StaticInst(const char *mnem,
+ 86              ExtMachInst _machInst, OpClass __opClass)
+ 87                 : StaticInst(mnem, _machInst, __opClass)
+ 88             {
+ 89             }
+......
+179         void
+180         advancePC(PCState &pcState) const
+181         {
+182             pcState.advance();
+183         }
+184     };
+```
+
+The advancePC function invokes the advance instruction
+of the pcState. Here the 
 
 *gem5/src/arch/generic/types.hh*
 ```cpp
@@ -1486,8 +1527,9 @@ of the current dynamic instruction.
 182     }
 183 };
 ```
-The advancePC function will end up invoking the advance of the base class, SimplePCState.
-It just updates the _pc as the _npc which has been measured as a result of adding size of instruction
+The advancePC function will end up invoking the advance function
+of the base class, SimplePCState. It just updates the _pc as the _npc 
+which has been measured as a result of adding size of instruction
 to the current pc. In other words, if it is not a control flow instruction, just adding the 
 size of current instruction to the pc is enough to get the next pc address. 
 

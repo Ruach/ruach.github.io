@@ -1126,8 +1126,13 @@ Also remember that the basePC has been set as fetchAddr when the moreBytes has b
 
 Because decoder already knows the length of the instruction,
 it can calculate the size of the instruction and set the nextPC value as 
-current PC + sizeof instruction. 
-Second, the decode function invokes actual decode function.
+current PC + sizeof instruction. The npc function updates the _npc field 
+of the nextPC, and it will be used to update the _pc member field of the 
+PCState object later. Note that the nextPC is actually the thisPC variable
+declared in the fetch function. It could be confusing because 
+the fetch function also declares the nextPC variable, but updateNPC 
+updates the npc of the thisPC not the nextPC variable of the fetch.
+After updating the npc, the decode function invokes actual decode function.
 
 ```cpp
 681 StaticInstPtr
@@ -1477,7 +1482,51 @@ And it will invoke the advancePC of the X86StaticInst with the nextPC.
 ```
 
 The advancePC function invokes the advance instruction
-of the pcState. Here the 
+of the pcState. Here the pcState object can be the architecture specific 
+PCState object defined as below.
+
+*gem5/src/arch/x86/types.hh*
+```cpp
+289     class PCState : public GenericISA::UPCState<MachInst>
+290     {
+291       protected:
+292         typedef GenericISA::UPCState<MachInst> Base;
+......
+324         void
+325         advance()
+326         {
+327             Base::advance();
+328             _size = 0;
+329         }
+```
+
+The advance function of the X86's PCState has advance function, but just 
+invokes the advance function of the Base class, GenericISA::UPCState<MachInst>.
+
+*gem5/src/arch/generic/types.hh*
+```cpp
+193 // A PC and microcode PC.
+194 template <class MachInst>
+195 class UPCState : public SimplePCState<MachInst>
+196 {
+197   protected:
+198     typedef SimplePCState<MachInst> Base;
+199 
+200     MicroPC _upc;
+201     MicroPC _nupc;
+202 
+......
+235     // Advance the upc within the instruction.
+236     void
+237     uAdvance()
+238     {
+239         _upc = _nupc;
+240         _nupc++;
+241     }
+```
+Although the UPCState class has uAdvance function, but 
+it doesn't have advance function. Therefore, it will invoke 
+the advance function of its parent class, SimplePCState.
 
 *gem5/src/arch/generic/types.hh*
 ```cpp
@@ -1530,8 +1579,9 @@ of the pcState. Here the
 The advancePC function will end up invoking the advance function
 of the base class, SimplePCState. It just updates the _pc as the _npc 
 which has been measured as a result of adding size of instruction
-to the current pc. In other words, if it is not a control flow instruction, just adding the 
-size of current instruction to the pc is enough to get the next pc address. 
+to the current pc. In other words, if it is not a control flow instruction, 
+just adding the size of current instruction to the pc is enough 
+to get the next pc address. 
 
 ```cpp
  53 // The guaranteed interface.

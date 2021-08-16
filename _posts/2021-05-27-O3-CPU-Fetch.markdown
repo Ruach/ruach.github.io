@@ -1208,7 +1208,7 @@ it should ask the macroop to return microops consisting of it.
 Note that the return value of the fetchMicroop function will be stored in the 
 staticInst. It is easy to be confused because of the staticInst. 
 Previously, when we decode the macroop using the moreBytes and decode,
-the generates instruction was stored in the staticInst. 
+the generated instruction was stored in the staticInst. 
 However, the staticInst variable is used to contain the microops 
 instead of the macroops. 
 
@@ -1386,31 +1386,6 @@ finish the analysis.
 1353             if (predictedBranch) {
 1354                 DPRINTF(Fetch, "Branch detected with PC = %s\n", thisPC);
 1355             }
-1356 
-1357             newMacro |= thisPC.instAddr() != nextPC.instAddr();
-1358 
-1359             // Move to the next instruction, unless we have a branch.
-1360             thisPC = nextPC;
-1361             inRom = isRomMicroPC(thisPC.microPC());
-1362 
-1363             if (newMacro) {
-1364                 fetchAddr = thisPC.instAddr() & BaseCPU::PCMask;
-1365                 blkOffset = (fetchAddr - fetchBufferPC[tid]) / instSize;
-1366                 pcOffset = 0;
-1367                 curMacroop = NULL;
-1368             }
-1369 
-1370             if (instruction->isQuiesce()) {
-1371                 DPRINTF(Fetch,
-1372                         "Quiesce instruction encountered, halting fetch!\n");
-1373                 fetchStatus[tid] = QuiescePending;
-1374                 status_change = true;
-1375                 quiesce = true;
-1376                 break;
-1377             }
-1378         } while ((curMacroop || decoder[tid]->instReady()) &&
-1379                  numInst < fetchWidth &&
-1380                  fetchQueue[tid].size() < fetchQueueSize);
 ```
 
 Until now, we have populated the microops and 
@@ -1460,57 +1435,103 @@ of the current dynamic instruction.
 
 *gem5/src/arch/generic/types.hh*
 ```cpp
-// The most basic type of PC.
-template <class MachInst>
-class SimplePCState : public PCStateBase
-{   
-  protected:
-    typedef PCStateBase Base; 
-    
-  public:
-    
-    Addr pc() const { return _pc; }
-    void pc(Addr val) { _pc = val; }
-        
-    Addr npc() const { return _npc; }
-    void npc(Addr val) { _npc = val; }
-
-    void
-    set(Addr val)
-    {
-        pc(val);
-        npc(val + sizeof(MachInst));
-    };
-    
-    void
-    setNPC(Addr val)
-    {
-        npc(val);
-    }
-        
-    SimplePCState() {}
-    SimplePCState(Addr val) { set(val); }
-    
-    bool
-    branching() const
-    {
-        return this->npc() != this->pc() + sizeof(MachInst);
-    }   
-    
-    // Advance the PC.
-    void
-    advance()
-    {
-        _pc = _npc;
-        _npc += sizeof(MachInst);
-    }
-};
-
+139 // The most basic type of PC.
+140 template <class MachInst>
+141 class SimplePCState : public PCStateBase
+142 {
+143   protected:
+144     typedef PCStateBase Base;
+145 
+146   public:
+147 
+148     Addr pc() const { return _pc; }
+149     void pc(Addr val) { _pc = val; }
+150 
+151     Addr npc() const { return _npc; }
+152     void npc(Addr val) { _npc = val; }
+153 
+154     void
+155     set(Addr val)
+156     {
+157         pc(val);
+158         npc(val + sizeof(MachInst));
+159     };
+160 
+161     void
+162     setNPC(Addr val)
+163     {
+164         npc(val);
+165     }
+166 
+167     SimplePCState() {}
+168     SimplePCState(Addr val) { set(val); }
+169 
+170     bool
+171     branching() const
+172     {
+173         return this->npc() != this->pc() + sizeof(MachInst);
+174     }
+175 
+176     // Advance the PC.
+177     void
+178     advance()
+179     {
+180         _pc = _npc;
+181         _npc += sizeof(MachInst);
+182     }
+183 };
 ```
 The advancePC function will end up invoking the advance of the base class, SimplePCState.
 It just updates the _pc as the _npc which has been measured as a result of adding size of instruction
 to the current pc. In other words, if it is not a control flow instruction, just adding the 
 size of current instruction to the pc is enough to get the next pc address. 
+
+```cpp
+ 53 // The guaranteed interface.
+ 54 class PCStateBase : public Serializable
+ 55 {
+ 56   protected:
+ 57     Addr _pc;
+ 58     Addr _npc;
+ 59 
+ 60     PCStateBase() : _pc(0), _npc(0) {}
+ 61     PCStateBase(Addr val) : _pc(0), _npc(0) { set(val); }
+ 62 
+ 63   public:
+ 64     /**
+ 65      * Returns the memory address the bytes of this instruction came from.
+ 66      *
+ 67      * @return Memory address of the current instruction's encoding.
+ 68      */
+ 69     Addr
+ 70     instAddr() const
+ 71     {
+ 72         return _pc;
+ 73     }
+ 74 
+ 75     /**
+ 76      * Returns the memory address the bytes of the next instruction came from.
+ 77      *
+ 78      * @return Memory address of the next instruction's encoding.
+ 79      */
+ 80     Addr
+ 81     nextInstAddr() const
+ 82     {
+ 83         return _npc;
+ 84     }
+ 85 
+ 86     /**
+ 87      * Returns the current micropc.
+ 88      *
+ 89      * @return The current micropc.
+ 90      */
+ 91     MicroPC
+ 92     microPC() const
+ 93     {
+ 94         return 0;
+ 95     }
+```
+
 
 ### Asking branch predictor for a control flow instruction
 Now let's go back to the rest of the lookupAndUpdateNextPC function to understand
@@ -1550,10 +1571,41 @@ what happens if the current instruction turns out to be control flow instruction
 
 It invokes the predict function and store the return value to the predict_taken.
 The predict function returns the prediction result, whether the branching instruction
-should be taken or not-taken. Also, note that the reference of the nextPC is passed
-to the branch predictor. This is because the prediction affects the next instruction's address.
+should be taken or not-taken (when it is not a control flow instruction, it returns
+not-taken to allow the next following instructions to be executed sequentially). 
+Also, note that the reference of the **nextPC** is passed to the branch predictor. 
+This is because the prediction affects the next instruction's address.
 Therefore, based on the prediction result, it changes the nextPC 
 to make the fetch stage to fetch instructions from the proper location. 
+
+### End of the second loop
+```cpp
+1356 
+1357             newMacro |= thisPC.instAddr() != nextPC.instAddr();
+1358 
+1359             // Move to the next instruction, unless we have a branch.
+1360             thisPC = nextPC;
+1361             inRom = isRomMicroPC(thisPC.microPC());
+1362 
+1363             if (newMacro) {
+1364                 fetchAddr = thisPC.instAddr() & BaseCPU::PCMask;
+1365                 blkOffset = (fetchAddr - fetchBufferPC[tid]) / instSize;
+1366                 pcOffset = 0;
+1367                 curMacroop = NULL;
+1368             }
+1369 
+1370             if (instruction->isQuiesce()) {
+1371                 DPRINTF(Fetch,
+1372                         "Quiesce instruction encountered, halting fetch!\n");
+1373                 fetchStatus[tid] = QuiescePending;
+1374                 status_change = true;
+1375                 quiesce = true;
+1376                 break;
+1377             }
+1378         } while ((curMacroop || decoder[tid]->instReady()) &&
+1379                  numInst < fetchWidth &&
+1380                  fetchQueue[tid].size() < fetchQueueSize);
+```
 
 
 ## End of the first loop and rest

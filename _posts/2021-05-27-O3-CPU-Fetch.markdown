@@ -309,7 +309,7 @@ Note that **FetchTranslation** object is instantiated and sent to the
 Instruction TLB (itb) which conveys functions that should be invoked 
 after the Translation is resolved. Therefore, when the instruction TLB finishes
 the translation, it invokes the function provided by the passed FetchTranslation object and 
-let the fetch stage to process next step, accessing the cache. 
+let the fetch stage to process next step, initiating the cache access. 
 Anyway, let's take a look at which function is provided to the TLB.
 
 *gem5/src/cpu/o3/fetch.hh*
@@ -1133,6 +1133,9 @@ declared in the fetch function. It could be confusing because
 the fetch function also declares the nextPC variable, but updateNPC 
 updates the npc of the thisPC not the nextPC variable of the fetch.
 After updating the npc, the decode function invokes actual decode function.
+Also it is important that the updateNPC function is only invoked when the 
+curMacroop is set as NULL. While the microops of the macroop is fetched,
+the npc will not be updated. 
 
 ```cpp
 681 StaticInstPtr
@@ -1444,6 +1447,7 @@ then it just updates nextPC by invoking **advancePC** function with the staticIn
 of the current dynamic instruction. 
 
 
+### advancePC: advance micro pc or pc based on the architecture
 *gem5/src/arch/x86/utility.hh*
 ```cpp
  78     inline void
@@ -1453,9 +1457,10 @@ of the current dynamic instruction.
  82     }
 ```
 
+The advancePC function just invoked advancePC function 
+provided by the StaticInstPtr class. 
 Because we are targeting X86 architecture,
 the inst should be the object of the X86StaticInst class. 
-And it will invoke the advancePC of the X86StaticInst with the nextPC. 
 
 *gem5/src/arch/x86/insts/static_inst.hh*
 ```cpp
@@ -1481,10 +1486,68 @@ And it will invoke the advancePC of the X86StaticInst with the nextPC.
 184     };
 ```
 
-The advancePC function invokes the advance instruction
-of the pcState. Here the pcState object can be the architecture specific 
+Also, remind that X86 architecture executes the microop instead of the macroop.
+Therefore, the StaticInstPtr points to microop object in x86.
+Thus X86 on GEM5 provide another class called **X86MicroopBase** inheriting 
+X86StaticInst class.
+
+*gem5/src/arch/x86/insts/microop.hh*
+```cpp
+ 88     //A class which is the base of all x86 micro ops. It provides a function to
+ 89     //set necessary flags appropriately.
+ 90     class X86MicroopBase : public X86StaticInst
+ 91     {
+ 92       protected:
+ 93         const char * instMnem;
+ 94         uint8_t opSize;
+ 95         uint8_t addrSize;
+ 96 
+ 97         X86MicroopBase(ExtMachInst _machInst,
+ 98                 const char *mnem, const char *_instMnem,
+ 99                 uint64_t setFlags, OpClass __opClass) :
+100             X86ISA::X86StaticInst(mnem, _machInst, __opClass),
+101             instMnem(_instMnem)
+102         {
+103             const int ChunkSize = sizeof(unsigned long);
+104             const int Chunks = sizeof(setFlags) / ChunkSize;
+105 
+106             // Since the bitset constructor can only handle unsigned long
+107             // sized chunks, feed it those one at a time while oring them in.
+108             for (int i = 0; i < Chunks; i++) {
+109                 unsigned shift = i * ChunkSize * 8;
+110                 flags |= (std::bitset<Num_Flags>(setFlags >> shift) << shift);
+111             }
+112         }
+113 
+114         std::string generateDisassembly(Addr pc,
+115                 const SymbolTable *symtab) const
+116         {
+117             std::stringstream ss;
+118 
+119             ccprintf(ss, "\t%s.%s", instMnem, mnemonic);
+120 
+121             return ss.str();
+122         }
+123 
+124         bool checkCondition(uint64_t flags, int condition) const;
+125 
+126         void
+127         advancePC(PCState &pcState) const
+128         {
+129             if (flags[IsLastMicroop])
+130                 pcState.uEnd();
+131             else
+132                 pcState.uAdvance();
+133         }
+134     };
+```
+
+Based on whether it is the last microop, 
+it invokes different function of the PCState, UEnd and uAdvance. 
+Here the pcState object is the architecture specific 
 PCState object defined as below.
 
+### PCState class
 *gem5/src/arch/x86/types.hh*
 ```cpp
 289     class PCState : public GenericISA::UPCState<MachInst>
@@ -1500,8 +1563,8 @@ PCState object defined as below.
 329         }
 ```
 
-The advance function of the X86's PCState has advance function, but just 
-invokes the advance function of the Base class, GenericISA::UPCState<MachInst>.
+Because the PCState doesn't implement the uEnd and uAdvance function, 
+we should take a look at its parent class GenericISA::UPCState<MachInst>.
 
 *gem5/src/arch/generic/types.hh*
 ```cpp
@@ -1515,7 +1578,21 @@ invokes the advance function of the Base class, GenericISA::UPCState<MachInst>.
 200     MicroPC _upc;
 201     MicroPC _nupc;
 202 
+203   public:
+204 
+205     MicroPC upc() const { return _upc; }
+206     void upc(MicroPC val) { _upc = val; }
+207 
+208     MicroPC nupc() const { return _nupc; }
+209     void nupc(MicroPC val) { _nupc = val; }
 ......
+228     bool
+229     branching() const
+230     {
+231         return this->npc() != this->pc() + sizeof(MachInst) ||
+232                this->nupc() != this->upc() + 1;
+233     }
+234 
 235     // Advance the upc within the instruction.
 236     void
 237     uAdvance()
@@ -1523,10 +1600,23 @@ invokes the advance function of the Base class, GenericISA::UPCState<MachInst>.
 239         _upc = _nupc;
 240         _nupc++;
 241     }
+242 
+243     // End the macroop by resetting the upc and advancing the regular pc.
+244     void
+245     uEnd()
+246     {
+247         this->advance();
+248         _upc = 0;
+249         _nupc = 1;
+250     }
 ```
-Although the UPCState class has uAdvance function, but 
-it doesn't have advance function. Therefore, it will invoke 
-the advance function of its parent class, SimplePCState.
+When uAdvance function is invoked, it just updates the **_upc** member field
+representing the micro pc of the current hardware thread. 
+However, when the uEnd is invoked, it should update the pc instead of the micro pc (upc).
+Because UPCState doesn't implement the PC related members field and functions,
+it will invoke the advance function of its parent, SimplePCState. 
+Note that PC represent microop and upc represent instruction pointer among the microops 
+consisting of one macroop. 
 
 *gem5/src/arch/generic/types.hh*
 ```cpp
@@ -1576,59 +1666,12 @@ the advance function of its parent class, SimplePCState.
 182     }
 183 };
 ```
-The advancePC function will end up invoking the advance function
-of the base class, SimplePCState. It just updates the _pc as the _npc 
-which has been measured as a result of adding size of instruction
+
+It just updates the _pc as the _npc 
+which has been measured as a result of adding size of macroop instruction
 to the current pc. In other words, if it is not a control flow instruction, 
 just adding the size of current instruction to the pc is enough 
 to get the next pc address. 
-
-```cpp
- 53 // The guaranteed interface.
- 54 class PCStateBase : public Serializable
- 55 {
- 56   protected:
- 57     Addr _pc;
- 58     Addr _npc;
- 59 
- 60     PCStateBase() : _pc(0), _npc(0) {}
- 61     PCStateBase(Addr val) : _pc(0), _npc(0) { set(val); }
- 62 
- 63   public:
- 64     /**
- 65      * Returns the memory address the bytes of this instruction came from.
- 66      *
- 67      * @return Memory address of the current instruction's encoding.
- 68      */
- 69     Addr
- 70     instAddr() const
- 71     {
- 72         return _pc;
- 73     }
- 74 
- 75     /**
- 76      * Returns the memory address the bytes of the next instruction came from.
- 77      *
- 78      * @return Memory address of the next instruction's encoding.
- 79      */
- 80     Addr
- 81     nextInstAddr() const
- 82     {
- 83         return _npc;
- 84     }
- 85 
- 86     /**
- 87      * Returns the current micropc.
- 88      *
- 89      * @return The current micropc.
- 90      */
- 91     MicroPC
- 92     microPC() const
- 93     {
- 94         return 0;
- 95     }
-```
-
 
 ### Asking branch predictor for a control flow instruction
 Now let's go back to the rest of the lookupAndUpdateNextPC function to understand
@@ -1680,6 +1723,76 @@ to make the fetch stage to fetch instructions from the proper location.
 1356 
 1357             newMacro |= thisPC.instAddr() != nextPC.instAddr();
 1358 
+```
+
+Remind that we are currently executing the second loop to
+translate curMacroop to microops. 
+However, when one of its microop turns out to be a control flow instruction
+and predicted to be taken, then it should change the PC.
+For that purpose, it checks the PC addresses of the thisPC and nextPC.
+Previously, before invoking the lookupAndUpdateNextPC function,
+it has allocated the thisPC to the nextPC (line 1346). 
+However, when the prediction made as a taken,
+pc address of the nextPC will be changed to the location of the taken branch. 
+Therefore, by comparing pc addresses of nextPC and thisPC, we can understand that 
+whether we are facing another macroop or still executing the microops 
+of the current macroop (line 1357). 
+
+```cpp
+ 53 // The guaranteed interface.
+ 54 class PCStateBase : public Serializable
+ 55 {
+ 56   protected:
+ 57     Addr _pc;
+ 58     Addr _npc;
+ 59 
+ 60     PCStateBase() : _pc(0), _npc(0) {}
+ 61     PCStateBase(Addr val) : _pc(0), _npc(0) { set(val); }
+ 62 
+ 63   public:
+ 64     /**
+ 65      * Returns the memory address the bytes of this instruction came from.
+ 66      *
+ 67      * @return Memory address of the current instruction's encoding.
+ 68      */
+ 69     Addr
+ 70     instAddr() const
+ 71     {
+ 72         return _pc;
+ 73     }
+ 74 
+ 75     /**
+ 76      * Returns the memory address the bytes of the next instruction came from.
+ 77      *
+ 78      * @return Memory address of the next instruction's encoding.
+ 79      */
+ 80     Addr
+ 81     nextInstAddr() const
+ 82     {
+ 83         return _npc;
+ 84     }
+ 85 
+ 86     /**
+ 87      * Returns the current micropc.
+ 88      *
+ 89      * @return The current micropc.
+ 90      */
+ 91     MicroPC
+ 92     microPC() const
+ 93     {
+ 94         return 0;
+ 95     }
+
+
+After the newMacro flag has been set,
+it assigns the nextPC to the thisPC. 
+One might think that nextPC will equal to the thisPC
+when the branch prediction is made to be not-taken, 
+but the lookupAndUpdateNextPC advances micro-pc by invoking
+advancePC function when the instruction is not a control flow 
+or predicted as not-taken. 
+
+```cpp
 1359             // Move to the next instruction, unless we have a branch.
 1360             thisPC = nextPC;
 1361             inRom = isRomMicroPC(thisPC.microPC());
@@ -1702,23 +1815,41 @@ to make the fetch stage to fetch instructions from the proper location.
 1378         } while ((curMacroop || decoder[tid]->instReady()) &&
 1379                  numInst < fetchWidth &&
 1380                  fetchQueue[tid].size() < fetchQueueSize);
+1381
+1382         // Re-evaluate whether the next instruction to fetch is in micro-op ROM
+1383         // or not.
 ```
-Remind that we are currently executing the second loop to
-translate curMacroop to microops. Therefore, the second loop's conditional
-checks whether the curMacroop references one macroop object (Line 1378).
-Therefore, we should carefully take a look at when the curMacroop is set
-as NULL to exit the second loop. The curMacroop is set as NULL when the newMacroop
-is found to be decoded (Line 1363-1368).
 
-
+If the newMacro flag is set to true, 
+then it should updates the addresses required to fetch next instruction
+and set the curMacroop as NULL.
+Therefore, when the new macroop is found, 
+the second loop will exit and 
+try to continue executing the first loop. 
 
 
 ## End of the first loop and rest
-```cpp 
+```cpp
+1263     // Loop through instruction memory from the cache.
+1264     // Keep issuing while fetchWidth is available and branch is not
+1265     // predicted taken
+1266     while (numInst < fetchWidth && fetchQueue[tid].size() < fetchQueueSize
+1267            && !predictedBranch && !quiesce) {
+......
 1382         // Re-evaluate whether the next instruction to fetch is in micro-op ROM
 1383         // or not.
 1384         inRom = isRomMicroPC(thisPC.microPC());
 1385     }
+```
+After translating macroop to microops by executing the second loop,
+it should continue execution on the first loop. 
+As we checked before,
+when the number of fetched instruction does not exceed the fetchWidth (bandwidth)
+and fetchQueue does not overflow and branch prediction is not made, 
+it will continue the all the logic that we checked until now will be repeated. 
+Then what should be done when the first loop exits?
+
+```cpp 
 1386
 1387     if (predictedBranch) {
 1388         DPRINTF(Fetch, "[tid:%i] Done fetching, predicted branch "
@@ -1733,6 +1864,12 @@ is found to be decoded (Line 1363-1368).
 1397 
 1398     macroop[tid] = curMacroop;
 1399     fetchOffset[tid] = pcOffset;
+```
+First it prints out debugging messages based on the exit condition of the first loop.
+And then it updates the macroop of the current hardware thread with the 
+curMacroop. Also the fetchOffset will be updated with pcOffset. 
+
+```cpp
 1400 
 1401     if (numInst > 0) {
 1402         wroteToTimeBuffer = true;
@@ -1754,7 +1891,280 @@ is found to be decoded (Line 1363-1368).
 ```
 
 
+## Rest of the tick function of the fetch. 
+### Issuing the Icache access for split access?\XXX{TODO}
+```cpp
+ 936     // Record number of instructions fetched this cycle for distribution.
+ 937     fetchNisnDist.sample(numInst);
+ 938 
+ 939     if (status_change) {
+ 940         // Change the fetch stage status if there was a status change.
+ 941         _status = updateFetchStatus();
+ 942     }
+ 943 
+ 944     // Issue the next I-cache request if possible.
+ 945     for (ThreadID i = 0; i < numThreads; ++i) {
+ 946         if (issuePipelinedIfetch[i]) {
+ 947             pipelineIcacheAccesses(i);
+ 948         }
+ 949     }
+ 950 
+ 951     // Send instructions enqueued into the fetch queue to decode.
+ 952     // Limit rate by fetchWidth.  Stall if decode is stalled.
+ 953     unsigned insts_to_decode = 0;
+ 954     unsigned available_insts = 0;
+ 955 
+ 956     for (auto tid : *activeThreads) {
+ 957         if (!stalls[tid].decode) {
+ 958             available_insts += fetchQueue[tid].size();
+ 959         }
+ 960     }
+ ```
 
 
+### Sending fetched instructions to decode stage
+*gem5/src/cpu/o3/fetch_impl.hh*
+```cpp
+ 961 
+ 962     // Pick a random thread to start trying to grab instructions from
+ 963     auto tid_itr = activeThreads->begin();
+ 964     std::advance(tid_itr, random_mt.random<uint8_t>(0, activeThreads->size() - 1));
+ 965 
+ 966     while (available_insts != 0 && insts_to_decode < decodeWidth) {
+ 967         ThreadID tid = *tid_itr;
+ 968         if (!stalls[tid].decode && !fetchQueue[tid].empty()) {
+ 969             const auto& inst = fetchQueue[tid].front();
+ 970             toDecode->insts[toDecode->size++] = inst;
+ 971             DPRINTF(Fetch, "[tid:%i] [sn:%llu] Sending instruction to decode "
+ 972                     "from fetch queue. Fetch queue size: %i.\n",
+ 973                     tid, inst->seqNum, fetchQueue[tid].size());
+ 974 
+ 975             wroteToTimeBuffer = true;
+ 976             fetchQueue[tid].pop_front();
+ 977             insts_to_decode++;
+ 978             available_insts--;
+ 979         }
+ 980 
+ 981         tid_itr++;
+ 982         // Wrap around if at end of active threads list
+ 983         if (tid_itr == activeThreads->end())
+ 984             tid_itr = activeThreads->begin();
+ 985     }
+ 986 
+ 987     // If there was activity this cycle, inform the CPU of it.
+ 988     if (wroteToTimeBuffer) {
+ 989         DPRINTF(Activity, "Activity this cycle.\n");
+ 990         cpu->activityThisCycle();
+ 991     }
+ 992 
+ 993     // Reset the number of the instruction we've fetched.
+ 994     numInst = 0;
+ 995 }   //end of the fetch.tick
+```
+The last job of the fetch stage is passing the fetched instructions
+to the next stage, decode stage. 
+One the above code, **toDecode** member field of the fetch 
+is used as an storage located in between the fetch and decode stage. 
 
+### FetchStruct: passing fetch stage's information to decode stage
+*gem5/src/cpu/o3/fetch.hh*
+```cpp
+431     //Might be annoying how this name is different than the queue.
+432     /** Wire used to write any information heading to decode. */
+433     typename TimeBuffer<FetchStruct>::wire toDecode;
+......
+458     /** Source of possible stalls. */
+459     struct Stalls {
+460         bool decode;
+461         bool drain;
+462     };
+463 
+464     /** Tracks which stages are telling fetch to stall. */
+465     Stalls stalls[Impl::MaxThreads];
+```
+The toDecode is declared as a wire class defined in the TimeBuffer class. 
+Also, because the TimerBuffer is a template class, 
+it passes the FetchStruct that contains all fetch stage's information
+required by the decode stage. Let's take a look at the FetchStruct 
+to understand which information is passed to the decode stage. 
 
+*gem5/src/cpu/o3/cpu_policy.hh*
+```cpp
+ 60 template<class Impl>
+ 61 struct SimpleCPUPolicy
+ 62 {
+ ......
+ 89     /** The struct for communication between fetch and decode. */
+ 90     typedef DefaultFetchDefaultDecode<Impl> FetchStruct;
+ 91 
+ 92     /** The struct for communication between decode and rename. */
+ 93     typedef DefaultDecodeDefaultRename<Impl> DecodeStruct;
+ 94 
+ 95     /** The struct for communication between rename and IEW. */
+ 96     typedef DefaultRenameDefaultIEW<Impl> RenameStruct;
+ 97 
+ 98     /** The struct for communication between IEW and commit. */
+ 99     typedef DefaultIEWDefaultCommit<Impl> IEWStruct;
+100 
+101     /** The struct for communication within the IEW stage. */
+102     typedef ::IssueStruct<Impl> IssueStruct;
+103 
+104     /** The struct for all backwards communication. */
+105     typedef TimeBufStruct<Impl> TimeStruct;
+```
+
+*gem5/src/cpu/o3/comm.h*
+```cpp
+ 55 /** Struct that defines the information passed from fetch to decode. */
+ 56 template<class Impl>
+ 57 struct DefaultFetchDefaultDecode {
+ 58     typedef typename Impl::DynInstPtr DynInstPtr;
+ 59 
+ 60     int size;
+ 61 
+ 62     DynInstPtr insts[Impl::MaxWidth];
+ 63     Fault fetchFault;
+ 64     InstSeqNum fetchFaultSN;
+ 65     bool clearFetchFault;
+ 66 };
+```
+Most importantly, it passes the 
+instructions fetched from the Icache. 
+
+### TimeBuffer::wire generic class representing wire
+The information passed from the decode stage to fetch stage is 
+represented as multiple wires conveying bits of information. 
+For that purpose, GEM5 provides wire class. 
+
+```cpp
+ 39 template <class T>
+ 40 class TimeBuffer
+ 41 {
+ 42   protected:
+ 43     int past;
+ 44     int future;
+ 45     unsigned size;
+ 46     int _id;
+ 47 
+ 48     char *data;
+ 49     std::vector<char *> index;
+ 50     unsigned base;
+ 51 
+ 52     void valid(int idx) const
+ 53     {
+ 54         assert (idx >= -past && idx <= future);
+ 55     }
+ 56 
+ 57   public:
+ 58     friend class wire;
+ 59     class wire
+ 60     {
+ 61         friend class TimeBuffer;
+ 62       protected:
+ 63         TimeBuffer<T> *buffer;
+ 64         int index;
+ 65 
+ 66         void set(int idx)
+ 67         {   
+ 68             buffer->valid(idx);
+ 69             index = idx;
+ 70         }
+ 71 
+ 72         wire(TimeBuffer<T> *buf, int i)
+ 73             : buffer(buf), index(i)
+ 74         { }
+ 75 
+ 76       public:
+ 77         wire()
+ 78         { }
+ 79 
+ 80         wire(const wire &i)
+ 81             : buffer(i.buffer), index(i.index)
+ 82         { }
+ 83 
+ 84         const wire &operator=(const wire &i)
+ 85         {
+ 86             buffer = i.buffer;
+ 87             set(i.index);
+ 88             return *this;
+ 89         }
+ 90 
+ 91         const wire &operator=(int idx)
+ 92         {
+ 93             set(idx);
+ 94             return *this;
+ 95         }
+ 96 
+ 97         const wire &operator+=(int offset)
+ 98         {
+ 99             set(index + offset);
+100             return *this;
+101         }
+102 
+103         const wire &operator-=(int offset)
+104         {
+105             set(index - offset);
+106             return *this;
+107         }
+108 
+109         wire &operator++()
+110         {
+111             set(index + 1);
+112             return *this;
+113         }
+114 
+115         wire &operator++(int)
+116         {
+117             int i = index;
+118             set(index + 1);
+119             return wire(this, i);
+120         }
+121 
+122         wire &operator--()
+123         {
+124             set(index - 1);
+125             return *this;
+126         }
+127 
+128         wire &operator--(int)
+129         {
+130             int i = index;
+131             set(index - 1);
+132             return wire(this, i);
+133         }
+134         T &operator*() const { return *buffer->access(index); }
+135         T *operator->() const { return buffer->access(index); }
+136     };
+......
+192   protected:
+193     //Calculate the index into this->index for element at position idx
+194     //relative to now
+195     inline int calculateVectorIndex(int idx) const
+196     {
+197         //Need more complex math here to calculate index.
+198         valid(idx);
+199 
+200         int vector_index = idx + base;
+201         if (vector_index >= (int)size) {
+202             vector_index -= size;
+203         } else if (vector_index < 0) {
+204             vector_index += size;
+205         }
+206 
+207         return vector_index;
+208     }
+209 
+210   public:
+211     T *access(int idx)
+212     {
+213         int vector_index = calculateVectorIndex(idx);
+214 
+215         return reinterpret_cast<T *>(index[vector_index]);
+216     }
+```
+As shown in the Line 970 of the tick function of the fetch stage,
+it references insts member field through the -> operator. 
+Because toDecode is declared as the TimeBuffer::wire, and 
+this class overrides the -> operator, it will invoke the
+operator function shown in line 135. 
+\XXX{ it needs to be explained more clearly with smartpointer..}

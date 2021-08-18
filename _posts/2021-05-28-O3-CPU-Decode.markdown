@@ -51,7 +51,7 @@ is used as an storage located in between the fetch and decode stage.
 ```
 
 The toDecode is declared as a wire class defined in the TimeBuffer class. 
-Also, because the TimerBuffer is a template class, 
+Also, because the TimeBuffer is a template class, 
 it passes the FetchStruct that contains all fetch stage's information
 required by the decode stage. Let's take a look at the FetchStruct 
 to understand which information is passed to the decode stage. 
@@ -165,7 +165,7 @@ and interface used to access that storage containing data  captured at specific 
 165         delete [] data;
 166     }
 ```
-Because the TimerBuffer needs to allocate and deallocate new class object 
+Because the TimeBuffer needs to allocate and deallocate new class object 
 at every clock cycle, it's constructor is designed to utilize the 
 preallocated memory called **data** member field. 
 With the help of **placement new**, its constructor can initialize 
@@ -231,6 +231,103 @@ at every clock cycle, it allocates new object typed T.
 Before populating new object, it first invoke deconstructor (line 188) 
 and initiate new object with the placement new (line 189). 
 
+
+
+
+## Wire
+### Example motivating interaction between fetch and decode
+*gem5/src/cpu/o3/cpu.cc*
+```cpp
+ 182     // Also setup each of the stages' queues.
+ 183     fetch.setFetchQueue(&fetchQueue);
+ 184     decode.setFetchQueue(&fetchQueue);
+```
+
+*gem5/src/cpu/o3/fetch_impl.hh*
+```cpp
+ 312 template<class Impl>
+ 313 void
+ 314 DefaultFetch<Impl>::setFetchQueue(TimeBuffer<FetchStruct> *ftb_ptr)
+ 315 {
+ 316     // Create wire to write information to proper place in fetch time buf.
+ 317     toDecode = ftb_ptr->getWire(0);
+ 318 }
+```
+*gem5/src/cpu/o3/decode_impl.hh*
+```cpp
+195 template<class Impl>
+196 void
+197 DefaultDecode<Impl>::setFetchQueue(TimeBuffer<FetchStruct> *fq_ptr)
+198 {
+199     fetchQueue = fq_ptr;
+200 
+201     // Setup wire to read information from fetch queue.
+202     fromFetch = fetchQueue->getWire(-fetchToDecodeDelay);
+203 }
+```
+*gem5/src/cpu/timebuf.hh*
+```cpp
+234     wire getWire(int idx)
+235     {
+236         valid(idx);
+237 
+238         return wire(this, idx);
+239     }
+```
+
+As shown in the above code, two different stages fetch and decode 
+invokes setFetchQueue function with the same TimeBuffer, fetchQueue.
+However, note that those two invocations are serviced from 
+different functions of each class. 
+As shown in the above code, both function invokes getWire but with 
+different argument, 0 and -fetchToDecodeDelay respectively. 
+The getWire function returns the wire object initialized with this and idx.
+Here this means the TimeBuffer itself and this will be assigned to the 
+buffer member field of the wire object. Also, idx will be assigned to the
+index member field of the wire object.
+Because the index is a constant number and used to access the register 
+managed by the buffer, it will generate fetchToDecodeDelay clock timing delays 
+in between the fetch and decode stage.
+Let's see how this timing delay can be imposed on the register access in detail.
+
+### Wire overloads the member reference operator to access the TimeBuffer
+Remember that the wire has member field buffer which is the TimeBuffer that actually 
+maintains all the register values that should be passed to the next stage. 
+However, in general, the register is a flip-flop it cannot be read and written
+at the same cycle. 
+Therefore, naturally, the next stage will get the data written to the register 
+after n clock cycles are elapsed.
+This behavior of the register is emulated by the wire and TimeBuffer.
+
+```cpp
+ 57   public:
+ 58     friend class wire;
+ 59     class wire
+ 60     {
+ 61         friend class TimeBuffer;
+ 62       protected:
+ 63         TimeBuffer<T> *buffer;
+ 64         int index;
+ 65 
+ 66         void set(int idx)
+ 67         {   
+ 68             buffer->valid(idx);
+ 69             index = idx;
+ 70         }
+ 71 
+ 72         wire(TimeBuffer<T> *buf, int i)
+ 73             : buffer(buf), index(i)
+ 74         { }
+......
+134         T &operator*() const { return *buffer->access(index); }
+135         T *operator->() const { return buffer->access(index); }
+136     };
+```
+
+When the wire is accessed by the -> operator, it invokes 
+access function of the TimeBuffer contained in the buffer member field. 
+Also note that it passes the index argument set at the construction of the wire. 
+
 ```cpp
 192   protected:
 193     //Calculate the index into this->index for element at position idx
@@ -258,94 +355,13 @@ and initiate new object with the placement new (line 189).
 215         return reinterpret_cast<T *>(index[vector_index]);
 216     }
 ```
-
-
-
-
-
-### Wire
-```cpp
- 57   public:
- 58     friend class wire;
- 59     class wire
- 60     {
- 61         friend class TimeBuffer;
- 62       protected:
- 63         TimeBuffer<T> *buffer;
- 64         int index;
- 65 
- 66         void set(int idx)
- 67         {   
- 68             buffer->valid(idx);
- 69             index = idx;
- 70         }
- 71 
- 72         wire(TimeBuffer<T> *buf, int i)
- 73             : buffer(buf), index(i)
- 74         { }
- 75 
- 76       public:
- 77         wire()
- 78         { }
- 79 
- 80         wire(const wire &i)
- 81             : buffer(i.buffer), index(i.index)
- 82         { }
- 83 
- 84         const wire &operator=(const wire &i)
- 85         {
- 86             buffer = i.buffer;
- 87             set(i.index);
- 88             return *this;
- 89         }
- 90 
- 91         const wire &operator=(int idx)
- 92         {
- 93             set(idx);
- 94             return *this;
- 95         }
- 96 
- 97         const wire &operator+=(int offset)
- 98         {
- 99             set(index + offset);
-100             return *this;
-101         }
-102 
-103         const wire &operator-=(int offset)
-104         {
-105             set(index - offset);
-106             return *this;
-107         }
-108 
-109         wire &operator++()
-110         {
-111             set(index + 1);
-112             return *this;
-113         }
-114 
-115         wire &operator++(int)
-116         {
-117             int i = index;
-118             set(index + 1);
-119             return wire(this, i);
-120         }
-121 
-122         wire &operator--()
-123         {
-124             set(index - 1);
-125             return *this;
-126         }
-127 
-128         wire &operator--(int)
-129         {
-130             int i = index;
-131             set(index - 1);
-132             return wire(this, i);
-133         }
-134         T &operator*() const { return *buffer->access(index); }
-135         T *operator->() const { return buffer->access(index); }
-136     };
-......
-
-
-```
+When the access is invoked, it first calculates the index for the vector. 
+Note that it adds two variable idx and base. 
+The base member field is increased by 1 every clock cycle as we've seen 
+in the **advance** function before. 
+the idx field is passed from the wire class that embeds the TimeBuffer. 
+For example, it is 0 and -1 for the fetch and decode stage respectively. 
+Therefore, in this settings, the decode stage will access the register 
+set by the previous clock cycle by the fetch stage. 
+Therefore, by setting the index field of the wire at its initialization properly, 
+we can set the delays of register access in two different stages. 

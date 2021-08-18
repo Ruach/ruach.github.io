@@ -365,3 +365,504 @@ Therefore, in this settings, the decode stage will access the register
 set by the previous clock cycle by the fetch stage. 
 Therefore, by setting the index field of the wire at its initialization properly, 
 we can set the delays of register access in two different stages. 
+
+
+# Decode stage pipeline analysis 
+
+*gem5/src/cpu/o3/decode_impl.hh*
+## tick of the decode stage
+```cpp
+567 template<class Impl>
+568 void
+569 DefaultDecode<Impl>::tick()
+570 {
+571     wroteToTimeBuffer = false;
+572 
+573     bool status_change = false;
+574 
+575     toRenameIndex = 0;
+576 
+577     list<ThreadID>::iterator threads = activeThreads->begin();
+578     list<ThreadID>::iterator end = activeThreads->end();
+579 
+580     sortInsts();
+581 
+582     //Check stall and squash signals.
+583     while (threads != end) {
+584         ThreadID tid = *threads++;
+585 
+586         DPRINTF(Decode,"Processing [tid:%i]\n",tid);
+587         status_change =  checkSignalsAndUpdate(tid) || status_change;
+588 
+589         decode(status_change, tid);
+590     }
+591 
+592     if (status_change) {
+593         updateStatus();
+594     }
+595 
+596     if (wroteToTimeBuffer) {
+597         DPRINTF(Activity, "Activity this cycle.\n");
+598 
+599         cpu->activityThisCycle();
+600     }
+601 }
+```
+As we've seen before, the tick function of each stage is the most important function
+because it is executed every core clock cycle. 
+The tick function consists of three important functions: sortInsts, checkSignalsAndUpdate and decode
+
+## sortInsts
+At the end of the decode stage, it pushes the fetched instructions to the 
+toDecode register buffers. Therefore, the decode stage should fetch those instructions
+from the same register located in between the fetch and decode stage. 
+```cpp
+483 template <class Impl>
+484 void
+485 DefaultDecode<Impl>::sortInsts()
+486 {
+487     int insts_from_fetch = fromFetch->size;
+488     for (int i = 0; i < insts_from_fetch; ++i) {
+489         insts[fromFetch->insts[i]->threadNumber].push(fromFetch->insts[i]);
+490     }
+491 }   
+```
+The sortInsts extracts the instructions stored in the register (**fromFetch**) and save them
+in the local instruction buffer (**insts**). 
+
+## checkSignalsAndUpdate
+```cpp
+507 template <class Impl>
+508 bool
+509 DefaultDecode<Impl>::checkSignalsAndUpdate(ThreadID tid)
+510 {
+511     // Check if there's a squash signal, squash if there is.
+512     // Check stall signals, block if necessary.
+513     // If status was blocked
+514     //     Check if stall conditions have passed
+515     //         if so then go to unblocking
+516     // If status was Squashing
+517     //     check if squashing is not high.  Switch to running this cycle.
+518
+519     // Update the per thread stall statuses.
+520     readStallSignals(tid);
+521
+522     // Check squash signals from commit.
+523     if (fromCommit->commitInfo[tid].squash) {
+524
+525         DPRINTF(Decode, "[tid:%i] Squashing instructions due to squash "
+526                 "from commit.\n", tid);
+527
+528         squash(tid);
+529
+530         return true;
+531     }
+532
+533     if (checkStall(tid)) {
+534         return block(tid);
+535     }
+```
+Before executing the decode function, it should first check 
+whether the other stages has sent a signal to stall. 
+
+### readStallSignals 
+```cpp
+493 template<class Impl>
+494 void
+495 DefaultDecode<Impl>::readStallSignals(ThreadID tid)
+496 {
+497     if (fromRename->renameBlock[tid]) {
+498         stalls[tid].rename = true;
+499     }
+500 
+501     if (fromRename->renameUnblock[tid]) {
+502         assert(stalls[tid].rename);
+503         stalls[tid].rename = false;
+504     }
+505 }
+```
+Rename stage can send two signals to the decode stage, 
+block signal and unblock signal through the fromRename wire.
+Based on the signal sent from the rename stage, 
+it sets or unset an associated entry of the member field stalls. 
+
+### When stall, just block the decode and return
+```cpp
+234 template<class Impl>
+235 bool
+236 DefaultDecode<Impl>::checkStall(ThreadID tid) const
+237 {
+238     bool ret_val = false;
+239 
+240     if (stalls[tid].rename) {
+241         DPRINTF(Decode,"[tid:%i] Stall fom Rename stage detected.\n", tid);
+242         ret_val = true;
+243     }
+244 
+245     return ret_val;
+246 }
+```
+When the decode stage has received the stall signal, 
+it returns true, which results in invoking block function and 
+returning is result. 
+
+```cpp
+255 template<class Impl>
+256 bool
+257 DefaultDecode<Impl>::block(ThreadID tid)
+258 {
+259     DPRINTF(Decode, "[tid:%i] Blocking.\n", tid);
+260 
+261     // Add the current inputs to the skid buffer so they can be
+262     // reprocessed when this stage unblocks.
+263     skidInsert(tid);
+264 
+265     // If the decode status is blocked or unblocking then decode has not yet
+266     // signalled fetch to unblock. In that case, there is no need to tell
+267     // fetch to block.
+268     if (decodeStatus[tid] != Blocked) {
+269         // Set the status to Blocked.
+270         decodeStatus[tid] = Blocked;
+271 
+272         if (toFetch->decodeUnblock[tid]) {
+273             toFetch->decodeUnblock[tid] = false;
+274         } else {
+275             toFetch->decodeBlock[tid] = true;
+276             wroteToTimeBuffer = true;
+277         }
+278 
+279         return true;
+280     }
+281 
+282     return false;
+283 }
+```
+When the decode stage has instruction input from the fetch stage,
+it needs to be maintained in the skid buffer so that they can be 
+reprocessed when the decode stage is unblocked. 
+Also it needs to send signal to the fetch stage depending on the condition.
+\XXX{needs to be explained in what condition}.
+
+
+### squash pipeline when the commit stage sent squash signal  
+After reading the stall signal, it should also check 
+whether the commit stage has sent a squash signal.
+The decode stage can check whether it needs to squash 
+by checking the fromCommit wire. 
+
+```cpp
+304 template<class Impl>
+305 void
+306 DefaultDecode<Impl>::squash(const DynInstPtr &inst, ThreadID tid)
+307 {
+308     DPRINTF(Decode, "[tid:%i] [sn:%llu] Squashing due to incorrect branch "
+309             "prediction detected at decode.\n", tid, inst->seqNum);
+310
+311     // Send back mispredict information.
+312     toFetch->decodeInfo[tid].branchMispredict = true;
+313     toFetch->decodeInfo[tid].predIncorrect = true;
+314     toFetch->decodeInfo[tid].mispredictInst = inst;
+315     toFetch->decodeInfo[tid].squash = true;
+316     toFetch->decodeInfo[tid].doneSeqNum = inst->seqNum;
+317     toFetch->decodeInfo[tid].nextPC = inst->branchTarget();
+318     toFetch->decodeInfo[tid].branchTaken = inst->pcState().branching();
+319     toFetch->decodeInfo[tid].squashInst = inst;
+320     if (toFetch->decodeInfo[tid].mispredictInst->isUncondCtrl()) {
+321             toFetch->decodeInfo[tid].branchTaken = true;
+322     }
+323
+324     InstSeqNum squash_seq_num = inst->seqNum;
+325
+326     // Might have to tell fetch to unblock.
+327     if (decodeStatus[tid] == Blocked ||
+328         decodeStatus[tid] == Unblocking) {
+329         toFetch->decodeUnblock[tid] = 1;
+330     }
+331
+332     // Set status to squashing.
+333     decodeStatus[tid] = Squashing;
+334
+335     for (int i=0; i<fromFetch->size; i++) {
+336         if (fromFetch->insts[i]->threadNumber == tid &&
+337             fromFetch->insts[i]->seqNum > squash_seq_num) {
+338             fromFetch->insts[i]->setSquashed();
+339         }
+340     }
+341
+342     // Clear the instruction list and skid buffer in case they have any
+343     // insts in them.
+344     while (!insts[tid].empty()) {
+345         insts[tid].pop();
+346     }
+347
+348     while (!skidBuffer[tid].empty()) {
+349         skidBuffer[tid].pop();
+350     }
+351
+352     // Squash instructions up until this one
+353     cpu->removeInstsUntil(squash_seq_num, tid);
+354 }
+```
+Note that squash signal incurs complex operations compared to stalls.
+When the stall signal is received, the decode stage just waits until the 
+stall signal is removed by receiving the unblock signal. 
+However, when the stall signal is received, 
+it should clear out the pipeline and associated data structures. 
+
+
+### When the decode stage finishes blocking and squashing operation
+```cpp
+508 bool
+509 DefaultDecode<Impl>::checkSignalsAndUpdate(ThreadID tid)
+510 {
+......
+537     if (decodeStatus[tid] == Blocked) {
+538         DPRINTF(Decode, "[tid:%i] Done blocking, switching to unblocking.\n",
+539                 tid);
+540
+541         decodeStatus[tid] = Unblocking;
+542
+543         unblock(tid);
+544
+545         return true;
+546     }
+547
+548     if (decodeStatus[tid] == Squashing) {
+549         // Switch status to running if decode isn't being told to block or
+550         // squash this cycle.
+551         DPRINTF(Decode, "[tid:%i] Done squashing, switching to running.\n",
+552                 tid);
+553
+554         decodeStatus[tid] = Running;
+555
+556         return false;
+557     }
+558
+559     // If we've reached this point, we have not gotten any signals that
+560     // cause decode to change its status.  Decode remains the same as before.
+561     return false;
+562 }
+```
+After the decode stage is recovered from the stall or squashing. 
+it needs to execute proper operations to be fully recovered from those state 
+to the Running state. For the Blocked state, it will execute the 
+line 537-546 when the rename stage sends the unBlock signal. 
+In detail, readStallSignals will set the stalls of the rename as false, 
+and checkStall will not execute the block function.
+Therefore, the decodeStatus will remain as Blocked, and the above code will be executed. 
+The unblock function makes the decode stage to be changed as Running again. 
+And when the squash signal is turned off from commit stage, 
+it will execute the rest of the code (548-557). 
+
+## decode 
+It would be confusing because we already finished instruction decoding 
+in the fetch stage. We already know which instructions are located in the 
+fetch buffer. Why we need another decode function?
+The decode stage does not do much, but it should check any PC-relative branches are correct.
+Most of the decode operations are actually done by the decodeInsts function. 
+
+
+600 template<class Impl>
+601 void
+602 DefaultDecode<Impl>::decode(bool &status_change, ThreadID tid)
+603 {
+604     // If status is Running or idle,
+605     //     call decodeInsts()
+606     // If status is Unblocking,
+607     //     buffer any instructions coming from fetch
+608     //     continue trying to empty skid buffer
+609     //     check if stall conditions have passed
+610 
+611     if (decodeStatus[tid] == Blocked) {
+612         ++decodeBlockedCycles;
+613     } else if (decodeStatus[tid] == Squashing) {
+614         ++decodeSquashCycles;
+615     }
+616 
+617     // Decode should try to decode as many instructions as its bandwidth
+618     // will allow, as long as it is not currently blocked.
+619     if (decodeStatus[tid] == Running ||
+620         decodeStatus[tid] == Idle) {
+621         DPRINTF(Decode, "[tid:%i] Not blocked, so attempting to run "
+622                 "stage.\n",tid);
+623 
+624         decodeInsts(tid);
+625     } else if (decodeStatus[tid] == Unblocking) {
+626         // Make sure that the skid buffer has something in it if the
+627         // status is unblocking.
+628         assert(!skidsEmpty());
+629 
+630         // If the status was unblocking, then instructions from the skid
+631         // buffer were used.  Remove those instructions and handle
+632         // the rest of unblocking.
+633         decodeInsts(tid);
+634 
+635         if (fetchInstsValid()) {
+636             // Add the current inputs to the skid buffer so they can be
+637             // reprocessed when this stage unblocks.
+638             skidInsert(tid);
+639         }
+640 
+641         status_change = unblock(tid) || status_change;
+642     }
+643 }
+
+### decode stage check buffers to retrieve instruction to decode
+```cpp
+645 template <class Impl>
+646 void
+647 DefaultDecode<Impl>::decodeInsts(ThreadID tid)
+648 {
+649     // Instructions can come either from the skid buffer or the list of
+650     // instructions coming from fetch, depending on decode's status.
+651     int insts_available = decodeStatus[tid] == Unblocking ?
+652         skidBuffer[tid].size() : insts[tid].size();
+653 
+654     if (insts_available == 0) {
+655         DPRINTF(Decode, "[tid:%i] Nothing to do, breaking out"
+656                 " early.\n",tid);
+657         // Should I change the status to idle?
+658         ++decodeIdleCycles;
+659         return;
+660     } else if (decodeStatus[tid] == Unblocking) {
+661         DPRINTF(Decode, "[tid:%i] Unblocking, removing insts from skid "
+662                 "buffer.\n",tid);
+663         ++decodeUnblockCycles;
+664     } else if (decodeStatus[tid] == Running) {
+665         ++decodeRunCycles;
+666     }
+667 
+668     std::queue<DynInstPtr>
+669         &insts_to_decode = decodeStatus[tid] == Unblocking ?
+670         skidBuffer[tid] : insts[tid];
+671 
+672     DPRINTF(Decode, "[tid:%i] Sending instruction to rename.\n",tid);
+```
+When the current decode status is not Unblocking, then it should retrieve instructions
+from the insts buffer that has the instructions passed from the fetch stage (sortInsts).
+Also, only when the buffer contains some instructions, it continues decoding.
+If there is no available instructions in the buffer, it stops decoding. 
+
+
+### forwarding decoded instructions to rename stage
+```cpp
+185 template<class Impl>
+186 void
+187 DefaultDecode<Impl>::setDecodeQueue(TimeBuffer<DecodeStruct> *dq_ptr)
+188 {
+189     decodeQueue = dq_ptr;
+190 
+191     // Setup wire to write information to proper place in decode queue.
+192     toRename = decodeQueue->getWire(0);
+193 }
+```
+Similar to the toDecode wire in the fetch stage, decode stage 
+needs a wire to send the decoded instructions to another register 
+connected with the rename stage. 
+For that purpose, it declares toRename wire. 
+
+```cpp
+674     while (insts_available > 0 && toRenameIndex < decodeWidth) {
+675         assert(!insts_to_decode.empty());
+676 
+677         DynInstPtr inst = std::move(insts_to_decode.front());
+678 
+679         insts_to_decode.pop();
+680 
+681         DPRINTF(Decode, "[tid:%i] Processing instruction [sn:%lli] with "
+682                 "PC %s\n", tid, inst->seqNum, inst->pcState());
+683 
+684         if (inst->isSquashed()) {
+685             DPRINTF(Decode, "[tid:%i] Instruction %i with PC %s is "
+686                     "squashed, skipping.\n",
+687                     tid, inst->seqNum, inst->pcState());
+688             
+689             ++decodeSquashedInsts;
+690             
+691             --insts_available;
+692             
+693             continue;
+694         }
+695 
+696         // Also check if instructions have no source registers.  Mark
+697         // them as ready to issue at any time.  Not sure if this check
+698         // should exist here or at a later stage; however it doesn't matter
+699         // too much for function correctness.
+700         if (inst->numSrcRegs() == 0) {
+701             inst->setCanIssue();
+702         }
+703 
+704         // This current instruction is valid, so add it into the decode
+705         // queue.  The next instruction may not be valid, so check to
+706         // see if branches were predicted correctly.
+707         toRename->insts[toRenameIndex] = inst;
+708 
+709         ++(toRename->size);
+710         ++toRenameIndex;
+711         ++decodeDecodedInsts;
+712         --insts_available;
+```
+The while loop selects one instruction from the buffer and send it to the rename stage
+through the toRename wire. 
+
+```cpp
+720         // Ensure that if it was predicted as a branch, it really is a
+721         // branch.
+722         if (inst->readPredTaken() && !inst->isControl()) {
+723             panic("Instruction predicted as a branch!");
+724 
+725             ++decodeControlMispred;
+726 
+727             // Might want to set some sort of boolean and just do
+728             // a check at the end
+729             squash(inst, inst->threadNumber);
+730 
+731             break;
+732         }
+733 
+734         // Go ahead and compute any PC-relative branches.
+735         // This includes direct unconditional control and
+736         // direct conditional control that is predicted taken.
+737         if (inst->isDirectCtrl() &&
+738            (inst->isUncondCtrl() || inst->readPredTaken()))
+739         {
+740             ++decodeBranchResolved;
+741 
+742             if (!(inst->branchTarget() == inst->readPredTarg())) {
+743                 ++decodeBranchMispred;
+744 
+745                 // Might want to set some sort of boolean and just do
+746                 // a check at the end
+747                 squash(inst, inst->threadNumber);
+748                 TheISA::PCState target = inst->branchTarget();
+749 
+750                 DPRINTF(Decode,
+751                         "[tid:%i] [sn:%llu] "
+752                         "Updating predictions: PredPC: %s\n",
+753                         tid, inst->seqNum, target);
+754                 //The micro pc after an instruction level branch should be 0
+755                 inst->setPredTarg(target);
+756                 break;
+757             }
+758         }
+759     } //end of the while loop
+
+
+
+```cpp
+761     // If we didn't process all instructions, then we will need to block
+762     // and put all those instructions into the skid buffer.
+763     if (!insts_to_decode.empty()) {
+764         block(tid);
+765     }
+766 
+767     // Record that decode has written to the time buffer for activity
+768     // tracking.
+769     if (toRenameIndex) {
+770         wroteToTimeBuffer = true;
+771     }
+
+```
+
+
+

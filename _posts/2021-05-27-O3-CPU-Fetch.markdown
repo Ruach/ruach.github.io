@@ -1922,7 +1922,7 @@ curMacroop. Also the fetchOffset will be updated with pcOffset.
  ```
 
 
-### Sending fetched instructions to decode stage
+## Sending fetched instructions to decode stage
 *gem5/src/cpu/o3/fetch_impl.hh*
 ```cpp
  961 

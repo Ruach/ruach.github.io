@@ -616,8 +616,247 @@ issued to the next stage due to the lack of LQ or SQ and break.
  711             break;
  712         }
  ```
+After it is guaranteed that the resources is available to handle new instruction,
+it actually consumes one instruction from the buffer (Line 668).
+It first checks the instruction has been squashed and ignore that instruction
+if it was squashed. 
+If every conditions have been passed, then it asks renameMap 
+if there are available registers to rename current instruction. 
+
+## renameMap 
+*gem5/src/cpu/o3/cpu.hh*
+```cpp
+583     /** The rename map. */
+584     typename CPUPolicy::RenameMap renameMap[Impl::MaxThreads];
+```
+*gem5/src/cpu/o3/cpu_policy.hh*
+```cpp
+ 60 template<class Impl>
+ 61 struct SimpleCPUPolicy
+ 62 {
+ 63     /** Typedef for the freelist of registers. */
+ 64     typedef UnifiedFreeList FreeList;
+ 65     /** Typedef for the rename map. */
+ 66     typedef UnifiedRenameMap RenameMap;
+```
+The renameMap contains all the hardware registers 
+available to be utilized by the processor. For example, 
+even though the ISA has only handful of registers, in the backbone, 
+there are lots of registers to execute instructions. 
+The O3 CPU utilize the **UnifiedRenameMap**. 
+Let's take a look at its details.
 
 
+### UnifiedRenameMap has different types of SimpleRenameMaps
+```cpp
+163 /**
+164  * Unified register rename map for all classes of registers.  Wraps a
+165  * set of class-specific rename maps.  Methods that do not specify a
+166  * register class (e.g., rename()) take register ids,
+167  * while methods that do specify a register class (e.g., renameInt())
+168  * take register indices.
+169  */
+170 class UnifiedRenameMap
+171 {
+172   private:
+173     static constexpr uint32_t NVecElems = TheISA::NumVecElemPerVecReg;
+174     using VecReg = TheISA::VecReg;
+175     using VecPredReg = TheISA::VecPredReg;
+176 
+177     /** The integer register rename map */
+178     SimpleRenameMap intMap;
+179 
+180     /** The floating-point register rename map */
+181     SimpleRenameMap floatMap;
+182 
+183     /** The condition-code register rename map */
+184     SimpleRenameMap ccMap;
+185 
+186     /** The vector register rename map */
+187     SimpleRenameMap vecMap;
+188 
+189     /** The vector element register rename map */
+190     SimpleRenameMap vecElemMap;
+191 
+192     /** The predicate register rename map */
+193     SimpleRenameMap predMap;
+194 
+195     using VecMode = Enums::VecRegRenameMode;
+196     VecMode vecMode;
+```
+The renameMap used by the O3 is just a wrapper of the renameMap of each types of registers. 
+As shown in the above class definition, it contains 
+integer, float, vector, and other types of register in the UnifiedRenameMap.
+
+```cpp
+ 237         renameMap[tid].init(&regFile, TheISA::ZeroReg, fpZeroReg,
+ 238                             &freeList, vecMode);
+ ......
+ 241     // Initialize rename map to assign physical registers to the
+ 242     // architectural registers for active threads only.
+ 243     for (ThreadID tid = 0; tid < active_threads; tid++) {
+ 244         for (RegIndex ridx = 0; ridx < TheISA::NumIntRegs; ++ridx) {
+ 245             // Note that we can't use the rename() method because we don't
+ 246             // want special treatment for the zero register at this point
+ 247             PhysRegIdPtr phys_reg = freeList.getIntReg();
+ 248             renameMap[tid].setEntry(RegId(IntRegClass, ridx), phys_reg);
+ 249             commitRenameMap[tid].setEntry(RegId(IntRegClass, ridx), phys_reg);
+ 250         }
+ 251 
+ 252         for (RegIndex ridx = 0; ridx < TheISA::NumFloatRegs; ++ridx) {
+ 253             PhysRegIdPtr phys_reg = freeList.getFloatReg();
+ 254             renameMap[tid].setEntry(RegId(FloatRegClass, ridx), phys_reg);
+ 255             commitRenameMap[tid].setEntry(
+ 256                     RegId(FloatRegClass, ridx), phys_reg);
+ 257         }
+ 258 
+ 259         /* Here we need two 'interfaces' the 'whole register' and the
+ 260          * 'register element'. At any point only one of them will be
+ 261          * active. */
+ 262         if (vecMode == Enums::Full) {
+ 263             /* Initialize the full-vector interface */
+ 264             for (RegIndex ridx = 0; ridx < TheISA::NumVecRegs; ++ridx) {
+ 265                 RegId rid = RegId(VecRegClass, ridx);
+ 266                 PhysRegIdPtr phys_reg = freeList.getVecReg();
+ 267                 renameMap[tid].setEntry(rid, phys_reg);
+ 268                 commitRenameMap[tid].setEntry(rid, phys_reg);
+ 269             }
+ 270         } else {
+ 271             /* Initialize the vector-element interface */
+ 272             for (RegIndex ridx = 0; ridx < TheISA::NumVecRegs; ++ridx) {
+ 273                 for (ElemIndex ldx = 0; ldx < TheISA::NumVecElemPerVecReg;
+ 274                         ++ldx) {
+ 275                     RegId lrid = RegId(VecElemClass, ridx, ldx);
+ 276                     PhysRegIdPtr phys_elem = freeList.getVecElem();
+ 277                     renameMap[tid].setEntry(lrid, phys_elem);
+ 278                     commitRenameMap[tid].setEntry(lrid, phys_elem);
+ 279                 }
+ 280             }
+ 281         }
+ 282 
+ 283         for (RegIndex ridx = 0; ridx < TheISA::NumVecPredRegs; ++ridx) {
+ 284             PhysRegIdPtr phys_reg = freeList.getVecPredReg();
+ 285             renameMap[tid].setEntry(RegId(VecPredRegClass, ridx), phys_reg);
+ 286             commitRenameMap[tid].setEntry(
+ 287                     RegId(VecPredRegClass, ridx), phys_reg);
+ 288         }
+ 289 
+ 290         for (RegIndex ridx = 0; ridx < TheISA::NumCCRegs; ++ridx) {
+ 291             PhysRegIdPtr phys_reg = freeList.getCCReg();
+ 292             renameMap[tid].setEntry(RegId(CCRegClass, ridx), phys_reg);
+ 293             commitRenameMap[tid].setEntry(RegId(CCRegClass, ridx), phys_reg);
+ 294         }
+ 295     }
+ 296 
+ 297     rename.setRenameMap(renameMap);
+```
+The above code initialize all entries of the renameMap. 
+When the setEntry is invoked through the UnifiedRenameMap, 
+it invokes setEntry function of the SimpleRenameMap of the corresponding type.
+
+```cpp
+302     /**
+303      * Update rename map with a specific mapping.  Generally used to
+304      * roll back to old mappings on a squash.  This version takes a
+305      * flattened architectural register id and calls the
+306      * appropriate class-specific rename table.
+307      * @param arch_reg The architectural register to remap.
+308      * @param phys_reg The physical register to remap it to.
+309      */
+310     void setEntry(const RegId& arch_reg, PhysRegIdPtr phys_reg)
+311     {
+312         switch (arch_reg.classValue()) {
+313           case IntRegClass:
+314             assert(phys_reg->isIntPhysReg());
+315             return intMap.setEntry(arch_reg, phys_reg);
+316 
+317           case FloatRegClass:
+318             assert(phys_reg->isFloatPhysReg());
+319             return floatMap.setEntry(arch_reg, phys_reg);
+320 
+321           case VecRegClass:
+322             assert(phys_reg->isVectorPhysReg());
+323             assert(vecMode == Enums::Full);
+324             return vecMap.setEntry(arch_reg, phys_reg);
+325 
+326           case VecElemClass:
+327             assert(phys_reg->isVectorPhysElem());
+328             assert(vecMode == Enums::Elem);
+329             return vecElemMap.setEntry(arch_reg, phys_reg);
+330 
+331           case VecPredRegClass:
+332             assert(phys_reg->isVecPredPhysReg());
+333             return predMap.setEntry(arch_reg, phys_reg);
+334 
+335           case CCRegClass:
+336             assert(phys_reg->isCCPhysReg());
+337             return ccMap.setEntry(arch_reg, phys_reg);
+338 
+339           case MiscRegClass:
+340             // Misc registers do not actually rename, so don't change
+341             // their mappings.  We end up here when a commit or squash
+342             // tries to update or undo a hardwired misc reg nmapping,
+343             // which should always be setting it to what it already is.
+344             assert(phys_reg == lookup(arch_reg));
+345             return;
+346 
+347           default:
+348             panic("rename setEntry(): unknown reg class %s\n",
+349                   arch_reg.className());
+350         }
+351     }
+```
+
+The setEntry actually inserts new entry to the renameMap. 
+However, because UnifiedRenameMap is just a wrapper class consisting of
+multiple SimpleRenameMaps with different types of registers, 
+it inserts an entry to associated SimpleRenameMaps object
+based on the type of register. 
+
+### canRename checks availability of the register resource. 
+```cpp
+ 696         // Check here to make sure there are enough destination registers
+ 697         // to rename to.  Otherwise block.
+ 698         if (!renameMap[tid]->canRename(inst->numIntDestRegs(),
+ 699                                        inst->numFPDestRegs(),
+ 700                                        inst->numVecDestRegs(),
+ 701                                        inst->numVecElemDestRegs(),
+ 702                                        inst->numVecPredDestRegs(),
+ 703                                        inst->numCCDestRegs())) {
+ 704             DPRINTF(Rename,
+ 705                     "Blocking due to "
+ 706                     " lack of free physical registers to rename to.\n");
+ 707             blockThisCycle = true;
+ 708             insts_to_rename.push_front(inst);
+ 709             ++renameFullRegistersEvents;
+ 710
+ 711             break;
+ 712         }
+```
+Before the rename stage actually process the instruction to rename its registers,
+it first checks whether the current physical address is available 
+to be utilized as execution. For that purpose it invokes canRename function 
+provided by the UnifiedRenameMap. 
+
+```cpp
+    /**
+     * Return whether there are enough registers to serve the request.
+     */
+    bool canRename(uint32_t intRegs, uint32_t floatRegs, uint32_t vectorRegs,
+                   uint32_t vecElemRegs, uint32_t vecPredRegs,
+                   uint32_t ccRegs) const
+    {
+        return intRegs <= intMap.numFreeEntries() &&
+            floatRegs <= floatMap.numFreeEntries() &&
+            vectorRegs <= vecMap.numFreeEntries() &&
+            vecElemRegs <= vecElemMap.numFreeEntries() &&
+            vecPredRegs <= predMap.numFreeEntries() &&
+            ccRegs <= ccMap.numFreeEntries();
+    }
+
+```
+
+## Handle serialization instruction 
 ```cpp
  714         // Handle serializeAfter/serializeBefore instructions.
  715         // serializeAfter marks the next instruction as serializeBefore.
@@ -660,8 +899,127 @@ issued to the next stage due to the lack of LQ or SQ and break.
  752             serializeAfter(insts_to_rename, tid);
  753         }
  ```
+**StaticInst** class has flags member field which represent 
+properties of one instruction such as serializing, memory barrier, load operation, etc. 
+Also, it has corresponding get methods to retrieve those flags 
+from the StaticInst objects. Remember that all the instructions 
+we generated at the fetch stage was the object of the StaticInst. 
+Also, its flags are set based on the implementation of the microops of 
+different architectures. 
+Therefore, by checking the isSerializeAfter and isSerializeBefore of the current static instruction
+the rename stage determines whether it should block the stage or moves on the next instruction. 
+Note that the serializeBefore means that the current instruction should be blocked, 
+but the serializeAfter means that the next instruction after current instruction should be blocked. 
+Therefore, by invoking serializeAfter function, it makes the next instruction have 
+IsSerializeBefore flag. 
 
-### Rename registers and pass the renamed instruction to the next stage
+```cpp
+1431 template<class Impl>
+1432 void
+1433 DefaultRename<Impl>::serializeAfter(InstQueue &inst_list, ThreadID tid)
+1434 {
+1435     if (inst_list.empty()) {
+1436         // Mark a bit to say that I must serialize on the next instruction.
+1437         serializeOnNextInst[tid] = true;
+1438         return;
+1439     }
+1440 
+1441     // Set the next instruction as serializing.
+1442     inst_list.front()->setSerializeBefore();
+1443 }
+```
+
+Note that there are two cases. When the current instruction is serializeBefore and the last one 
+in the queue, then it should block the next instruction until all the instructions to be executed. 
+However, because we don't know which instructions will be passed to the rename stage, 
+it just sets the serializeOnNextInst as true to make the rename stage make the 
+first instruction processed by the rename stage at the next cycle to be blocked.
+If the buffer still has following instruction, then it just set the next instruction as 
+serializeBefore.
+
+```cpp
+ 627     // Handle serializing the next instruction if necessary.
+ 628     if (serializeOnNextInst[tid]) {
+ 629         if (emptyROB[tid] && instsInProgress[tid] == 0) {
+ 630             // ROB already empty; no need to serialize.
+ 631             serializeOnNextInst[tid] = false;
+ 632         } else if (!insts_to_rename.empty()) {
+ 633             insts_to_rename.front()->setSerializeBefore();
+ 634         }
+ 635     }
+```
+As shown in the above code (Line 632-633), 
+when the next renameInsts function is executed at the next clock cycle, 
+it checks whether the serializeOnNextInst has been set, 
+which means that the last instruction was serializeAfter instruction 
+at the previous clock cycle. In that case it sets the current instruction
+to be renamed as serializeBefore to make serialization. 
+
+### X86 in GEM5 provides macro setting serialization 
+```cpp
+147         def serializeBefore(self):
+148             self.serialize_before = True
+149         def serializeAfter(self):
+150             self.serialize_after = True
+151 
+152         def function_call(self):
+153             self.function_call = True
+154         def function_return(self):
+155             self.function_return = True
+156 
+157         def __init__(self, name):
+158             super(X86Macroop, self).__init__(name)
+159             self.directives = {
+160                 "adjust_env" : self.setAdjustEnv,
+161                 "adjust_imm" : self.adjustImm,
+162                 "adjust_disp" : self.adjustDisp,
+163                 "serialize_before" : self.serializeBefore,
+164                 "serialize_after" : self.serializeAfter,
+165                 "function_call" : self.function_call,
+166                 "function_return" : self.function_return
+167             }
+```
+For macroop definition, when .serialize_before or .serialize_after keyword is found 
+in the definition, the GEM5 parser invokes the self.serializeBefore and self.serializeAfter 
+function respectively to set the serialize_before and serialize_after memeber field as true.
+
+```cpp
+205         def getDefinition(self, env):
+206             #FIXME This first parameter should be the mnemonic. I need to
+207             #write some code which pulls that out
+208             numMicroops = len(self.microops)
+209             allocMicroops = ''
+210             micropc = 0
+211             for op in self.microops:
+212                 flags = ["IsMicroop"]
+213                 if micropc == 0:
+214                     flags.append("IsFirstMicroop")
+215 
+216                     if self.serialize_before:
+217                         flags.append("IsSerializing")
+218                         flags.append("IsSerializeBefore")
+219 
+220                 if micropc == numMicroops - 1:
+221                     flags.append("IsLastMicroop")
+222 
+223                     if self.serialize_after:
+224                         flags.append("IsSerializing")
+225                         flags.append("IsSerializeAfter")
+226 
+227                     if self.function_call:
+228                         flags.append("IsCall")
+229                         flags.append("IsUncondControl")
+230                     if self.function_return:
+231                         flags.append("IsReturn")
+232                         flags.append("IsUncondControl")
+```
+When the macroop definition is automatically generated, it checks those two flags and 
+set IsSerializeBefore to the first microop and IsSerializeAfter to the last microop 
+consisting of the macroop. 
+
+## Rename registers and pass the renamed instruction to the next stage
+After handling serialization instruction, it should rename 
+registers of the instruction. 
 ```cpp
  755         renameSrcRegs(inst, inst->threadNumber);
  756 
@@ -690,7 +1048,78 @@ issued to the next stage due to the lack of LQ or SQ and break.
  779     }
 ```
 
- ### End of the main loop
+### renameSrcRegs
+```cpp
+1064 template <class Impl>
+1065 inline void
+1066 DefaultRename<Impl>::renameSrcRegs(const DynInstPtr &inst, ThreadID tid)
+1067 {
+1068     ThreadContext *tc = inst->tcBase();
+1069     RenameMap *map = renameMap[tid];
+1070     unsigned num_src_regs = inst->numSrcRegs();
+1071 
+1072     // Get the architectual register numbers from the source and
+1073     // operands, and redirect them to the right physical register.
+1074     for (int src_idx = 0; src_idx < num_src_regs; src_idx++) {
+1075         const RegId& src_reg = inst->srcRegIdx(src_idx);
+1076         PhysRegIdPtr renamed_reg;
+1077 
+1078         renamed_reg = map->lookup(tc->flattenRegId(src_reg));
+1079         switch (src_reg.classValue()) {
+1080           case IntRegClass:
+1081             intRenameLookups++;
+1082             break;
+1083           case FloatRegClass:
+1084             fpRenameLookups++;
+1085             break;
+1086           case VecRegClass:
+1087           case VecElemClass:
+1088             vecRenameLookups++;
+1089             break;
+1090           case VecPredRegClass:
+1091             vecPredRenameLookups++;
+1092             break;
+1093           case CCRegClass:
+1094           case MiscRegClass:
+1095             break;
+1096 
+1097           default:
+1098             panic("Invalid register class: %d.", src_reg.classValue());
+1099         }
+1100 
+1101         DPRINTF(Rename,
+1102                 "[tid:%i] "
+1103                 "Looking up %s arch reg %i, got phys reg %i (%s)\n",
+1104                 tid, src_reg.className(),
+1105                 src_reg.index(), renamed_reg->index(),
+1106                 renamed_reg->className());
+1107 
+1108         inst->renameSrcReg(src_idx, renamed_reg);
+1109 
+1110         // See if the register is ready or not.
+1111         if (scoreboard->getReg(renamed_reg)) {
+1112             DPRINTF(Rename,
+1113                     "[tid:%i] "
+1114                     "Register %d (flat: %d) (%s) is ready.\n",
+1115                     tid, renamed_reg->index(), renamed_reg->flatIndex(),
+1116                     renamed_reg->className());
+1117 
+1118             inst->markSrcRegReady(src_idx);
+1119         } else {
+1120             DPRINTF(Rename,
+1121                     "[tid:%i] "
+1122                     "Register %d (flat: %d) (%s) is not ready.\n",
+1123                     tid, renamed_reg->index(), renamed_reg->flatIndex(),
+1124                     renamed_reg->className());
+1125         }
+1126 
+1127         ++renameRenameLookups;
+1128     }
+1129 }
+```
+
+
+### End of the main loop
  781     instsInProgress[tid] += renamed_insts;
  782     renameRenamedInsts += renamed_insts;
  783 

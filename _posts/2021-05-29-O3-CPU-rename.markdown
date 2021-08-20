@@ -1117,7 +1117,115 @@ registers of the instruction.
 1128     }
 1129 }
 ```
+The main operation of the renameSrcRegs are lookup the register map 
+if the architecture register used by the current instruction's source 
+has been renamed to the another physical register. 
+If it has been renamed before, the **lookup** function returns 
+actual physical register to which the architecture register has been mapped.
+After the lookup, it checks the scoreboard if the target register is ready to be read. 
+Because O3 is out-of-order processor, and renaming register is utilized 
+to eliminate register dependency such as write after read, scoreboard let the processor
+know when the register is ready to be accessed. 
+If the scoreboard returns the reference of the source register, it makes that source register is ready.
+Also, the getReg function of the freelist remove the register from the freelist 
+because it should not be written by the other instruction 
+until it is read by the current instruction. 
 
+### renameDestRegs 
+```cpp
+1131 template <class Impl>
+1132 inline void
+1133 DefaultRename<Impl>::renameDestRegs(const DynInstPtr &inst, ThreadID tid)
+1134 {
+1135     ThreadContext *tc = inst->tcBase();
+1136     RenameMap *map = renameMap[tid];
+1137     unsigned num_dest_regs = inst->numDestRegs();
+1138 
+1139     // Rename the destination registers.
+1140     for (int dest_idx = 0; dest_idx < num_dest_regs; dest_idx++) {
+1141         const RegId& dest_reg = inst->destRegIdx(dest_idx);
+1142         typename RenameMap::RenameInfo rename_result;
+1143 
+1144         RegId flat_dest_regid = tc->flattenRegId(dest_reg);
+1145         flat_dest_regid.setNumPinnedWrites(dest_reg.getNumPinnedWrites());
+1146 
+1147         rename_result = map->rename(flat_dest_regid);
+1148 
+1149         inst->flattenDestReg(dest_idx, flat_dest_regid);
+1150 
+1151         scoreboard->unsetReg(rename_result.first);
+1152 
+1153         DPRINTF(Rename,
+1154                 "[tid:%i] "
+1155                 "Renaming arch reg %i (%s) to physical reg %i (%i).\n",
+1156                 tid, dest_reg.index(), dest_reg.className(),
+1157                 rename_result.first->index(),
+1158                 rename_result.first->flatIndex());
+1159 
+1160         // Record the rename information so that a history can be kept.
+1161         RenameHistory hb_entry(inst->seqNum, flat_dest_regid,
+1162                                rename_result.first,
+1163                                rename_result.second);
+1164 
+1165         historyBuffer[tid].push_front(hb_entry);
+1166 
+1167         DPRINTF(Rename, "[tid:%i] [sn:%llu] "
+1168                 "Adding instruction to history buffer (size=%i).\n",
+1169                 tid,(*historyBuffer[tid].begin()).instSeqNum,
+1170                 historyBuffer[tid].size());
+1171 
+1172         // Tell the instruction to rename the appropriate destination
+1173         // register (dest_idx) to the new physical register
+1174         // (rename_result.first), and record the previous physical
+1175         // register that the same logical register was renamed to
+1176         // (rename_result.second).
+1177         inst->renameDestReg(dest_idx,
+1178                             rename_result.first,
+1179                             rename_result.second);
+1180 
+1181         ++renameRenamedOperands;
+1182     }
+1183 }
+```
+
+Basically, the renameDestRegs function is similar to the renameSrcRegs in such a way that 
+it renames the registers. However, renaming destination register incurs some changes 
+on the register map and the scoreboard. 
+Instead of invoking lookup function of the register map, it invokes the rename function.
+
+### Populating history buffer entry per destination register rename 
+As shown in the Line 1161-1163, after the renaming is done, 
+it generates history entry for providing \TODO{is it for precise exception?? what purpose is it?}
+
+```cpp
+303     struct RenameHistory {
+304         RenameHistory(InstSeqNum _instSeqNum, const RegId& _archReg,
+305                       PhysRegIdPtr _newPhysReg,
+306                       PhysRegIdPtr _prevPhysReg)
+307             : instSeqNum(_instSeqNum), archReg(_archReg),
+308               newPhysReg(_newPhysReg), prevPhysReg(_prevPhysReg)
+309         {
+310         }
+311 
+312         /** The sequence number of the instruction that renamed. */
+313         InstSeqNum instSeqNum;
+314         /** The architectural register index that was renamed. */
+315         RegId archReg;
+316         /** The new physical register that the arch. register is renamed to. */
+317         PhysRegIdPtr newPhysReg;
+318         /** The old physical register that the arch. register was renamed to.
+319          */
+320         PhysRegIdPtr prevPhysReg;
+321     };                       
+322 
+323     /** A per-thread list of all destination register renames, used to either
+324      * undo rename mappings or free old physical registers.
+325      */
+326     std::list<RenameHistory> historyBuffer[Impl::MaxThreads];
+```
+
+After renaming destination and source registers, 
+it pushes the renamed instruction to the toIEW register. 
 
 ### End of the main loop
  781     instsInProgress[tid] += renamed_insts;
@@ -1140,5 +1248,3 @@ registers of the instruction.
  798     }
  799 }
 ```
-
-### ToCommit 

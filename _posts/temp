@@ -1,0 +1,237 @@
+# Availability of source register
+To issue one instruction, its operands especially, the source registers 
+should be prepared at the time of issue.
+Then when the availability of source registers are checked and read?
+First of all, the rename stage initially checks the availability of all
+source registers after the renaming is finished. 
+For that purpose, the scoreboard is utilized to let rename stage know 
+that a particular register is ready at that moment. 
+However, because the instruction cannot be issued and executed at the rename stage,
+the information about whether the source register is ready and 
+which registers are remapped for a instruction,
+the BaseDynInst object carries all those information as its member field. 
+Also, to manage those information, it opens some interfaces together.
+For example, to set which source register is ready,
+it provides **markSrcRegReady** function. 
+
+
+## Registers might not become ready at issue time 
+If all registers are ready at the rename stage and has set the flag 
+telling that the specific source register is ready, 
+then it would be easy to issue the instruction at the next iew stage.
+However, if one of them is not ready, then what should be done ?
+
+### Add dependency when the register is not ready 
+```cpp
+1366 template <class Impl>
+1367 bool
+1368 InstructionQueue<Impl>::addToDependents(const DynInstPtr &new_inst)
+1369 {
+1370     // Loop through the instruction's source registers, adding
+1371     // them to the dependency list if they are not ready.
+1372     int8_t total_src_regs = new_inst->numSrcRegs();
+1373     bool return_val = false;
+1374 
+1375     for (int src_reg_idx = 0;
+1376          src_reg_idx < total_src_regs;
+1377          src_reg_idx++)
+1378     {
+1379         // Only add it to the dependency graph if it's not ready.
+1380         if (!new_inst->isReadySrcRegIdx(src_reg_idx)) {
+1381             PhysRegIdPtr src_reg = new_inst->renamedSrcRegIdx(src_reg_idx);
+1382        
+1383             // Check the IQ's scoreboard to make sure the register
+1384             // hasn't become ready while the instruction was in flight
+1385             // between stages.  Only if it really isn't ready should
+1386             // it be added to the dependency graph.
+1387             if (src_reg->isFixedMapping()) {
+1388                 continue;
+1389             } else if (!regScoreboard[src_reg->flatIndex()]) {
+1390                 DPRINTF(IQ, "Instruction PC %s has src reg %i (%s) that "
+1391                         "is being added to the dependency chain.\n",
+1392                         new_inst->pcState(), src_reg->index(),
+1393                         src_reg->className());
+1394            
+1395                 dependGraph.insert(src_reg->flatIndex(), new_inst);
+1396            
+1397                 // Change the return value to indicate that something
+1398                 // was added to the dependency graph.
+1399                 return_val = true;
+1400             } else {
+1401                 DPRINTF(IQ, "Instruction PC %s has src reg %i (%s) that "
+1402                         "became ready before it reached the IQ.\n",
+1403                         new_inst->pcState(), src_reg->index(),
+1404                         src_reg->className());
+1405                 // Mark a register ready within the instruction.
+1406                 new_inst->markSrcRegReady(src_reg_idx);
+1407             }
+1408         }
+1409     }
+1410 
+1411     return return_val;
+1412 }
+```
+
+dispatching instruction utilize one interface named **insert** of the **InstructionQueue**.
+As a result of dispatchInsts function, the insert function pushes 
+the instruction to the InstructionQueue. 
+When the insert function is invoked, it pushes the instruction to the queue 
+regardless of the availability of registers of the instruction.
+However, by invoking addToDependents, it generates dependency telling that 
+current instruction has dependency to specific register. 
+This dependency must be required because 
+whenever the instruction commits, it checks the dependency graph and 
+notify the instruction that waiting for the value of the register
+written by the committed instruction becomes ready.
+Note that the dependency is only set for the case that 
+instruction has non-available register (line 1380). 
+Also because in the middle of rename and the dispatching,
+it is possible that dependent instruction finishes execution and make 
+the dependent register to become available.
+Therefore, it checks the cache, regScoreboard to see if the dependent register becomes ready (line 1389).
+If the register becomes ready (line 1400), it marks the source register becomes ready (line 1406).
+If it is not the case, then it should pass the current instruction and register number
+to the dependGraph to generate dependency (line 1395).
+Due to the complexity of the DependencyGraph, I will explain more details here. 
+
+
+
+```cpp
+1414 template <class Impl>
+1415 void
+1416 InstructionQueue<Impl>::addToProducers(const DynInstPtr &new_inst)
+1417 {
+1418     // Nothing really needs to be marked when an instruction becomes
+1419     // the producer of a register's value, but for convenience a ptr
+1420     // to the producing instruction will be placed in the head node of
+1421     // the dependency links.
+1422     int8_t total_dest_regs = new_inst->numDestRegs();
+1423 
+1424     for (int dest_reg_idx = 0;
+1425          dest_reg_idx < total_dest_regs;
+1426          dest_reg_idx++)
+1427     {
+1428         PhysRegIdPtr dest_reg = new_inst->renamedDestRegIdx(dest_reg_idx);
+1429 
+1430         // Some registers have fixed mapping, and there is no need to track
+1431         // dependencies as these instructions must be executed at commit.
+1432         if (dest_reg->isFixedMapping()) {
+1433             continue;
+1434         }
+1435 
+1436         if (!dependGraph.empty(dest_reg->flatIndex())) {
+1437             dependGraph.dump();
+1438             panic("Dependency graph %i (%s) (flat: %i) not empty!",
+1439                   dest_reg->index(), dest_reg->className(),
+1440                   dest_reg->flatIndex());
+1441         }
+1442 
+1443         dependGraph.setInst(dest_reg->flatIndex(), new_inst);
+1444 
+1445         // Mark the scoreboard to say it's not yet ready.
+1446         regScoreboard[dest_reg->flatIndex()] = false;
+1447     }
+1448 }
+```
+
+
+### When the waiting register becomes ready? Who deliver this information?
+
+
+
+
+
+## DependencyGraph 
+GEM5 already provides good description about the DependencyGraph. 
+
+```cpp
+ 63 /** Array of linked list that maintains the dependencies between
+ 64  * producing instructions and consuming instructions.  Each linked
+ 65  * list represents a single physical register, having the future
+ 66  * producer of the register's value, and all consumers waiting on that
+ 67  * value on the list.  The head node of each linked list represents
+ 68  * the producing instruction of that register.  Instructions are put
+ 69  * on the list upon reaching the IQ, and are removed from the list
+ 70  * either when the producer completes, or the instruction is squashed.
+```
+
+### dependGraph managing dependency between consumer and producer
+```cpp
+ 72 template <class DynInstPtr>
+ 73 class DependencyGraph
+ 74 {
+ 75   public:
+ 76     typedef DependencyEntry<DynInstPtr> DepEntry
+......
+118   private:
+119     /** Array of linked lists.  Each linked list is a list of all the
+120      *  instructions that depend upon a given register.  The actual
+121      *  register's index is used to index into the graph; ie all
+122      *  instructions in flight that are dependent upon r34 will be
+123      *  in the linked list of dependGraph[34].
+124      */
+125     std::vector<DepEntry> dependGraph;
+```
+The most important member field of the DependencyGraph is the **dependGraph**.
+This **DepEntry** typed vector structure manages all consumer and producer relationship 
+for one register in the processor.
+And index to the dependGraph specified the register number 
+maintained by the DependencyGraph. 
+For example, index 1 to the dependGraph means that the 
+all information about its producer and consumer for register indexed 1. 
+Because DepEntry is the instantiation of template class DependencyEntry with DynInstPtr,
+let's take a look at the DependencyEntry class. 
+
+
+```cpp
+ 49 template <class DynInstPtr>
+ 50 class DependencyEntry
+ 51 {
+ 52   public:
+ 53     DependencyEntry()
+ 54         : inst(NULL), next(NULL)
+ 55     { }
+ 56 
+ 57     DynInstPtr inst;
+ 58     //Might want to include data about what arch. register the
+ 59     //dependence is waiting on.
+ 60     DependencyEntry<DynInstPtr> *next;
+ 61 };
+```
+
+It contains the inst member field notifies 
+which instruction is the producer instruction of this register.
+Also, it maintains the list of consumers as the next member field. 
+
+
+
+### insert: generate new dependency on register
+```cpp
+182 template <class DynInstPtr>
+183 void
+184 DependencyGraph<DynInstPtr>::insert(PhysRegIndex idx,
+185         const DynInstPtr &new_inst)
+186 {
+187     //Add this new, dependent instruction at the head of the dependency
+188     //chain.
+189 
+190     // First create the entry that will be added to the head of the
+191     // dependency chain.
+192     DepEntry *new_entry = new DepEntry;
+193     new_entry->next = dependGraph[idx].next;
+194     new_entry->inst = new_inst;
+195 
+196     // Then actually add it to the chain.
+197     dependGraph[idx].next = new_entry;
+198 
+199     ++memAllocCounter;
+200 }
+```
+
+### setInst: set producer of the dependent register 
+```cpp
+ 94     /** Sets the producing instruction of a given register. */
+ 95     void setInst(PhysRegIndex idx, const DynInstPtr &new_inst)
+ 96     { dependGraph[idx].inst = new_inst; }
+```
+

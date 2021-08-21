@@ -5,92 +5,162 @@ categories: Gem5, Python3, pybind11
 ---
 
 
+*gem5/python/m5/SimbObject.py*
+
 ```python
-# The SimObject class is the root of the special hierarchy.  Most of
-# the code in this class deals with the configuration hierarchy itself
-# (parent/child node relationships).
-class SimObject(object):
-    # Specify metaclass.  Any class inheriting from SimObject will
-    # get this metaclass.
-    __metaclass__ = MetaSimObject
-    type = 'SimObject'
-    abstract = True
+1078 # The SimObject class is the root of the special hierarchy.  Most of
+1079 # the code in this class deals with the configuration hierarchy itself
+1080 # (parent/child node relationships).
+1081 class SimObject(object):
+1082     # Specify metaclass.  Any class inheriting from SimObject will
+1083     # get this metaclass.
+1084     __metaclass__ = MetaSimObject
+1085     type = 'SimObject'
+1086     abstract = True
+1087 
+1088     cxx_header = "sim/sim_object.hh"
+1089     cxx_extra_bases = [ "Drainable", "Serializable", "Stats::Group" ]
+1090     eventq_index = Param.UInt32(Parent.eventq_index, "Event Queue Index")
+1091 
+1092     cxx_exports = [
+1093         PyBindMethod("init"),
+1094         PyBindMethod("initState"),
+1095         PyBindMethod("memInvalidate"),
+1096         PyBindMethod("memWriteback"),
+1097         PyBindMethod("regProbePoints"),
+1098         PyBindMethod("regProbeListeners"),
+1099         PyBindMethod("startup"),
+1100     ]
+1101 
+1102     cxx_param_exports = [
+1103         PyBindProperty("name"),
+1104     ]
+1105 
+1106     @cxxMethod
+1107     def loadState(self, cp):
+1108         """Load SimObject state from a checkpoint"""
+1109         pass
+......
+1170     # Initialize new instance.  For objects with SimObject-valued
+1171     # children, we need to recursively clone the classes represented
+1172     # by those param values as well in a consistent "deep copy"-style
+1173     # fashion.  That is, we want to make sure that each instance is
+1174     # cloned only once, and that if there are multiple references to
+1175     # the same original object, we end up with the corresponding
+1176     # cloned references all pointing to the same cloned instance.
+1177     def __init__(self, **kwargs):
+1178         ancestor = kwargs.get('_ancestor')
+1179         memo_dict = kwargs.get('_memo')
+1180         if memo_dict is None:
+1181             # prepare to memoize any recursively instantiated objects
+1182             memo_dict = {}
+1183         elif ancestor:
+1184             # memoize me now to avoid problems with recursive calls
+1185             memo_dict[ancestor] = self
+1186 
+1187         if not ancestor:
+1188             ancestor = self.__class__
+1189         ancestor._instantiated = True
+1190 
+1191         # initialize required attributes
+1192         self._parent = None
+1193         self._name = None
+1194         self._ccObject = None  # pointer to C++ object
+1195         self._ccParams = None
+1196         self._instantiated = False # really "cloned"
+1197 
+1198         # Clone children specified at class level.  No need for a
+1199         # multidict here since we will be cloning everything.
+1200         # Do children before parameter values so that children that
+1201         # are also param values get cloned properly.
+1202         self._children = {}
+1203         for key,val in ancestor._children.items():
+1204             self.add_child(key, val(_memo=memo_dict))
+1205 
+1206         # Inherit parameter values from class using multidict so
+1207         # individual value settings can be overridden but we still
+1208         # inherit late changes to non-overridden class values.
+1209         self._values = multidict(ancestor._values)
+1210         self._hr_values = multidict(ancestor._hr_values)
+1211         # clone SimObject-valued parameters
+1212         for key,val in ancestor._values.items():
+1213             val = tryAsSimObjectOrVector(val)
+1214             if val is not None:
+1215                 self._values[key] = val(_memo=memo_dict)
+1216 
+1217         # clone port references.  no need to use a multidict here
+1218         # since we will be creating new references for all ports.
+1219         self._port_refs = {}
+1220         for key,val in ancestor._port_refs.items():
+1221             self._port_refs[key] = val.clone(self, memo_dict)
+1222         # apply attribute assignments from keyword args, if any
+1223         for key,val in kwargs.items():
+1224             setattr(self, key, val)
+```
 
-    cxx_header = "sim/sim_object.hh"
-    cxx_extra_bases = [ "Drainable", "Serializable", "Stats::Group" ]
-    eventq_index = Param.UInt32(Parent.eventq_index, "Event Queue Index")
 
-    cxx_exports = [
-        PyBindMethod("init"),
-        PyBindMethod("initState"),
-        PyBindMethod("memInvalidate"),
-        PyBindMethod("memWriteback"),
-        PyBindMethod("regProbePoints"),
-        PyBindMethod("regProbeListeners"),
-        PyBindMethod("startup"),
-    ]
-
-    cxx_param_exports = [
-        PyBindProperty("name"),
-    ]
-
-    ......
-
-    # Initialize new instance.  For objects with SimObject-valued
-    # children, we need to recursively clone the classes represented
-    # by those param values as well in a consistent "deep copy"-style
-    # fashion.  That is, we want to make sure that each instance is
-    # cloned only once, and that if there are multiple references to
-    # the same original object, we end up with the corresponding
-    # cloned references all pointing to the same cloned instance.
-    def __init__(self, **kwargs):
-        ancestor = kwargs.get('_ancestor')
-        memo_dict = kwargs.get('_memo')
-        if memo_dict is None:
-            # prepare to memoize any recursively instantiated objects
-            memo_dict = {}
-        elif ancestor:
-            # memoize me now to avoid problems with recursive calls
-            memo_dict[ancestor] = self
-
-        if not ancestor:
-            ancestor = self.__class__
-        ancestor._instantiated = True
-
-        # initialize required attributes
-        self._parent = None
-        self._name = None
-        self._ccObject = None  # pointer to C++ object
-        self._ccParams = None
-        self._instantiated = False # really "cloned"
-
-        # Clone children specified at class level.  No need for a
-        # multidict here since we will be cloning everything.
-        # Do children before parameter values so that children that
-        # are also param values get cloned properly.
-        self._children = {}
-        for key,val in ancestor._children.items():
-            self.add_child(key, val(_memo=memo_dict))
-
-        # Inherit parameter values from class using multidict so
-        # individual value settings can be overridden but we still
-        # inherit late changes to non-overridden class values.
-        self._values = multidict(ancestor._values)
-        self._hr_values = multidict(ancestor._hr_values)
-        # clone SimObject-valued parameters
-        for key,val in ancestor._values.items():
-            val = tryAsSimObjectOrVector(val)
-            if val is not None:
-                self._values[key] = val(_memo=memo_dict)
-
-        # clone port references.  no need to use a multidict here
-        # since we will be creating new references for all ports.
-        self._port_refs = {}
-        for key,val in ancestor._port_refs.items():
-            self._port_refs[key] = val.clone(self, memo_dict)
-        # apply attribute assignments from keyword args, if any
-        for key,val in kwargs.items():
-            setattr(self, key, val)
+```python
+ 611     # Set attribute (called on foo.attr = value when foo is an
+ 612     # instance of class cls).
+ 613     def __setattr__(cls, attr, value):
+ 614         # normal processing for private attributes
+ 615         if public_value(attr, value):
+ 616             type.__setattr__(cls, attr, value)
+ 617             return
+ 618 
+ 619         if attr in cls.keywords:
+ 620             cls._set_keyword(attr, value, cls.keywords[attr])
+ 621             return
+ 622 
+ 623         if attr in cls._ports:
+ 624             cls._cls_get_port_ref(attr).connect(value)
+ 625             return
+ 626 
+ 627         if isSimObjectOrSequence(value) and cls._instantiated:
+ 628             raise RuntimeError(
+ 629                   "cannot set SimObject parameter '%s' after\n" \
+ 630                   "    class %s has been instantiated or subclassed" \
+ 631                   % (attr, cls.__name__))
+ 632 
+ 633         # check for param
+ 634         param = cls._params.get(attr)
+ 635         if param:
+ 636             cls._set_param(attr, value, param)
+ 637             return
+ 638 
+ 639         if isSimObjectOrSequence(value):
+ 640             # If RHS is a SimObject, it's an implicit child assignment.
+ 641             cls._add_cls_child(attr, coerceSimObjectOrVector(value))
+ 642             return
+ 643 
+ 644         # no valid assignment... raise exception
+ 645         raise AttributeError(
+ 646               "Class %s has no parameter \'%s\'" % (cls.__name__, attr))
+ 647 
+ 648     def __getattr__(cls, attr):
+ 649         if attr == 'cxx_class_path':
+ 650             return cls.cxx_class.split('::')
+ 651 
+ 652         if attr == 'cxx_class_name':
+ 653             return cls.cxx_class_path[-1]
+ 654 
+ 655         if attr == 'cxx_namespaces':
+ 656             return cls.cxx_class_path[:-1]
+ 657 
+ 658         if attr == 'pybind_class':
+ 659             return  '_COLONS_'.join(cls.cxx_class_path)
+ 660 
+ 661         if attr in cls._values:
+ 662             return cls._values[attr]
+ 663 
+ 664         if attr in cls._children:
+ 665             return cls._children[attr]
+ 666 
+ 667         try:
+ 668             return getattr(cls.getCCClass(), attr)
+ 669         except AttributeError:
+ 670             raise AttributeError(
+ 671                 "object '%s' has no attribute '%s'" % (cls.__name__, attr))
 ```
 
 
@@ -224,7 +294,7 @@ module_init(py::module &m_internal)
 
 
 ## BaseCPU
-**gem5/src/cpu/BaseCPU**
+**gem5/src/cpu/BaseCPU.py**
 ```python
 class BaseCPU(ClockedObject):
     type = 'BaseCPU'

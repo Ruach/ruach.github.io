@@ -1,0 +1,2170 @@
+### Fetch
+```cpp
+ 895 template <class Impl>
+ 896 void
+ 897 DefaultFetch<Impl>::tick()
+ 898 {
+ 899     list<ThreadID>::iterator threads = activeThreads->begin();
+ 900     list<ThreadID>::iterator end = activeThreads->end();
+ 901     bool status_change = false;
+ 902 
+ 903     wroteToTimeBuffer = false;
+ 904 
+ 905     for (ThreadID i = 0; i < numThreads; ++i) {
+ 906         issuePipelinedIfetch[i] = false;
+ 907     }
+ 908 
+ 909     while (threads != end) {
+ 910         ThreadID tid = *threads++;
+ 911 
+ 912         // Check the signals for each thread to determine the proper status
+ 913         // for each thread.
+ 914         bool updated_status = checkSignalsAndUpdate(tid);
+ 915         status_change =  status_change || updated_status;
+ 916     }
+ 917 
+ 918     DPRINTF(Fetch, "Running stage.\n");
+ 919 
+ 920     if (FullSystem) {
+ 921         if (fromCommit->commitInfo[0].interruptPending) {
+ 922             interruptPending = true;
+ 923         }
+ 924 
+ 925         if (fromCommit->commitInfo[0].clearInterrupt) {
+ 926             interruptPending = false;
+ 927         }
+ 928     }
+ 929 
+ 930     for (threadFetched = 0; threadFetched < numFetchingThreads;
+ 931          threadFetched++) {
+ 932         // Fetch each of the actively fetching threads.
+ 933         fetch(status_change);
+ 934     }
+ 935 
+ 936     // Record number of instructions fetched this cycle for distribution.
+ 937     fetchNisnDist.sample(numInst);
+ 938 
+ 939     if (status_change) {
+ 940         // Change the fetch stage status if there was a status change.
+ 941         _status = updateFetchStatus();
+ 942     }
+ 943 
+ 944     // Issue the next I-cache request if possible.
+ 945     for (ThreadID i = 0; i < numThreads; ++i) {
+ 946         if (issuePipelinedIfetch[i]) {
+ 947             pipelineIcacheAccesses(i);
+ 948         }
+ 949     }
+ 950 
+ 951     // Send instructions enqueued into the fetch queue to decode.
+ 952     // Limit rate by fetchWidth.  Stall if decode is stalled.
+ 953     unsigned insts_to_decode = 0;
+ 954     unsigned available_insts = 0;
+ 955 
+ 956     for (auto tid : *activeThreads) {
+ 957         if (!stalls[tid].decode) {
+ 958             available_insts += fetchQueue[tid].size();
+ 959         }
+ 960     }
+ 961 
+ 962     // Pick a random thread to start trying to grab instructions from
+ 963     auto tid_itr = activeThreads->begin();
+ 964     std::advance(tid_itr, random_mt.random<uint8_t>(0, activeThreads->size() - 1));
+ 965 
+ 966     while (available_insts != 0 && insts_to_decode < decodeWidth) {
+ 967         ThreadID tid = *tid_itr;
+ 968         if (!stalls[tid].decode && !fetchQueue[tid].empty()) {
+ 969             const auto& inst = fetchQueue[tid].front();
+ 970             toDecode->insts[toDecode->size++] = inst;
+ 971             DPRINTF(Fetch, "[tid:%i] [sn:%llu] Sending instruction to decode "
+ 972                     "from fetch queue. Fetch queue size: %i.\n",
+ 973                     tid, inst->seqNum, fetchQueue[tid].size());
+ 974 
+ 975             wroteToTimeBuffer = true;
+ 976             fetchQueue[tid].pop_front();
+ 977             insts_to_decode++;
+ 978             available_insts--;
+ 979         }
+ 980 
+ 981         tid_itr++;
+ 982         // Wrap around if at end of active threads list
+ 983         if (tid_itr == activeThreads->end())
+ 984             tid_itr = activeThreads->begin();
+ 985     }
+ 986 
+ 987     // If there was activity this cycle, inform the CPU of it.
+ 988     if (wroteToTimeBuffer) {
+ 989         DPRINTF(Activity, "Activity this cycle.\n");
+ 990         cpu->activityThisCycle();
+ 991     }
+ 992 
+ 993     // Reset the number of the instruction we've fetched.
+ 994     numInst = 0;
+ 995 }
+```
+
+
+## fetch: resolving TLB and cache accesses to actually fetches instructions
+```cpp
+1157 void
+1158 DefaultFetch<Impl>::fetch(bool &status_change)
+1159 {
+1160     //////////////////////////////////////////
+1161     // Start actual fetch
+1162     //////////////////////////////////////////
+1163     ThreadID tid = getFetchingThread();
+1164 
+1165     assert(!cpu->switchedOut());
+1166 
+1167     if (tid == InvalidThreadID) {
+1168         // Breaks looping condition in tick()
+1169         threadFetched = numFetchingThreads;
+1170 
+1171         if (numThreads == 1) {  // @todo Per-thread stats
+1172             profileStall(0);
+1173         }
+1174 
+1175         return;
+1176     }
+1177 
+1178     DPRINTF(Fetch, "Attempting to fetch from [tid:%i]\n", tid);
+1179 
+1180     // The current PC.
+1181     TheISA::PCState thisPC = pc[tid];
+1182 
+1183     Addr pcOffset = fetchOffset[tid];
+1184     Addr fetchAddr = (thisPC.instAddr() + pcOffset) & BaseCPU::PCMask;
+1185 
+1186     bool inRom = isRomMicroPC(thisPC.microPC());
+1187 
+1188     // If returning from the delay of a cache miss, then update the status
+1189     // to running, otherwise do the cache access.  Possibly move this up
+1190     // to tick() function.
+1191     if (fetchStatus[tid] == IcacheAccessComplete) {
+1192         DPRINTF(Fetch, "[tid:%i] Icache miss is complete.\n", tid);
+1193 
+1194         fetchStatus[tid] = Running;
+1195         status_change = true;
+1196     } else if (fetchStatus[tid] == Running) {
+1197         // Align the fetch PC so its at the start of a fetch buffer segment.
+1198         Addr fetchBufferBlockPC = fetchBufferAlignPC(fetchAddr);
+1199 
+1200         // If buffer is no longer valid or fetchAddr has moved to point
+1201         // to the next cache block, AND we have no remaining ucode
+1202         // from a macro-op, then start fetch from icache.
+1203         if (!(fetchBufferValid[tid] && fetchBufferBlockPC == fetchBufferPC[tid])
+1204             && !inRom && !macroop[tid]) {
+1205             DPRINTF(Fetch, "[tid:%i] Attempting to translate and read "
+1206                     "instruction, starting at PC %s.\n", tid, thisPC);
+1207 
+1208             fetchCacheLine(fetchAddr, tid, thisPC.instAddr());
+1209 
+1210             if (fetchStatus[tid] == IcacheWaitResponse)
+1211                 ++icacheStallCycles;
+1212             else if (fetchStatus[tid] == ItlbWait)
+1213                 ++fetchTlbCycles;
+1214             else
+1215                 ++fetchMiscStallCycles;
+1216             return;
+1217         } else if ((checkInterrupt(thisPC.instAddr()) && !delayedCommit[tid])) {
+1218             // Stall CPU if an interrupt is posted and we're not issuing
+1219             // an delayed commit micro-op currently (delayed commit instructions
+1220             // are not interruptable by interrupts, only faults)
+1221             ++fetchMiscStallCycles;
+1222             DPRINTF(Fetch, "[tid:%i] Fetch is stalled!\n", tid);
+1223             return;
+1224         }
+1225     } else {
+1226         if (fetchStatus[tid] == Idle) {
+1227             ++fetchIdleCycles;
+1228             DPRINTF(Fetch, "[tid:%i] Fetch is idle!\n", tid);
+1229         }
+1230 
+1231         // Status is Idle, so fetch should do nothing.
+1232         return;
+1233     }
+......
+1417 }
+
+```
+The fetch function is pretty complex and long function to analyze at once. 
+Therefore, we will divide the fetch function in two main parts to understand
+entire logic of the O3CPU's fetch stage. The first main part will explain 
+how the fetch stage generate request to ITLB and ICache to resolve virtual to 
+physical address translation and access the cache using the translated address. 
+After the fetch stage receive the instructions from the ICache, the remaining part
+will prepare the data structure that will be passed to the next stage, decode. 
+Let's take a look at how the fetch function retrieve the instructions first.
+
+
+## First part of the fetch: ITLB to ICache access. 
+
+### getFetchingThread: selecting thread to let it fetch
+If there are multiple threads need to fetch next instructions, 
+the processor should select one among them to continue fetching. 
+Based on the policy adopted by the processor, it can return 
+different thread based on the current status of threads.
+
+```cpp
+1445 ///////////////////////////////////////
+1446 //                                   //
+1447 //  SMT FETCH POLICY MAINTAINED HERE //
+1448 //                                   //
+1449 ///////////////////////////////////////
+1450 template<class Impl>
+1451 ThreadID
+1452 DefaultFetch<Impl>::getFetchingThread()
+1453 {
+1454     if (numThreads > 1) {
+1455         switch (fetchPolicy) {
+1456           case FetchPolicy::RoundRobin:
+1457             return roundRobin();
+1458           case FetchPolicy::IQCount:
+1459             return iqCount();
+1460           case FetchPolicy::LSQCount:
+1461             return lsqCount();
+1462           case FetchPolicy::Branch:
+1463             return branchCount();
+1464           default:
+1465             return InvalidThreadID;
+1466         }
+1467     } else {
+1468         list<ThreadID>::iterator thread = activeThreads->begin();
+1469         if (thread == activeThreads->end()) {
+1470             return InvalidThreadID;
+1471         }
+1472 
+1473         ThreadID tid = *thread;
+1474 
+1475         if (fetchStatus[tid] == Running ||
+1476             fetchStatus[tid] == IcacheAccessComplete ||
+1477             fetchStatus[tid] == Idle) {
+1478             return tid;
+1479         } else {
+1480             return InvalidThreadID;
+1481         }
+1482     }
+1483 }
+
+```
+
+
+
+### Translating virtual to physical address using I-TLB
+
+```cpp
+ 602 template <class Impl>
+ 603 bool
+ 604 DefaultFetch<Impl>::fetchCacheLine(Addr vaddr, ThreadID tid, Addr pc)
+ 605 {   
+ 606     Fault fault = NoFault;
+ 607     
+ 608     assert(!cpu->switchedOut());
+ 609     
+ 610     // @todo: not sure if these should block translation.
+ 611     //AlphaDep
+ 612     if (cacheBlocked) {
+ 613         DPRINTF(Fetch, "[tid:%i] Can't fetch cache line, cache blocked\n",
+ 614                 tid);
+ 615         return false;
+ 616     } else if (checkInterrupt(pc) && !delayedCommit[tid]) {
+ 617         // Hold off fetch from getting new instructions when:
+ 618         // Cache is blocked, or
+ 619         // while an interrupt is pending and we're not in PAL mode, or
+ 620         // fetch is switched out.
+ 621         DPRINTF(Fetch, "[tid:%i] Can't fetch cache line, interrupt pending\n",
+ 622                 tid);
+ 623         return false;
+ 624     }
+ 625     
+ 626     // Align the fetch address to the start of a fetch buffer segment.
+ 627     Addr fetchBufferBlockPC = fetchBufferAlignPC(vaddr);
+ 628     
+ 629     DPRINTF(Fetch, "[tid:%i] Fetching cache line %#x for addr %#x\n",
+ 630             tid, fetchBufferBlockPC, vaddr);
+ 631     
+ 632     // Setup the memReq to do a read of the first instruction's address.
+ 633     // Set the appropriate read size and flags as well.
+ 634     // Build request here.
+ 635     RequestPtr mem_req = std::make_shared<Request>(
+ 636         tid, fetchBufferBlockPC, fetchBufferSize, 
+ 637         Request::INST_FETCH, cpu->instMasterId(), pc,
+ 638         cpu->thread[tid]->contextId());
+ 639     
+ 640     mem_req->taskId(cpu->taskId());
+ 641     
+ 642     memReq[tid] = mem_req;
+ 643     
+ 644     // Initiate translation of the icache block
+ 645     fetchStatus[tid] = ItlbWait;
+ 646     FetchTranslation *trans = new FetchTranslation(this);
+ 647     cpu->itb->translateTiming(mem_req, cpu->thread[tid]->getTC(),
+ 648                               trans, BaseTLB::Execute);
+ 649     return true;
+ 650 }
+```
+
+One can ask how the fetch stage can understand when the translation is finished.
+Note that **FetchTranslation** object is instantiated and sent to the 
+Instruction TLB (itb) which conveys functions that should be invoked 
+after the Translation is resolved. Therefore, when the instruction TLB finishes
+the translation, it invokes the function provided by the passed FetchTranslation object and 
+let the fetch stage to process next step, initiating the cache access. 
+Anyway, let's take a look at which function is provided to the TLB.
+
+*gem5/src/cpu/o3/fetch.hh*
+```cpp
+115     class FetchTranslation : public BaseTLB::Translation
+116     {
+117       protected:
+118         DefaultFetch<Impl> *fetch;
+119 
+120       public:
+121         FetchTranslation(DefaultFetch<Impl> *_fetch)
+122             : fetch(_fetch)
+123         {}
+124 
+125         void
+126         markDelayed()
+127         {}
+128 
+129         void
+130         finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc,
+131                BaseTLB::Mode mode)
+132         {
+133             assert(mode == BaseTLB::Execute);
+134             fetch->finishTranslation(fault, req);
+135             delete this;
+136         }
+137     };
+```
+
+You might remember that the TLB invokes the **finish** function at the end of the translation
+Yes the FetchTranslation object provide the finish function. When the TLB finishes translation,
+by invoking finish function, it can let the processor know the translation is resolved. 
+The finish function further invokes the **finishTranslation** function defined in the 
+DefaultFetch class. 
+
+### finishTranslation: finishing TLB access and generate cache access
+After the request to the TLB has been resolved, the remaining job is accessing the cache 
+to read the instruction to fetch. Let's take a look at how the fetch stage of the O3 CPU 
+access the instruction cache.
+
+```cpp
+ 652 template <class Impl>
+ 653 void
+ 654 DefaultFetch<Impl>::finishTranslation(const Fault &fault,
+ 655                                       const RequestPtr &mem_req)
+ 656 {
+ 657     ThreadID tid = cpu->contextToThread(mem_req->contextId());
+ 658     Addr fetchBufferBlockPC = mem_req->getVaddr();
+ 659 
+ 660     assert(!cpu->switchedOut());
+ 661 
+ 662     // Wake up CPU if it was idle
+ 663     cpu->wakeCPU();
+ 664 
+ 665     if (fetchStatus[tid] != ItlbWait || mem_req != memReq[tid] ||
+ 666         mem_req->getVaddr() != memReq[tid]->getVaddr()) {
+ 667         DPRINTF(Fetch, "[tid:%i] Ignoring itlb completed after squash... fetchStatus:%d\n",
+ 668                 tid,fetchStatus[tid]);
+ 669         ++fetchTlbSquashes;
+ 670         return;
+ 671     }
+```
+Compared to simple processor which doesn't provide speculative execution, 
+O3 processor utilize the branch prediction and out-of-order execution. 
+Therefore, if the current TLB completion is notified to the O3CPU because of a
+misspeculation, it should drop the TLB response and stop accessing the cache.
+Note that the speculation can turn out to be false while it waits TLB response.
+Line 665-670 checks the misspeculation. 
+
+```cpp
+ 674     // If translation was successful, attempt to read the icache block.
+ 675     if (fault == NoFault) {
+ 676         // Check that we're not going off into random memory
+ 677         // If we have, just wait around for commit to squash something and put
+ 678         // us on the right track
+ 679         if (!cpu->system->isMemAddr(mem_req->getPaddr())) {
+ 680             warn("Address %#x is outside of physical memory, stopping fetch\n",
+ 681                     mem_req->getPaddr());
+ 682             fetchStatus[tid] = NoGoodAddr;
+ 683             memReq[tid] = NULL;
+ 684             return;
+ 685         }
+ 686 
+ 687         // Build packet here to access the Icache.
+ 688         PacketPtr data_pkt = new Packet(mem_req, MemCmd::ReadReq);
+ 689         data_pkt->dataDynamic(new uint8_t[fetchBufferSize]);
+ 690 
+ 691         fetchBufferPC[tid] = fetchBufferBlockPC;
+ 692         fetchBufferValid[tid] = false;
+ 693         DPRINTF(Fetch, "Fetch: Doing instruction read.\n");
+ 694 
+ 695         fetchedCacheLines++;
+ 696
+ 697         // Access the cache.
+ 698         if (!icachePort.sendTimingReq(data_pkt)) {
+ 699             assert(retryPkt == NULL);
+ 700             assert(retryTid == InvalidThreadID);
+ 701             DPRINTF(Fetch, "[tid:%i] Out of MSHRs!\n", tid);
+ 702 
+ 703             fetchStatus[tid] = IcacheWaitRetry;
+ 704             retryPkt = data_pkt;
+ 705             retryTid = tid;
+ 706             cacheBlocked = true;
+ 707         } else {
+ 708             DPRINTF(Fetch, "[tid:%i] Doing Icache access.\n", tid);
+ 709             DPRINTF(Activity, "[tid:%i] Activity: Waiting on I-cache "
+ 710                     "response.\n", tid);
+ 711             lastIcacheStall[tid] = curTick();
+ 712             fetchStatus[tid] = IcacheWaitResponse;
+ 713             // Notify Fetch Request probe when a packet containing a fetch
+ 714             // request is successfully sent
+ 715             ppFetchRequestSent->notify(mem_req);
+ 716         }
+ 717     } else {
+```
+If the current TLB resolution response is valid and speculated successfully, 
+it should generate read request packet and send it to the Instruction Cache. 
+Line 687-695 builds the packet and send buffer to be used for containing 
+instructions read from the cache. 
+When the cache access request cannot be sent to the instruction cache (line 698-707)
+because of the cache is busy for handling previous requests,
+it should retry when the Instruction cache is available later. 
+Based on the line 701, we can guess that the cache supports multiple cache accesses simultaneously,
+but the request can exceed the capacity of its simultaneous processing.
+We will see whether the GEM5 supports blocking cache access or non-blocking cache accesses in another posting.
+Anyway when the retry is required, it memorizes the request packet and tid. 
+Also it changes current status as **IcacheWaitRetry**.
+When the Instruction cache is available to process the request (line 708-716), 
+it sets current status as  **IcacheWaitResponse** and waits 
+until the Instruction cache resolves the request and send the actual instructions. 
+
+
+```cpp
+ 717     } else {
+ 718         // Don't send an instruction to decode if we can't handle it.
+ 719         if (!(numInst < fetchWidth) || !(fetchQueue[tid].size() < fetchQueueSize)) {
+ 720             assert(!finishTranslationEvent.scheduled());
+ 721             finishTranslationEvent.setFault(fault);
+ 722             finishTranslationEvent.setReq(mem_req);
+ 723             cpu->schedule(finishTranslationEvent,
+ 724                           cpu->clockEdge(Cycles(1)));
+ 725             return;
+ 726         }
+ 727         DPRINTF(Fetch, "[tid:%i] Got back req with addr %#x but expected %#x\n",
+ 728                 tid, mem_req->getVaddr(), memReq[tid]->getVaddr());
+ 729         // Translation faulted, icache request won't be sent.
+ 730         memReq[tid] = NULL;
+ 731 
+ 732         // Send the fault to commit.  This thread will not do anything
+ 733         // until commit handles the fault.  The only other way it can
+ 734         // wake up is if a squash comes along and changes the PC.
+ 735         TheISA::PCState fetchPC = pc[tid];
+ 736 
+ 737         DPRINTF(Fetch, "[tid:%i] Translation faulted, building noop.\n", tid);
+ 738         // We will use a nop in ordier to carry the fault.
+ 739         DynInstPtr instruction = buildInst(tid, StaticInst::nopStaticInstPtr,
+ 740                                            NULL, fetchPC, fetchPC, false);
+ 741         instruction->setNotAnInst();
+ 742 
+ 743         instruction->setPredTarg(fetchPC);
+ 744         instruction->fault = fault;
+ 745         wroteToTimeBuffer = true;
+ 746 
+ 747         DPRINTF(Activity, "Activity this cycle.\n");
+ 748         cpu->activityThisCycle();
+ 749 
+ 750         fetchStatus[tid] = TrapPending;
+ 751 
+ 752         DPRINTF(Fetch, "[tid:%i] Blocked, need to handle the trap.\n", tid);
+ 753         DPRINTF(Fetch, "[tid:%i] fault (%s) detected @ PC %s.\n",
+ 754                 tid, fault->name(), pc[tid]);
+ 755     }
+ 756     _status = updateFetchStatus();
+ 757 }
+```
+
+When the TLB translation emits fault instead of successful translation, 
+it should be handled based on the reason of the fault. 
+When the fetchQeueue is already full or XXX (line 719-726),
+instead of issuing cache access, it postpone the operation to later 
+by scheduling the finishTranslationEvent. 
+Note that the request packet received from the ITLB and fault structure 
+is also included in the finishTranslationEvent to process it later. 
+
+
+```cpp
+140     /* Event to delay delivery of a fetch translation result in case of
+141      * a fault and the nop to carry the fault cannot be generated
+142      * immediately */
+143     class FinishTranslationEvent : public Event
+144     { 
+145       private:
+146         DefaultFetch<Impl> *fetch;
+147         Fault fault;
+148         RequestPtr req;
+149       
+150       public:
+151         FinishTranslationEvent(DefaultFetch<Impl> *_fetch)
+152             : fetch(_fetch), req(nullptr)
+153         {}
+154         
+155         void setFault(Fault _fault)
+156         {   
+157             fault = _fault;
+158         }
+159         
+160         void setReq(const RequestPtr &_req)
+161         {   
+162             req = _req;
+163         }
+164         
+165         /** Process the delayed finish translation */
+166         void process()
+167         {   
+168             assert(fetch->numInst < fetch->fetchWidth);
+169             fetch->finishTranslation(fault, req);
+170         }
+171         
+172         const char *description() const
+173         {   
+174             return "FullO3CPU FetchFinishTranslation";
+175         }   
+176       };
+```
+In detail, when the FinishTranslationEvent happens after the designated cycles passed,
+it invokes the process function defined in the class. As shown in the above code line 166-170,
+it calls finishTranslation with the passed fault and request again. 
+
+For the other reason of faults, 
+\TODO{explanation required for the rest of the faulting code}.
+After the fetch stage handles the response from the ITLB, 
+it should update the current status of the fetch stage by invoking the updateFetchStatus function.
+
+```cpp
+ 841 template<class Impl>
+ 842 typename DefaultFetch<Impl>::FetchStatus
+ 843 DefaultFetch<Impl>::updateFetchStatus()
+ 844 {
+ 845     //Check Running
+ 846     list<ThreadID>::iterator threads = activeThreads->begin();
+ 847     list<ThreadID>::iterator end = activeThreads->end();
+ 848 
+ 849     while (threads != end) {
+ 850         ThreadID tid = *threads++;
+ 851 
+ 852         if (fetchStatus[tid] == Running ||
+ 853             fetchStatus[tid] == Squashing ||
+ 854             fetchStatus[tid] == IcacheAccessComplete) {
+ 855 
+ 856             if (_status == Inactive) {
+ 857                 DPRINTF(Activity, "[tid:%i] Activating stage.\n",tid);
+ 858 
+ 859                 if (fetchStatus[tid] == IcacheAccessComplete) {
+ 860                     DPRINTF(Activity, "[tid:%i] Activating fetch due to cache"
+ 861                             "completion\n",tid);
+ 862                 }
+ 863 
+ 864                 cpu->activateStage(O3CPU::FetchIdx);
+ 865             }
+ 866 
+ 867             return Active;
+ 868         }
+ 869     }
+ 870 
+ 871     // Stage is switching from active to inactive, notify CPU of it.
+ 872     if (_status == Active) {
+ 873         DPRINTF(Activity, "Deactivating stage.\n");
+ 874 
+ 875         cpu->deactivateStage(O3CPU::FetchIdx);
+ 876     }
+ 877 
+ 878     return Inactive;
+ 879 }
+```
+
+### processCacheCompletion: completing ICache access 
+When the sendTimingReq is invoked through the icachePort, which means 
+cache access request sent to the Instruction cache successfully, 
+after few cycles elapsed, the O3CPU will be notified that the cache read completes.
+The cache access completion is handled by the recvTimingResp of the IcachePort 
+allocated for the O3CPU. 
+
+```cpp
+1676 template<class Impl>
+1677 bool
+1678 DefaultFetch<Impl>::IcachePort::recvTimingResp(PacketPtr pkt)
+1679 {
+1680     DPRINTF(O3CPU, "Fetch unit received timing\n");
+1681     // We shouldn't ever get a cacheable block in Modified state
+1682     assert(pkt->req->isUncacheable() ||
+1683            !(pkt->cacheResponding() && !pkt->hasSharers()));
+1684     fetch->processCacheCompletion(pkt);
+1685 
+1686     return true;
+1687 }
+```
+
+When it receives the instructions from the cache, it invokes the 
+processCacheCompletion function and ask this function to handle the 
+response arrived from the cache. 
+
+
+```cpp
+ 389 DefaultFetch<Impl>::processCacheCompletion(PacketPtr pkt)
+ 390 {
+ 391     ThreadID tid = cpu->contextToThread(pkt->req->contextId());
+ 392 
+ 393     DPRINTF(Fetch, "[tid:%i] Waking up from cache miss.\n", tid);
+ 394     assert(!cpu->switchedOut());
+ 395 
+ 396     // Only change the status if it's still waiting on the icache access
+ 397     // to return.
+ 398     if (fetchStatus[tid] != IcacheWaitResponse ||
+ 399         pkt->req != memReq[tid]) {
+ 400         ++fetchIcacheSquashes;
+ 401         delete pkt;
+ 402         return;
+ 403     }
+ 404 
+ 405     memcpy(fetchBuffer[tid], pkt->getConstPtr<uint8_t>(), fetchBufferSize);
+ 406     fetchBufferValid[tid] = true;
+ 407 
+ 408     // Wake up the CPU (if it went to sleep and was waiting on
+ 409     // this completion event).
+ 410     cpu->wakeCPU();
+ 411 
+ 412     DPRINTF(Activity, "[tid:%i] Activating fetch due to cache completion\n",
+ 413             tid);
+ 414 
+ 415     switchToActive();
+ 416 
+ 417     // Only switch to IcacheAccessComplete if we're not stalled as well.
+ 418     if (checkStall(tid)) {
+ 419         fetchStatus[tid] = Blocked;
+ 420     } else {
+ 421         fetchStatus[tid] = IcacheAccessComplete;
+ 422     }
+ 423 
+ 424     pkt->req->setAccessLatency();
+ 425     cpu->ppInstAccessComplete->notify(pkt);
+ 426     // Reset the mem req to NULL.
+ 427     delete pkt;
+ 428     memReq[tid] = NULL;
+ 429 }
+```
+
+When the instructions from the cache arrives, it could be the case where 
+the misspeculation had initiated the cache access. 
+In that case, it should drop the cache access by deleting the response packet.
+In other cases, the read instructions should be copied from the packet to the 
+**fetchBuffer** containing the fetched instructions (line 405-406). 
+When the current tid is stalled because of some events (we will cover which condition
+makes the thread to be stalled), it should be blocked until the stall is resolved.
+If there is no stall, then the fetchStatus can be changed to **IcacheAccessComplete**,
+which means the thread can finish the fetch stage.
+Now let's go back to the fetch function again!
+
+## Revisiting fetch stage to handle the instructions fetched from the cache
+
+### Fetch tick happens every processor tick
+One important thing to note is that Fetch stage is always executed at every clock cycle.
+However, based on the current status of the processor and other components such as 
+TLB and cache, fetch stage cannot produce meaningful progress and should wait 
+until the other component finish their operations. Although modern processors 
+have multiple cores to execute, but if the all cores are waiting the cache accesses, 
+no other hardware thread cannot execute the fetch stage. The **getFetchingThread**
+function checks the status of the all hardware threads and returns thread if there is one
+that can execute the fetch stage. 
+
+```cpp
+1156 template<class Impl>
+1157 void
+1158 DefaultFetch<Impl>::fetch(bool &status_change)
+1159 {
+1160     //////////////////////////////////////////
+1161     // Start actual fetch
+1162     //////////////////////////////////////////
+1163     ThreadID tid = getFetchingThread();
+1164 
+1165     assert(!cpu->switchedOut());
+1166 
+1167     if (tid == InvalidThreadID) {
+1168         // Breaks looping condition in tick()
+1169         threadFetched = numFetchingThreads;
+1170 
+1171         if (numThreads == 1) {  // @todo Per-thread stats
+1172             profileStall(0);
+1173         }
+1174 
+1175         return;
+1176     }
+```
+
+As shown in the above code, when there is no available hardware thread to execute fetch stage,
+getFetchingThread returns InvalidThreadID, and no thread can produce progress at that clock cycle.
+Only the case where the getFetchingThread returns an available thread is the thread is in 
+one of the three fetchStatus: Running, IcacheAccessComplete, or Idle. 
+
+
+```
+   1000: system.cpu.fetch: Running stage.
+   1000: system.cpu.fetch: Attempting to fetch from [tid:0]
+   1000: system.cpu.fetch: [tid:0] Attempting to translate and read instruction, starting at PC (0x7ffff8000090=>0x7ffff8000098).(0=>1).
+   1000: system.cpu.fetch: [tid:0] Fetching cache line 0x7ffff8000080 for addr 0x7ffff8000090
+   1000: system.cpu.fetch: Fetch: Doing instruction read.
+   1000: system.cpu.fetch: [tid:0] Doing Icache access.
+   1500: system.cpu.fetch: Running stage.
+   1500: system.cpu.fetch: There are no more threads available to fetch from.
+   1500: system.cpu.fetch: [tid:0] Fetch is waiting cache response!
+   2000: system.cpu.fetch: Running stage.
+   2000: system.cpu.fetch: There are no more threads available to fetch from.
+   2000: system.cpu.fetch: [tid:0] Fetch is waiting cache response!
+   2500: system.cpu.fetch: Running stage.
+   2500: system.cpu.fetch: There are no more threads available to fetch from.
+   2500: system.cpu.fetch: [tid:0] Fetch is waiting cache response!
+   3000: system.cpu.fetch: Running stage.
+   3000: system.cpu.fetch: There are no more threads available to fetch from.
+   3000: system.cpu.fetch: [tid:0] Fetch is waiting cache response!
+   3500: system.cpu.fetch: Running stage.
+   3500: system.cpu.fetch: There are no more threads available to fetch from.
+   3500: system.cpu.fetch: [tid:0] Fetch is waiting cache response!
+   4000: system.cpu.fetch: Running stage.
+   4000: system.cpu.fetch: There are no more threads available to fetch from.
+   4000: system.cpu.fetch: [tid:0] Fetch is waiting cache response!
+   4500: system.cpu.fetch: Running stage.
+   4500: system.cpu.fetch: There are no more threads available to fetch from.
+   4500: system.cpu.fetch: [tid:0] Fetch is waiting cache response!
+   5000: system.cpu.fetch: Running stage.
+   5000: system.cpu.fetch: There are no more threads available to fetch from.
+   5000: system.cpu.fetch: [tid:0] Fetch is waiting cache response!
+   5500: system.cpu.fetch: Running stage.
+   5500: system.cpu.fetch: There are no more threads available to fetch from.
+   5500: system.cpu.fetch: [tid:0] Fetch is waiting cache response!
+  78000: system.cpu.fetch: [tid:0] Waking up from cache miss.
+  78001: system.cpu.fetch: [tid:0] Waking up from cache miss.
+  78500: system.cpu.fetch: Running stage.
+  78500: system.cpu.fetch: Attempting to fetch from [tid:0]
+  78500: system.cpu.fetch: [tid:0] Icache miss is complete.
+```
+
+In our current system, because we only have one hardware thread, 
+while it waits for the ICache miss to be resolved, it cannot execute fetch stage
+to produce further progress. The described behavior of the fetch stage is described 
+in the above log. After the thread first fetches the instructions at cycle 1000,
+it cannot produce any progress until the ICache miss is resolved at cycle 78000. 
+After the ICache miss is resolved (after 78500 cycle), it can finally produce progress from the fetch stage.
+Remember that when a missed ICache is resolved by the processCacheCompletion function, 
+it changes the fetchStatus of the thread from IcacheWaitResponse to **IcacheAccessComplete**.
+Therefore, when the fetch stage is executed once again, the undiscovered path will be executed. 
+
+```cpp
+1188     // If returning from the delay of a cache miss, then update the status
+1189     // to running, otherwise do the cache access.  Possibly move this up
+1190     // to tick() function.
+1191     if (fetchStatus[tid] == IcacheAccessComplete) {
+1192         DPRINTF(Fetch, "[tid:%i] Icache miss is complete.\n", tid);
+1193 
+1194         fetchStatus[tid] = Running;
+1195         status_change = true;
+1196     } else if (fetchStatus[tid] == Running) {
+```
+
+Compared to the initial fetch execution that initiated the ITLB and ICache accesses, 
+because the fetchStatus has been changed to IcacheAccessComplete,
+the fetch stage can execute the rest of the fetch function at this moment. 
+Let's take a look at the rest of the fetch function in detail. 
+
+### fetchBuffer contains actual instructions for a particular hardware thread
+```cpp
+1235     //when a requested instruction cache block is arrived(IcacheAccessComplete)
+1236     ++fetchCycles;
+1237 
+1238     TheISA::PCState nextPC = thisPC;
+1239 
+1240     StaticInstPtr staticInst = NULL;
+1241     StaticInstPtr curMacroop = macroop[tid];
+1242 
+1243     // If the read of the first instruction was successful, then grab the
+1244     // instructions from the rest of the cache line and put them into the
+1245     // queue heading to decode.
+1246 
+1247     DPRINTF(Fetch, "[tid:%i] Adding instructions to queue to "
+1248             "decode.\n", tid);
+1249 
+1250     // Need to keep track of whether or not a predicted branch
+1251     // ended this fetch block.
+1252     bool predictedBranch = false;
+1253 
+1254     // Need to halt fetch if quiesce instruction detected
+1255     bool quiesce = false;
+1256 
+1257     TheISA::MachInst *cacheInsts =
+1258         reinterpret_cast<TheISA::MachInst *>(fetchBuffer[tid]);
+1259
+1260     const unsigned numInsts = fetchBufferSize / instSize;
+1261     unsigned blkOffset = (fetchAddr - fetchBufferPC[tid]) / instSize;
+```
+
+Remember that the fetchBuffer[tid] contains the actual instructions read from
+the ICache. Note that cacheInsts variable which is the TheISA::MachInst * type 
+references the instruction buffer, fetchBuffer[tid].
+This variable is passed to the decoder to pass the instruction stream read from the ICache. 
+Also, the TheISA::MachInst is a uint64_t in the x86 architecture (TheISA will be changes to the X86 namespace). 
+Because X86 architecture adopts variable instruction length, it approximately 
+set the instruction length as 8bytes and calculate the number of instructions 
+in the instruction stream fetched from the ICache. 
+Note that the numInsts is approximated as fetchBufferSize / instSize.
+
+## The main fetchloop processing instructions
+```cpp
+1263     // Loop through instruction memory from the cache.
+1264     // Keep issuing while fetchWidth is available and branch is not
+1265     // predicted taken
+1266     while (numInst < fetchWidth && fetchQueue[tid].size() < fetchQueueSize
+1267            && !predictedBranch && !quiesce) {
+......
+1382         // Re-evaluate whether the next instruction to fetch is in micro-op ROM
+1383         // or not.
+1384         inRom = isRomMicroPC(thisPC.microPC());
+1385     }
+```
+
+The while loop (line 1266-1267) is the main body of processing instructions 
+stored in the fetchBuffer. Be careful not to confuse numInst with numInsts.
+numInst means the number of instructions fetched at this cycle, and numInsts means 
+the number of instructions that can possibly reside in the fetchBuffer. 
+Also, fetchQueue is the CPP standard deque managing DynInstPtr which is the pointer 
+of one macroop instruction. Therefore, the loop checks first whether the number of 
+fetched instructions at this cycle exceed the deisgnated fetchWidth and examine 
+whether the fetchQueue is overflowed, which means too many instructions have been fetched 
+from the instruction cache. Because the instruction length can vary but the capacity 
+of fetchQueue is limited, sometimes depending on which instructions actually reside
+in the fetched instruction cache, it cannot process all instructions at that cycle. 
+Based on the fact that it checks if the fetchQueue is overflowed at every iteration, 
+we can assume that the loop insert instruction to the fetchQueue. We will take a look at 
+the details soon!
+Also it checks the type of the previous instruction handled by the loop, 
+whether it is predictedBranch or quiesce. If the previous instruction turns out to 
+one of these type of instruction, then the loop should not process the instruction
+in the fetchBuffer further and stop. 
+
+### Decoder
+```cpp
+1268         // We need to process more memory if we aren't going to get a
+1269         // StaticInst from the rom, the current macroop, or what's already
+1270         // in the decoder.
+1271         bool needMem = !inRom && !curMacroop &&
+1272             !decoder[tid]->instReady();
+1273         fetchAddr = (thisPC.instAddr() + pcOffset) & BaseCPU::PCMask;
+1274         Addr fetchBufferBlockPC = fetchBufferAlignPC(fetchAddr);
+1275 
+1276         if (needMem) {
+1277             // If buffer is no longer valid or fetchAddr has moved to point
+1278             // to the next cache block then start fetch from icache.
+1279             if (!fetchBufferValid[tid] ||
+1280                 fetchBufferBlockPC != fetchBufferPC[tid])
+1281                 break;
+1282 
+1283             if (blkOffset >= numInsts) {
+1284                 // We need to process more memory, but we've run out of the
+1285                 // current block.
+1286                 break;
+1287             }
+1288 
+1289             decoder[tid]->moreBytes(thisPC, fetchAddr, cacheInsts[blkOffset]);
+1290 
+1291             if (decoder[tid]->needMoreBytes()) {
+1292                 blkOffset++;
+1293                 fetchAddr += instSize;
+1294                 pcOffset += instSize;
+1295             }
+1296         }
+```
+
+After the all conditions are met, each iteration of the loop processes the instruction 
+one by one. For the first execution of the fetch stage, the inRom and curMacroop are set 
+as false and NULL respectively. Also, when the decoder object embedded in the fetch stage 
+is initialized, the instDone variable of the decoder is set as false, which will be returned 
+as the result of instReady function of the decoder. 
+Therefore, the needMem should be set for the initial execution. 
+When the needMem flag is set, which means \TODO{XXX},
+it invokes moreBytes function of the decoder to decode the instruction. 
+
+
+
+```cpp
+306     //Use this to give data to the decoder. This should be used
+307     //when there is control flow.
+308     void moreBytes(const PCState &pc, Addr fetchPC, MachInst data)
+309     {
+310         DPRINTF(Decoder, "Getting more bytes.\n");
+311         basePC = fetchPC;
+312         offset = (fetchPC >= pc.instAddr()) ? 0 : pc.instAddr() - fetchPC;
+313         fetchChunk = letoh(data);
+314         outOfBytes = false;
+315         process();
+316     }
+```
+
+
+```cpp
+ 74 Decoder::process()
+ 75 {
+ 76     //This function drives the decoder state machine.
+ 77 
+ 78     //Some sanity checks. You shouldn't try to process more bytes if
+ 79     //there aren't any, and you shouldn't overwrite an already
+ 80     //decoder ExtMachInst.
+ 81     assert(!outOfBytes);
+ 82     assert(!instDone);
+ 83 
+ 84     if (state == ResetState)
+ 85         state = doResetState();
+ 86     if (state == FromCacheState) {
+ 87         state = doFromCacheState();
+ 88     } else {
+ 89         instBytes->chunks.push_back(fetchChunk);
+ 90     }
+ 91 
+ 92     //While there's still something to do...
+ 93     while (!instDone && !outOfBytes) {
+ 94         uint8_t nextByte = getNextByte();
+ 95         switch (state) {
+ 96           case PrefixState:
+ 97             state = doPrefixState(nextByte);
+ 98             break;
+ 99           case Vex2Of2State:
+100             state = doVex2Of2State(nextByte);
+101             break;
+102           case Vex2Of3State:
+103             state = doVex2Of3State(nextByte);
+104             break;
+105           case Vex3Of3State:
+106             state = doVex3Of3State(nextByte);
+107             break;
+108           case VexOpcodeState:
+109             state = doVexOpcodeState(nextByte);
+110             break;
+111           case OneByteOpcodeState:
+112             state = doOneByteOpcodeState(nextByte);
+113             break;
+114           case TwoByteOpcodeState:
+115             state = doTwoByteOpcodeState(nextByte);
+116             break;
+117           case ThreeByte0F38OpcodeState:
+118             state = doThreeByte0F38OpcodeState(nextByte);
+119             break;
+120           case ThreeByte0F3AOpcodeState:
+121             state = doThreeByte0F3AOpcodeState(nextByte);
+122             break;
+123           case ModRMState:
+124             state = doModRMState(nextByte);
+125             break;
+126           case SIBState:
+127             state = doSIBState(nextByte);
+128             break;
+129           case DisplacementState:
+130             state = doDisplacementState();
+131             break;
+132           case ImmediateState:
+133             state = doImmediateState();
+134             break;
+135           case ErrorState:
+136             panic("Went to the error state in the decoder.\n");
+137           default:
+138             panic("Unrecognized state! %d\n", state);
+139         }
+140     }
+141 }
+```
+Based on the instruction format, different doXXX function will be invoked to parse
+the macroop instruction. First of all, it invokes doResetState for every macroop to 
+initialize the variables representing the parsed instruction. Also it sets the 
+origPC field as the PC address of the macroop instruction,. 
+After the initialization, based on the instruction format, it will invoke 
+different parsing code. Based on the n-1 byte(s) of the instruction,
+next n(+1) bytes of the instruction's format will be determined. 
+Therefore, by parsing each byte one by one, different format of the instruction
+can be fully decoded by the above process function.
+During the parsing, it invokes consumeByte(s) function when a particular 
+part of the instruction could be successfully decoded. 
+The consumeByte function increases the offset variable of the decoder to present 
+the length of the currently being parsed macroop. 
+After the moreBytes finish the early decoding of the macroop instruction,
+it sets the instDone as true. However, not that moreBytes and process function
+just parses the macroop instruction to excerpt some bytes dedicated for 
+each part of the instruction such as Rex and modRM in x86 architecture. 
+Therefore, we still need to decode the parsed instruction to understand what is this instruction!
+
+## The second loop to process each instruction
+After the decoder finishing early-decode of the macroop instruction, 
+it encounters another loop that translate the macroop instruction 
+into multiple microops if possible. Note that the processor pipeline 
+executes the microops not the macroop instructions. 
+Therefore, instead of the macroop, the microops should be inserted 
+into the fetch queue. 
+
+```cpp
+1298         // Extract as many instructions and/or microops as we can from
+1299         // the memory we've processed so far.
+1300         do {
+......
+1378         } while ((curMacroop || decoder[tid]->instReady()) &&
+1379                  numInst < fetchWidth &&
+1380                  fetchQueue[tid].size() < fetchQueueSize);
+```
+
+As shown in the above code, the second loop continues 
+until the curMacroop is not a NULL
+or until the translation from the current macroop to the microops is fished 
+and the fetchQueue is available to contain translated microops. 
+Let's take a look at the details of the second loop. 
+
+```cpp
+1298         // Extract as many instructions and/or microops as we can from
+1299         // the memory we've processed so far.
+1300         do {
+1301             if (!(curMacroop || inRom)) {
+1302                 if (decoder[tid]->instReady()) {
+1303                     staticInst = decoder[tid]->decode(thisPC);
+1304 
+1305                     // Increment stat of fetched instructions.
+1306                     ++fetchedInsts;
+1307 
+1308                     if (staticInst->isMacroop()) {
+1309                         curMacroop = staticInst;
+1310                     } else {
+1311                         pcOffset = 0;
+1312                     }
+1313                 } else {
+1314                     // We need more bytes for this instruction so blkOffset and
+1315                     // pcOffset will be updated
+1316                     break;
+1317                 }
+1318             }
+```
+
+Note that we haven't assigned anything to curMacroop and executed the ROM code.
+Also, decoder[tid]->instReady is true 
+because the moreBytes function successfully pre-decoded the macroop instruction. 
+Therefore, it will invoke the decode function to understand which instruction actually it is.
+The decode function of the decoder generates the **StaticInstPtr** which has information
+about the current instruction located at thisPC. 
+In our case, because we are firstly executing the macroop instruction,
+it should return the reference of the macroop instruction.
+Let's briefly take a look at the decode function. 
+
+*gem5/src/arch/x86/decode.cc*
+```cpp
+693 StaticInstPtr
+694 Decoder::decode(PCState &nextPC)
+695 {
+696     if (!instDone)
+697         return NULL;
+698     instDone = false;
+699     updateNPC(nextPC);
+700 
+701     StaticInstPtr &si = instBytes->si;
+702     if (si)
+703         return si;
+704 
+705     // We didn't match in the AddrMap, but we still populated an entry. Fix
+706     // up its byte masks.
+707     const int chunkSize = sizeof(MachInst);
+708 
+709     instBytes->lastOffset = offset;
+710 
+711     Addr firstBasePC = basePC - (instBytes->chunks.size() - 1) * chunkSize;
+712     Addr firstOffset = origPC - firstBasePC;
+713     Addr totalSize = instBytes->lastOffset - firstOffset +
+714         (instBytes->chunks.size() - 1) * chunkSize;
+715     int start = firstOffset;
+716     instBytes->masks.clear();
+717 
+718     while (totalSize) {
+719         int end = start + totalSize;
+720         end = (chunkSize < end) ? chunkSize : end;
+721         int size = end - start;
+722         int idx = instBytes->masks.size();
+723 
+724         MachInst maskVal = mask(size * 8) << (start * 8);
+725         assert(maskVal);
+726 
+727         instBytes->masks.push_back(maskVal);
+728         instBytes->chunks[idx] &= instBytes->masks[idx];
+729         totalSize -= size;
+730         start = 0;
+731     }
+732 
+733     si = decode(emi, origPC);
+734     return si;
+735 }
+```
+
+There are two important things to be done by the decode function. 
+First, it invokes updateNPC to update the next pc based on the current instruction.
+Also remember that the basePC has been set as fetchAddr when the moreBytes has been invoked. 
+
+```cpp
+328     void
+329     updateNPC(X86ISA::PCState &nextPC)
+330     {
+331         if (!nextPC.size()) {
+332             int size = basePC + offset - origPC;
+333             DPRINTF(Decoder,
+334                     "Calculating the instruction size: "
+335                     "basePC: %#x offset: %#x origPC: %#x size: %d\n",
+336                     basePC, offset, origPC, size);
+337             nextPC.size(size);
+338             nextPC.npc(nextPC.pc() + size);
+339         }
+340     }
+```
+
+Because decoder already knows the length of the instruction,
+it can calculate the size of the instruction and set the nextPC value as 
+current PC + sizeof instruction. The npc function updates the _npc field 
+of the nextPC, and it will be used to update the _pc member field of the 
+PCState object later. Note that the nextPC is actually the thisPC variable
+declared in the fetch function. It could be confusing because 
+the fetch function also declares the nextPC variable, but updateNPC 
+updates the npc of the thisPC not the nextPC variable of the fetch.
+After updating the npc, the decode function invokes actual decode function.
+Also it is important that the updateNPC function is only invoked when the 
+curMacroop is set as NULL. While the microops of the macroop is fetched,
+the npc will not be updated. 
+
+```cpp
+681 StaticInstPtr
+682 Decoder::decode(ExtMachInst mach_inst, Addr addr)
+683 {
+684     auto iter = instMap->find(mach_inst);
+685     if (iter != instMap->end())
+686         return iter->second;
+687 
+688     StaticInstPtr si = decodeInst(mach_inst);
+689     (*instMap)[mach_inst] = si;
+690     return si;
+691 }
+```
+
+It traverses decode cache instMap to find 
+the instruction object if the same instruction has been decoded earlier.
+If not, it invoked decodeInst function which is automatically generated 
+based on the python parser on the GEM5. 
+We will not cover the details of the decodeInst function in this posting.
+Anyway let's go back to the second loop again!
+After the decode function is executed, we can finally have the object 
+associated with the currently decoded instruction. 
+If the decoded instruction is the macroop, then it sets the curMacroop 
+as the returned staticInst. 
+
+
+### fetchMicroop: Fetching microops from the macroop or ROM
+```cpp
+1319             // Whether we're moving to a new macroop because we're at the
+1320             // end of the current one, or the branch predictor incorrectly
+1321             // thinks we are...
+1322             bool newMacro = false;
+1323             if (curMacroop || inRom) {
+1324                 if (inRom) {
+1325                     staticInst = cpu->microcodeRom.fetchMicroop(
+1326                             thisPC.microPC(), curMacroop);
+1327                 } else {
+1328                     staticInst = curMacroop->fetchMicroop(thisPC.microPC());
+1329                 }
+1330                 newMacro |= staticInst->isLastMicroop();
+1331             }
+```
+Because curMacroop is set as the macroop instruction pointed to by the PC,
+we can retrieve microops consisting of the current Macroop. 
+You might remember that the macroop consists of multiple microops. 
+Also, it might reminds you of the ROM code that we've covered regarding the fault handling.
+Yeah, there are two places the microops are used. 
+Therefore, based on the current status of the processor, whether 
+it executes the macroop or ROM code, it needs to fetch the microops 
+from the associated places. 
+Regardless where the microop should be fetched, GEM5 utilize the interface called **fetchMicroop**.
+When the processor is in the midst of execution of ROM code, then 
+it invokes the fetchMicroop function from the microcodeRom. 
+
+*gem5/src/arch/x86/microcode_rom.hh*
+```cpp
+ 60         StaticInstPtr
+ 61         fetchMicroop(MicroPC microPC, StaticInstPtr curMacroop)
+ 62         {
+ 63             microPC = normalMicroPC(microPC);
+ 64             if (microPC >= numMicroops)
+ 65                 return X86ISA::badMicroop;
+ 66             else
+ 67                 return genFuncs[microPC](curMacroop);
+ 68         }
+```
+
+Also when the processor is in the middle of executing the macroop,
+it should ask the macroop to return microops consisting of it. 
+*gem5/src/arch/x86/insts/macroop.hh*
+```cpp
+ 77     StaticInstPtr
+ 78     fetchMicroop(MicroPC microPC) const
+ 79     {
+ 80         if (microPC >= numMicroops)
+ 81             return badMicroop;
+ 82         else
+ 83             return microops[microPC];
+ 84     }
+```
+
+Note that the return value of the fetchMicroop function will be stored in the 
+staticInst. It is easy to be confused because of the staticInst. 
+Previously, when we decode the macroop using the moreBytes and decode,
+the generated instruction was stored in the staticInst. 
+However, the staticInst variable is used to contain the microops 
+instead of the macroops. 
+
+### Populating dynamic instruction object 
+```cpp
+1332 
+1333             DynInstPtr instruction =
+1334                 buildInst(tid, staticInst, curMacroop,
+1335                           thisPC, nextPC, true);
+1336 
+1337             ppFetch->notify(instruction);
+1338             numInst++;
+1339 
+1340 #if TRACING_ON
+1341             if (DTRACE(O3PipeView)) {
+1342                 instruction->fetchTick = curTick();
+1343             }
+1344 #endif
+```
+Now we have a **macroop as the curMacroop** variable and its associated **microop
+as the staticInst**. Using this information, the **buildInst** function 
+populates the dynamic object representing one instruction. 
+One might ask why we need another object for instruction although we already 
+have the objects for the macroop and microop. However, note that these objects are 
+static instruction object, but we need a dynamic instruction object 
+that can contains all information required for executing the instruction.
+After the instruction is fetched and decoded, the instruction should go through 
+all the rest of the pipeline stages. The dynamic instruction objects are populated for 
+passing information of the instruction in between different pipeline stages. 
+Therefore, the buildInst function generates the dynamic instruction 
+and enqueues the instruction into the fetch queue to pass the instruction information
+to the next pipeline stages. Let's take a look at how the buildInst generates the 
+dynamic instruction. 
+
+## buildInst: populating microops from the macroop
+```cpp
+1102 template<class Impl>
+1103 typename Impl::DynInstPtr
+1104 DefaultFetch<Impl>::buildInst(ThreadID tid, StaticInstPtr staticInst,
+1105                               StaticInstPtr curMacroop, TheISA::PCState thisPC,
+1106                               TheISA::PCState nextPC, bool trace)
+1107 {
+1108     // Get a sequence number.
+1109     InstSeqNum seq = cpu->getAndIncrementInstSeq();
+1110 
+1111     // Create a new DynInst from the instruction fetched.
+1112     DynInstPtr instruction =
+1113         new DynInst(staticInst, curMacroop, thisPC, nextPC, seq, cpu);
+1114     instruction->setTid(tid);
+1115 
+1116     instruction->setASID(tid);
+1117 
+1118     instruction->setThreadState(cpu->thread[tid]);
+1119 
+1120     DPRINTF(Fetch, "[tid:%i] Instruction PC %#x (%d) created "
+1121             "[sn:%lli].\n", tid, thisPC.instAddr(),
+1122             thisPC.microPC(), seq);
+1123 
+1124     DPRINTF(Fetch, "[tid:%i] Instruction is: %s\n", tid,
+1125             instruction->staticInst->
+1126             disassemble(thisPC.instAddr()));
+```
+The instruction variable contain the dynamic instruction object populated 
+based on the macroop and microop passed to the buildInst function (line 1112-1113).
+After the instruction is generated, it set the thread specific information
+of the instruction (tid, ASID). Those information is required later in the execution stage
+to understand which instruction has been issued by which thread. 
+Also, it prints out some useful information about the instruction (Line 1120-1126)
+As shown in the line 1112-1113, DynInstPtr and DynInst type is utilized 
+to declare variable and populate a dynamic instruction object respectively. 
+You might remember that O3CPUImpl defines several types used by the O3CPU. 
+The DynInst is one of them.
+
+```cpp
+ 53 struct O3CPUImpl
+ 54 {
+ 55     /** The type of MachInst. */
+ 56     typedef TheISA::MachInst MachInst;
+ 57
+ 58     /** The CPU policy to be used, which defines all of the CPU stages. */
+ 59     typedef SimpleCPUPolicy<O3CPUImpl> CPUPol;
+ 60
+ 61     /** The DynInst type to be used. */
+ 62     typedef BaseO3DynInst<O3CPUImpl> DynInst;
+ 63
+ 64     /** The refcounted DynInst pointer to be used.  In most cases this is
+ 65      *  what should be used, and not DynInst *.
+ 66      */
+ 67     typedef RefCountingPtr<DynInst> DynInstPtr;
+```
+
+The constructor call of the DynInst invokes the constructor of the 
+BaseO3DynInst class and initialize its member field as described in the following constructor. 
+
+*gem5/src/cpu/o3/dyn_inst_impl.hh*
+```cpp
+ 50 template <class Impl>
+ 51 BaseO3DynInst<Impl>::BaseO3DynInst(const StaticInstPtr &staticInst,
+ 52                                    const StaticInstPtr &macroop,
+ 53                                    TheISA::PCState pc, TheISA::PCState predPC,
+ 54                                    InstSeqNum seq_num, O3CPU *cpu)
+ 55     : BaseDynInst<Impl>(staticInst, macroop, pc, predPC, seq_num, cpu)
+ 56 {
+ 57     initVars();
+ 58 }
+```
+
+Let's take a look at who derives the DynInstPtr then. 
+```cpp
+ 97 template <class Impl>
+ 98 class FullO3CPU : public BaseO3CPU
+ 99 {
+100   public:
+101     // Typedefs from the Impl here.
+102     typedef typename Impl::CPUPol CPUPolicy;
+103     typedef typename Impl::DynInstPtr DynInstPtr;
+104     typedef typename Impl::O3CPU O3CPU;
+```
+As shown in the above code, the DynInstPtr is the Impl::DynInstPtr, 
+which is the RefCountingPtr<DynInst> defined in the O3CPUImpl. 
+The RefCountingPtr is the CPP template class that defines all operations
+such as equal sign that can assign new object of the template type and 
+member field reference operator -> to access the assigned object.
+The only additional work done by this class is counting the reference for this object, 
+and it can be utilized as the template typed object. 
+Therefore, without knowing the details, the instruction variable can be utilized 
+as a pointer referencing DynInst objects. 
+
+### Inserting generated dynamic instructions into the fetchQueue 
+```cpp
+1127 
+1128 #if TRACING_ON
+1129     if (trace) {
+1130         instruction->traceData =
+1131             cpu->getTracer()->getInstRecord(curTick(), cpu->tcBase(tid),
+1132                     instruction->staticInst, thisPC, curMacroop);
+1133     }
+1134 #else
+1135     instruction->traceData = NULL;
+1136 #endif
+1137 
+1138     // Add instruction to the CPU's list of instructions.
+1139     instruction->setInstListIt(cpu->addInst(instruction));
+1140 
+1141     // Write the instruction to the first slot in the queue
+1142     // that heads to decode.
+1143     assert(numInst < fetchWidth);
+1144     fetchQueue[tid].push_back(instruction);
+1145     assert(fetchQueue[tid].size() <= fetchQueueSize);
+1146     DPRINTF(Fetch, "[tid:%i] Fetch queue entry created (%i/%i).\n",
+1147             tid, fetchQueue[tid].size(), fetchQueueSize);
+1148     //toDecode->insts[toDecode->size++] = instruction;
+1149 
+1150     // Keep track of if we can take an interrupt at this boundary
+1151     delayedCommit[tid] = instruction->isDelayedCommit();
+1152 
+1153     return instruction;
+1154 }
+```
+
+After the dynamic instruction is populated, it should be inserted into the 
+fetchQueue to pass the generated instructions to the next stage. 
+Now let's go back to the second loop of the fetch function and 
+finish the analysis. 
+
+## Updating nextPC and handling branch instruction
+```cpp
+1346             nextPC = thisPC;
+1347 
+1348             // If we're branching after this instruction, quit fetching
+1349             // from the same block.
+1350             predictedBranch |= thisPC.branching();
+1351             predictedBranch |=
+1352                 lookupAndUpdateNextPC(instruction, nextPC);
+1353             if (predictedBranch) {
+1354                 DPRINTF(Fetch, "Branch detected with PC = %s\n", thisPC);
+1355             }
+```
+
+Until now, we have populated the microops and 
+enqueued the generated instructions into the fetchQueue. 
+To repeat this sequence of operations and fill the fetchQueue, 
+the second loop should determine the nextPC to lookup. 
+First of all, if the current instruction is one of the branching instructions,
+then the nextPC should be determined based on the execution result of 
+branch prediction speculatively. 
+
+### lookupAndUpdateNextPC: determine the nextPC based on control flow instruction
+The **lookupAndUpdateNextPC** determines the nextPC by checking 
+whether the current instruction is the control flow instruction. 
+Also, because O3 processor adopts branch predictor,
+the lookupAndUpdateNextPC asks branch predictor whether it needs to change 
+the nextPC if the current instruction is the branching instruction. 
+Note that the lookupAndUpdateNextPC accepts the dynamic instruction we generated 
+in the buildInst function. 
+
+```cpp
+ 556 template <class Impl>
+ 557 bool
+ 558 DefaultFetch<Impl>::lookupAndUpdateNextPC(
+ 559         const DynInstPtr &inst, TheISA::PCState &nextPC)
+ 560 {
+ 561     // Do branch prediction check here.
+ 562     // A bit of a misnomer...next_PC is actually the current PC until
+ 563     // this function updates it.
+ 564     bool predict_taken;
+ 565 
+ 566     if (!inst->isControl()) {
+ 567         TheISA::advancePC(nextPC, inst->staticInst);
+ 568         inst->setPredTarg(nextPC);
+ 569         inst->setPredTaken(false);
+ 570         return false;
+ 571     }
+```
+
+First of all, it can simply check the current instruction affects execution control 
+by invoking isControl method of the dynamic instruction. 
+The isControl function of the dynamic instruction
+just invokes the same method of the **staticInst** of the DynInst,
+which is the static class representing **microop operation**. 
+When the current instruction is not a control flow instruction,
+then it just updates nextPC by invoking **advancePC** function with the staticInst 
+of the current dynamic instruction. 
+
+
+### advancePC: advance micro pc or pc based on the architecture
+*gem5/src/arch/x86/utility.hh*
+```cpp
+ 78     inline void
+ 79     advancePC(PCState &pc, const StaticInstPtr &inst)
+ 80     {
+ 81         inst->advancePC(pc);
+ 82     }
+```
+
+The advancePC function just invoked advancePC function 
+provided by the StaticInstPtr class. 
+Because we are targeting X86 architecture,
+the inst should be the object of the X86StaticInst class. 
+
+*gem5/src/arch/x86/insts/static_inst.hh*
+```cpp
+ 77     /**
+ 78      * Base class for all X86 static instructions.
+ 79      */
+ 80 
+ 81     class X86StaticInst : public StaticInst
+ 82     {
+ 83       protected:
+ 84         // Constructor.
+ 85         X86StaticInst(const char *mnem,
+ 86              ExtMachInst _machInst, OpClass __opClass)
+ 87                 : StaticInst(mnem, _machInst, __opClass)
+ 88             {
+ 89             }
+......
+179         void
+180         advancePC(PCState &pcState) const
+181         {
+182             pcState.advance();
+183         }
+184     };
+```
+
+Also, remind that X86 architecture executes the microop instead of the macroop.
+Therefore, the StaticInstPtr points to microop object in x86.
+Thus X86 on GEM5 provide another class called **X86MicroopBase** inheriting 
+X86StaticInst class.
+
+*gem5/src/arch/x86/insts/microop.hh*
+```cpp
+ 88     //A class which is the base of all x86 micro ops. It provides a function to
+ 89     //set necessary flags appropriately.
+ 90     class X86MicroopBase : public X86StaticInst
+ 91     {
+ 92       protected:
+ 93         const char * instMnem;
+ 94         uint8_t opSize;
+ 95         uint8_t addrSize;
+ 96 
+ 97         X86MicroopBase(ExtMachInst _machInst,
+ 98                 const char *mnem, const char *_instMnem,
+ 99                 uint64_t setFlags, OpClass __opClass) :
+100             X86ISA::X86StaticInst(mnem, _machInst, __opClass),
+101             instMnem(_instMnem)
+102         {
+103             const int ChunkSize = sizeof(unsigned long);
+104             const int Chunks = sizeof(setFlags) / ChunkSize;
+105 
+106             // Since the bitset constructor can only handle unsigned long
+107             // sized chunks, feed it those one at a time while oring them in.
+108             for (int i = 0; i < Chunks; i++) {
+109                 unsigned shift = i * ChunkSize * 8;
+110                 flags |= (std::bitset<Num_Flags>(setFlags >> shift) << shift);
+111             }
+112         }
+113 
+114         std::string generateDisassembly(Addr pc,
+115                 const SymbolTable *symtab) const
+116         {
+117             std::stringstream ss;
+118 
+119             ccprintf(ss, "\t%s.%s", instMnem, mnemonic);
+120 
+121             return ss.str();
+122         }
+123 
+124         bool checkCondition(uint64_t flags, int condition) const;
+125 
+126         void
+127         advancePC(PCState &pcState) const
+128         {
+129             if (flags[IsLastMicroop])
+130                 pcState.uEnd();
+131             else
+132                 pcState.uAdvance();
+133         }
+134     };
+```
+
+Based on whether it is the last microop, 
+it invokes different function of the PCState, UEnd and uAdvance. 
+Here the pcState object is the architecture specific 
+PCState object defined as below.
+
+### PCState class
+*gem5/src/arch/x86/types.hh*
+```cpp
+289     class PCState : public GenericISA::UPCState<MachInst>
+290     {
+291       protected:
+292         typedef GenericISA::UPCState<MachInst> Base;
+......
+324         void
+325         advance()
+326         {
+327             Base::advance();
+328             _size = 0;
+329         }
+```
+
+Because the PCState doesn't implement the uEnd and uAdvance function, 
+we should take a look at its parent class GenericISA::UPCState<MachInst>.
+
+*gem5/src/arch/generic/types.hh*
+```cpp
+193 // A PC and microcode PC.
+194 template <class MachInst>
+195 class UPCState : public SimplePCState<MachInst>
+196 {
+197   protected:
+198     typedef SimplePCState<MachInst> Base;
+199 
+200     MicroPC _upc;
+201     MicroPC _nupc;
+202 
+203   public:
+204 
+205     MicroPC upc() const { return _upc; }
+206     void upc(MicroPC val) { _upc = val; }
+207 
+208     MicroPC nupc() const { return _nupc; }
+209     void nupc(MicroPC val) { _nupc = val; }
+......
+228     bool
+229     branching() const
+230     {
+231         return this->npc() != this->pc() + sizeof(MachInst) ||
+232                this->nupc() != this->upc() + 1;
+233     }
+234 
+235     // Advance the upc within the instruction.
+236     void
+237     uAdvance()
+238     {
+239         _upc = _nupc;
+240         _nupc++;
+241     }
+242 
+243     // End the macroop by resetting the upc and advancing the regular pc.
+244     void
+245     uEnd()
+246     {
+247         this->advance();
+248         _upc = 0;
+249         _nupc = 1;
+250     }
+```
+When uAdvance function is invoked, it just updates the **_upc** member field
+representing the micro pc of the current hardware thread. 
+However, when the uEnd is invoked, it should update the pc instead of the micro pc (upc).
+Because UPCState doesn't implement the PC related members field and functions,
+it will invoke the advance function of its parent, SimplePCState. 
+Note that PC represent microop and upc represent instruction pointer among the microops 
+consisting of one macroop. 
+
+*gem5/src/arch/generic/types.hh*
+```cpp
+139 // The most basic type of PC.
+140 template <class MachInst>
+141 class SimplePCState : public PCStateBase
+142 {
+143   protected:
+144     typedef PCStateBase Base;
+145 
+146   public:
+147 
+148     Addr pc() const { return _pc; }
+149     void pc(Addr val) { _pc = val; }
+150 
+151     Addr npc() const { return _npc; }
+152     void npc(Addr val) { _npc = val; }
+153 
+154     void
+155     set(Addr val)
+156     {
+157         pc(val);
+158         npc(val + sizeof(MachInst));
+159     };
+160 
+161     void
+162     setNPC(Addr val)
+163     {
+164         npc(val);
+165     }
+166 
+167     SimplePCState() {}
+168     SimplePCState(Addr val) { set(val); }
+169 
+170     bool
+171     branching() const
+172     {
+173         return this->npc() != this->pc() + sizeof(MachInst);
+174     }
+175 
+176     // Advance the PC.
+177     void
+178     advance()
+179     {
+180         _pc = _npc;
+181         _npc += sizeof(MachInst);
+182     }
+183 };
+```
+
+It just updates the _pc as the _npc 
+which has been measured as a result of adding size of macroop instruction
+to the current pc. In other words, if it is not a control flow instruction, 
+just adding the size of current instruction to the pc is enough 
+to get the next pc address. 
+
+### Asking branch predictor for a control flow instruction
+Now let's go back to the rest of the lookupAndUpdateNextPC function to understand
+what happens if the current instruction turns out to be control flow instruction. 
+
+```cpp
+ 572 
+ 573     ThreadID tid = inst->threadNumber;
+ 574     predict_taken = branchPred->predict(inst->staticInst, inst->seqNum,
+ 575                                         nextPC, tid);
+ 576 
+ 577     if (predict_taken) {
+ 578         DPRINTF(Fetch, "[tid:%i] [sn:%llu] Branch at PC %#x "
+ 579                 "predicted to be taken to %s\n",
+ 580                 tid, inst->seqNum, inst->pcState().instAddr(), nextPC);
+ 581     } else {
+ 582         DPRINTF(Fetch, "[tid:%i] [sn:%llu] Branch at PC %#x "
+ 583                 "predicted to be not taken\n",
+ 584                 tid, inst->seqNum, inst->pcState().instAddr());
+ 585     }
+ 586 
+ 587     DPRINTF(Fetch, "[tid:%i] [sn:%llu] Branch at PC %#x "
+ 588             "predicted to go to %s\n",
+ 589             tid, inst->seqNum, inst->pcState().instAddr(), nextPC);
+ 590     inst->setPredTarg(nextPC);
+ 591     inst->setPredTaken(predict_taken);
+ 592 
+ 593     ++fetchedBranches;
+ 594 
+ 595     if (predict_taken) {
+ 596         ++predictedBranches;
+ 597     }
+ 598 
+ 599     return predict_taken;
+ 600 }
+```
+
+It invokes the predict function and store the return value to the predict_taken.
+The predict function returns the prediction result, whether the branching instruction
+should be taken or not-taken (when it is not a control flow instruction, it returns
+not-taken to allow the next following instructions to be executed sequentially). 
+Also, note that the reference of the **nextPC** is passed to the branch predictor. 
+This is because the prediction affects the next instruction's address.
+Therefore, based on the prediction result, it changes the nextPC 
+to make the fetch stage to fetch instructions from the proper location. 
+
+### End of the second loop
+```cpp
+1356 
+1357             newMacro |= thisPC.instAddr() != nextPC.instAddr();
+1358 
+```
+
+Remind that we are currently executing the second loop to
+translate curMacroop to microops. 
+However, when one of its microop turns out to be a control flow instruction
+and predicted to be taken, then it should change the PC.
+For that purpose, it checks the PC addresses of the thisPC and nextPC.
+Previously, before invoking the lookupAndUpdateNextPC function,
+it has allocated the thisPC to the nextPC (line 1346). 
+However, when the prediction made as a taken,
+pc address of the nextPC will be changed to the location of the taken branch. 
+Therefore, by comparing pc addresses of nextPC and thisPC, we can understand that 
+whether we are facing another macroop or still executing the microops 
+of the current macroop (line 1357). 
+
+```cpp
+ 53 // The guaranteed interface.
+ 54 class PCStateBase : public Serializable
+ 55 {
+ 56   protected:
+ 57     Addr _pc;
+ 58     Addr _npc;
+ 59 
+ 60     PCStateBase() : _pc(0), _npc(0) {}
+ 61     PCStateBase(Addr val) : _pc(0), _npc(0) { set(val); }
+ 62 
+ 63   public:
+ 64     /**
+ 65      * Returns the memory address the bytes of this instruction came from.
+ 66      *
+ 67      * @return Memory address of the current instruction's encoding.
+ 68      */
+ 69     Addr
+ 70     instAddr() const
+ 71     {
+ 72         return _pc;
+ 73     }
+ 74 
+ 75     /**
+ 76      * Returns the memory address the bytes of the next instruction came from.
+ 77      *
+ 78      * @return Memory address of the next instruction's encoding.
+ 79      */
+ 80     Addr
+ 81     nextInstAddr() const
+ 82     {
+ 83         return _npc;
+ 84     }
+ 85 
+ 86     /**
+ 87      * Returns the current micropc.
+ 88      *
+ 89      * @return The current micropc.
+ 90      */
+ 91     MicroPC
+ 92     microPC() const
+ 93     {
+ 94         return 0;
+ 95     }
+
+
+After the newMacro flag has been set,
+it assigns the nextPC to the thisPC. 
+One might think that nextPC will equal to the thisPC
+when the branch prediction is made to be not-taken, 
+but the lookupAndUpdateNextPC advances micro-pc by invoking
+advancePC function when the instruction is not a control flow 
+or predicted as not-taken. 
+
+```cpp
+1359             // Move to the next instruction, unless we have a branch.
+1360             thisPC = nextPC;
+1361             inRom = isRomMicroPC(thisPC.microPC());
+1362 
+1363             if (newMacro) {
+1364                 fetchAddr = thisPC.instAddr() & BaseCPU::PCMask;
+1365                 blkOffset = (fetchAddr - fetchBufferPC[tid]) / instSize;
+1366                 pcOffset = 0;
+1367                 curMacroop = NULL;
+1368             }
+1369 
+1370             if (instruction->isQuiesce()) {
+1371                 DPRINTF(Fetch,
+1372                         "Quiesce instruction encountered, halting fetch!\n");
+1373                 fetchStatus[tid] = QuiescePending;
+1374                 status_change = true;
+1375                 quiesce = true;
+1376                 break;
+1377             }
+1378         } while ((curMacroop || decoder[tid]->instReady()) &&
+1379                  numInst < fetchWidth &&
+1380                  fetchQueue[tid].size() < fetchQueueSize);
+1381
+1382         // Re-evaluate whether the next instruction to fetch is in micro-op ROM
+1383         // or not.
+```
+
+If the newMacro flag is set to true, 
+then it should updates the addresses required to fetch next instruction
+and set the curMacroop as NULL.
+Therefore, when the new macroop is found, 
+the second loop will exit and 
+try to continue executing the first loop. 
+
+
+## End of the first loop and rest
+```cpp
+1263     // Loop through instruction memory from the cache.
+1264     // Keep issuing while fetchWidth is available and branch is not
+1265     // predicted taken
+1266     while (numInst < fetchWidth && fetchQueue[tid].size() < fetchQueueSize
+1267            && !predictedBranch && !quiesce) {
+......
+1382         // Re-evaluate whether the next instruction to fetch is in micro-op ROM
+1383         // or not.
+1384         inRom = isRomMicroPC(thisPC.microPC());
+1385     }
+```
+After translating macroop to microops by executing the second loop,
+it should continue execution on the first loop. 
+As we checked before,
+when the number of fetched instruction does not exceed the fetchWidth (bandwidth)
+and fetchQueue does not overflow and branch prediction is not made, 
+it will continue the all the logic that we checked until now will be repeated. 
+Then what should be done when the first loop exits?
+
+```cpp 
+1386
+1387     if (predictedBranch) {
+1388         DPRINTF(Fetch, "[tid:%i] Done fetching, predicted branch "
+1389                 "instruction encountered.\n", tid);
+1390     } else if (numInst >= fetchWidth) {
+1391         DPRINTF(Fetch, "[tid:%i] Done fetching, reached fetch bandwidth "
+1392                 "for this cycle.\n", tid);
+1393     } else if (blkOffset >= fetchBufferSize) {
+1394         DPRINTF(Fetch, "[tid:%i] Done fetching, reached the end of the"
+1395                 "fetch buffer.\n", tid);
+1396     }
+1397 
+1398     macroop[tid] = curMacroop;
+1399     fetchOffset[tid] = pcOffset;
+```
+First it prints out debugging messages based on the exit condition of the first loop.
+And then it updates the macroop of the current hardware thread with the 
+curMacroop. Also the fetchOffset will be updated with pcOffset. 
+
+```cpp
+1400 
+1401     if (numInst > 0) {
+1402         wroteToTimeBuffer = true;
+1403     }
+1404 
+1405     pc[tid] = thisPC;
+1406 
+1407     // pipeline a fetch if we're crossing a fetch buffer boundary and not in
+1408     // a state that would preclude fetching
+1409     fetchAddr = (thisPC.instAddr() + pcOffset) & BaseCPU::PCMask;
+1410     Addr fetchBufferBlockPC = fetchBufferAlignPC(fetchAddr);
+1411     issuePipelinedIfetch[tid] = fetchBufferBlockPC != fetchBufferPC[tid] &&
+1412         fetchStatus[tid] != IcacheWaitResponse &&
+1413         fetchStatus[tid] != ItlbWait &&
+1414         fetchStatus[tid] != IcacheWaitRetry &&
+1415         fetchStatus[tid] != QuiescePending &&
+1416         !curMacroop;
+1417 }
+```
+
+
+## Rest of the tick function of the fetch. 
+### Issuing the Icache access for split access?\XXX{TODO}
+```cpp
+ 936     // Record number of instructions fetched this cycle for distribution.
+ 937     fetchNisnDist.sample(numInst);
+ 938 
+ 939     if (status_change) {
+ 940         // Change the fetch stage status if there was a status change.
+ 941         _status = updateFetchStatus();
+ 942     }
+ 943 
+ 944     // Issue the next I-cache request if possible.
+ 945     for (ThreadID i = 0; i < numThreads; ++i) {
+ 946         if (issuePipelinedIfetch[i]) {
+ 947             pipelineIcacheAccesses(i);
+ 948         }
+ 949     }
+ 950 
+ 951     // Send instructions enqueued into the fetch queue to decode.
+ 952     // Limit rate by fetchWidth.  Stall if decode is stalled.
+ 953     unsigned insts_to_decode = 0;
+ 954     unsigned available_insts = 0;
+ 955 
+ 956     for (auto tid : *activeThreads) {
+ 957         if (!stalls[tid].decode) {
+ 958             available_insts += fetchQueue[tid].size();
+ 959         }
+ 960     }
+ ```
+
+
+## Sending fetched instructions to decode stage
+*gem5/src/cpu/o3/fetch_impl.hh*
+```cpp
+ 961 
+ 962     // Pick a random thread to start trying to grab instructions from
+ 963     auto tid_itr = activeThreads->begin();
+ 964     std::advance(tid_itr, random_mt.random<uint8_t>(0, activeThreads->size() - 1));
+ 965 
+ 966     while (available_insts != 0 && insts_to_decode < decodeWidth) {
+ 967         ThreadID tid = *tid_itr;
+ 968         if (!stalls[tid].decode && !fetchQueue[tid].empty()) {
+ 969             const auto& inst = fetchQueue[tid].front();
+ 970             toDecode->insts[toDecode->size++] = inst;
+ 971             DPRINTF(Fetch, "[tid:%i] [sn:%llu] Sending instruction to decode "
+ 972                     "from fetch queue. Fetch queue size: %i.\n",
+ 973                     tid, inst->seqNum, fetchQueue[tid].size());
+ 974 
+ 975             wroteToTimeBuffer = true;
+ 976             fetchQueue[tid].pop_front();
+ 977             insts_to_decode++;
+ 978             available_insts--;
+ 979         }
+ 980 
+ 981         tid_itr++;
+ 982         // Wrap around if at end of active threads list
+ 983         if (tid_itr == activeThreads->end())
+ 984             tid_itr = activeThreads->begin();
+ 985     }
+ 986 
+ 987     // If there was activity this cycle, inform the CPU of it.
+ 988     if (wroteToTimeBuffer) {
+ 989         DPRINTF(Activity, "Activity this cycle.\n");
+ 990         cpu->activityThisCycle();
+ 991     }
+ 992 
+ 993     // Reset the number of the instruction we've fetched.
+ 994     numInst = 0;
+ 995 }   //end of the fetch.tick
+```
+The last job of the fetch stage is passing the fetched instructions
+to the next stage, decode stage. 
+One the above code, **toDecode** member field of the fetch 
+is used as an storage located in between the fetch and decode stage. 
+
+### FetchStruct: passing fetch stage's information to decode stage
+*gem5/src/cpu/o3/fetch.hh*
+```cpp
+431     //Might be annoying how this name is different than the queue.
+432     /** Wire used to write any information heading to decode. */
+433     typename TimeBuffer<FetchStruct>::wire toDecode;
+......
+458     /** Source of possible stalls. */
+459     struct Stalls {
+460         bool decode;
+461         bool drain;
+462     };
+463 
+464     /** Tracks which stages are telling fetch to stall. */
+465     Stalls stalls[Impl::MaxThreads];
+```
+The toDecode is declared as a wire class defined in the TimeBuffer class. 
+Also, because the TimerBuffer is a template class, 
+it passes the FetchStruct that contains all fetch stage's information
+required by the decode stage. Let's take a look at the FetchStruct 
+to understand which information is passed to the decode stage. 
+
+*gem5/src/cpu/o3/cpu_policy.hh*
+```cpp
+ 60 template<class Impl>
+ 61 struct SimpleCPUPolicy
+ 62 {
+ ......
+ 89     /** The struct for communication between fetch and decode. */
+ 90     typedef DefaultFetchDefaultDecode<Impl> FetchStruct;
+ 91 
+ 92     /** The struct for communication between decode and rename. */
+ 93     typedef DefaultDecodeDefaultRename<Impl> DecodeStruct;
+ 94 
+ 95     /** The struct for communication between rename and IEW. */
+ 96     typedef DefaultRenameDefaultIEW<Impl> RenameStruct;
+ 97 
+ 98     /** The struct for communication between IEW and commit. */
+ 99     typedef DefaultIEWDefaultCommit<Impl> IEWStruct;
+100 
+101     /** The struct for communication within the IEW stage. */
+102     typedef ::IssueStruct<Impl> IssueStruct;
+103 
+104     /** The struct for all backwards communication. */
+105     typedef TimeBufStruct<Impl> TimeStruct;
+```
+
+*gem5/src/cpu/o3/comm.h*
+```cpp
+ 55 /** Struct that defines the information passed from fetch to decode. */
+ 56 template<class Impl>
+ 57 struct DefaultFetchDefaultDecode {
+ 58     typedef typename Impl::DynInstPtr DynInstPtr;
+ 59 
+ 60     int size;
+ 61 
+ 62     DynInstPtr insts[Impl::MaxWidth];
+ 63     Fault fetchFault;
+ 64     InstSeqNum fetchFaultSN;
+ 65     bool clearFetchFault;
+ 66 };
+```
+Most importantly, it passes the 
+instructions fetched from the Icache. 
+
+### TimeBuffer::wire generic class representing wire
+The information passed from the decode stage to fetch stage is 
+represented as multiple wires conveying bits of information. 
+For that purpose, GEM5 provides wire class. 
+
+```cpp
+ 39 template <class T>
+ 40 class TimeBuffer
+ 41 {
+ 42   protected:
+ 43     int past;
+ 44     int future;
+ 45     unsigned size;
+ 46     int _id;
+ 47 
+ 48     char *data;
+ 49     std::vector<char *> index;
+ 50     unsigned base;
+ 51 
+ 52     void valid(int idx) const
+ 53     {
+ 54         assert (idx >= -past && idx <= future);
+ 55     }
+ 56 
+ 57   public:
+ 58     friend class wire;
+ 59     class wire
+ 60     {
+ 61         friend class TimeBuffer;
+ 62       protected:
+ 63         TimeBuffer<T> *buffer;
+ 64         int index;
+ 65 
+ 66         void set(int idx)
+ 67         {   
+ 68             buffer->valid(idx);
+ 69             index = idx;
+ 70         }
+ 71 
+ 72         wire(TimeBuffer<T> *buf, int i)
+ 73             : buffer(buf), index(i)
+ 74         { }
+ 75 
+ 76       public:
+ 77         wire()
+ 78         { }
+ 79 
+ 80         wire(const wire &i)
+ 81             : buffer(i.buffer), index(i.index)
+ 82         { }
+ 83 
+ 84         const wire &operator=(const wire &i)
+ 85         {
+ 86             buffer = i.buffer;
+ 87             set(i.index);
+ 88             return *this;
+ 89         }
+ 90 
+ 91         const wire &operator=(int idx)
+ 92         {
+ 93             set(idx);
+ 94             return *this;
+ 95         }
+ 96 
+ 97         const wire &operator+=(int offset)
+ 98         {
+ 99             set(index + offset);
+100             return *this;
+101         }
+102 
+103         const wire &operator-=(int offset)
+104         {
+105             set(index - offset);
+106             return *this;
+107         }
+108 
+109         wire &operator++()
+110         {
+111             set(index + 1);
+112             return *this;
+113         }
+114 
+115         wire &operator++(int)
+116         {
+117             int i = index;
+118             set(index + 1);
+119             return wire(this, i);
+120         }
+121 
+122         wire &operator--()
+123         {
+124             set(index - 1);
+125             return *this;
+126         }
+127 
+128         wire &operator--(int)
+129         {
+130             int i = index;
+131             set(index - 1);
+132             return wire(this, i);
+133         }
+134         T &operator*() const { return *buffer->access(index); }
+135         T *operator->() const { return buffer->access(index); }
+136     };
+......
+192   protected:
+193     //Calculate the index into this->index for element at position idx
+194     //relative to now
+195     inline int calculateVectorIndex(int idx) const
+196     {
+197         //Need more complex math here to calculate index.
+198         valid(idx);
+199 
+200         int vector_index = idx + base;
+201         if (vector_index >= (int)size) {
+202             vector_index -= size;
+203         } else if (vector_index < 0) {
+204             vector_index += size;
+205         }
+206 
+207         return vector_index;
+208     }
+209 
+210   public:
+211     T *access(int idx)
+212     {
+213         int vector_index = calculateVectorIndex(idx);
+214 
+215         return reinterpret_cast<T *>(index[vector_index]);
+216     }
+```
+As shown in the Line 970 of the tick function of the fetch stage,
+it references insts member field through the -> operator. 
+Because toDecode is declared as the TimeBuffer::wire, and 
+this class overrides the -> operator, it will invoke the
+operator function shown in line 135. 
+\XXX{ it needs to be explained more clearly with smartpointer..}

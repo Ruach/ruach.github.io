@@ -1,216 +1,4 @@
----
-layout: post
-titile: "Microops in GEM5"
-categories: GEM5, Microops
----
-As we've seen in the macroop to microop parsing,
-each microop invocation in macrocode definition
-can be interpreted python class
-associated with that microop.
-From the retrieved python microop,
-it can further retrieve automatically generated CPP class
-that are actually instantiated by 
-CPP macroop class.
-
-In this posting, we will take a look at limm microop as example.
-When you open the isa file in the microops,
-you can find that there exists two categories of blocks:
-template and let block.
-Let's try to look at what are those blocks one by one
-
-##Let blocks: define python class and generate CPP class for microop
-*gem5/src/arch/x86/isa/microops/limmop.isa*
-```python
-{% raw %}
-105 let {{
-106     class LimmOp(X86Microop):
-107         def __init__(self, dest, imm, dataSize="env.dataSize"):
-108             self.className = "Limm"
-109             self.mnemonic = "limm"
-110             self.dest = dest
-111             if isinstance(imm, (int, long)):
-112                 imm = "ULL(%d)" % imm
-113             self.imm = imm
-114             self.dataSize = dataSize
-115
-116         def getAllocator(self, microFlags):
-117             allocString = '''
-118                 (%(dataSize)s >= 4) ?
-119                     (StaticInstPtr)(new %(class_name)sBig(machInst,
-120                         macrocodeBlock, %(flags)s, %(dest)s, %(imm)s,
-121                         %(dataSize)s)) :
-122                     (StaticInstPtr)(new %(class_name)s(machInst,
-123                         macrocodeBlock, %(flags)s, %(dest)s, %(imm)s,
-124                         %(dataSize)s))
-125             '''
-126             allocator = allocString % {
-127                 "class_name" : self.className,
-128                 "mnemonic" : self.mnemonic,
-129                 "flags" : self.microFlagsText(microFlags),
-130                 "dest" : self.dest, "imm" : self.imm,
-131                 "dataSize" : self.dataSize}
-132             return allocator
-133
-134     microopClasses["limm"] = LimmOp
-...
-161 let {{
-162     # Build up the all register version of this micro op
-163     iops = [InstObjParams("limm", "Limm", 'X86MicroopBase',
-164             {"code" : "DestReg = merge(DestReg, imm, dataSize);"}),
-165             InstObjParams("limm", "LimmBig", 'X86MicroopBase',
-166             {"code" : "DestReg = imm & mask(dataSize * 8);"})]
-167     for iop in iops:
-168         header_output += MicroLimmOpDeclare.subst(iop)
-169         decoder_output += MicroLimmOpConstructor.subst(iop)
-170         decoder_output += MicroLimmOpDisassembly.subst(iop)
-171         exec_output += MicroLimmOpExecute.subst(iop)
-{% endraw %}
-```
-###Define python microop class
-When we look at the first let block,
-we can find familiar python class definition for limm microop.
-As we've seen in the previous posting,
-macroop container initiates python microop classes.
-
-This python microop class, 
-especially getAllocator definition of it,
-is used in CPP macroop class generation.
-As shown in the constructor part of the LimmOp class, 
-it sets classname field ans *Limm* 
-which is the CPP class name of Limm microop.
-Also, based on this name,
-getAllocator function generates doc string 
-that contains instantiation code for CPP microop class Limm.
-
-###Generate CPP microop class
-To initiate CPP instance of Limm microop class,
-actual implementation of class declaration, definition, 
-constructor, and memeber functions
-of the microop class.
-
-The second let block in the above code 
-retrieves all implementation 
-required for generating CPP microop class. 
-It mainly makes use of InstObjParams and several templates.
-
-Although each microop class can be implemented one by one 
-by the GEM5 programmar, 
-because several microops have similar semantics
-it makes use of general templates and 
-string substitution that customize templates 
-for each microops. 
-
-For this microop specific accommodation to templates,
-it makes use of *InstObjParams*.
-One microop specific information 
-can be represented by one InstObjParams instance.
-For example, 
-code part of it can vary depending on the microop.
-
-###InstObjParams required for generating different microop implementation
-*gem5/src/arch/isa_parser.py*
-```python
-1413 class InstObjParams(object):
-1414     def __init__(self, parser, mnem, class_name, base_class = '',
-1415                  snippets = {}, opt_args = []):
-1416         self.mnemonic = mnem
-1417         self.class_name = class_name
-1418         self.base_class = base_class
-1419         if not isinstance(snippets, dict):
-1420             snippets = {'code' : snippets}
-1421         compositeCode = ' '.join(map(str, snippets.values()))
-1422         self.snippets = snippets
-1423
-1424         self.operands = OperandList(parser, compositeCode)
-1425
-1426         # The header of the constructor declares the variables to be used
-1427         # in the body of the constructor.
-1428         header = ''
-1429         header += '\n\t_numSrcRegs = 0;'
-1430         header += '\n\t_numDestRegs = 0;'
-1431         header += '\n\t_numFPDestRegs = 0;'
-1432         header += '\n\t_numVecDestRegs = 0;'
-1433         header += '\n\t_numVecElemDestRegs = 0;'
-1434         header += '\n\t_numVecPredDestRegs = 0;'
-1435         header += '\n\t_numIntDestRegs = 0;'
-1436         header += '\n\t_numCCDestRegs = 0;'
-1437
-1438         self.constructor = header + \
-1439                            self.operands.concatAttrStrings('constructor')
-1440
-1441         self.flags = self.operands.concatAttrLists('flags')
-1442
-1443         self.op_class = None
-1444
-1445         # Optional arguments are assumed to be either StaticInst flags
-1446         # or an OpClass value.  To avoid having to import a complete
-1447         # list of these values to match against, we do it ad-hoc
-1448         # with regexps.
-1449         for oa in opt_args:
-1450             if instFlagRE.match(oa):
-1451                 self.flags.append(oa)
-1452             elif opClassRE.match(oa):
-1453                 self.op_class = oa
-1454             else:
-1455                 error('InstObjParams: optional arg "%s" not recognized '
-1456                       'as StaticInst::Flag or OpClass.' % oa)
-1457
-1458         # Make a basic guess on the operand class if not set.
-1459         # These are good enough for most cases.
-1460         if not self.op_class:
-1461             if 'IsStore' in self.flags:
-1462                 # The order matters here: 'IsFloating' and 'IsInteger' are
-1463                 # usually set in FP instructions because of the base
-1464                 # register
-1465                 if 'IsFloating' in self.flags:
-1466                     self.op_class = 'FloatMemWriteOp'
-1467                 else:
-1468                     self.op_class = 'MemWriteOp'
-1469             elif 'IsLoad' in self.flags or 'IsPrefetch' in self.flags:
-1470                 # The order matters here: 'IsFloating' and 'IsInteger' are
-1471                 # usually set in FP instructions because of the base
-1472                 # register
-1473                 if 'IsFloating' in self.flags:
-1474                     self.op_class = 'FloatMemReadOp'
-1475                 else:
-1476                     self.op_class = 'MemReadOp'
-1477             elif 'IsFloating' in self.flags:
-1478                 self.op_class = 'FloatAddOp'
-1479             elif 'IsVector' in self.flags:
-1480                 self.op_class = 'SimdAddOp'
-1481             else:
-1482                 self.op_class = 'IntAluOp'
-1483
-1484         # add flag initialization to contructor here to include
-1485         # any flags added via opt_args
-1486         self.constructor += makeFlagConstructor(self.flags)
-1487
-1488         # if 'IsFloating' is set, add call to the FP enable check
-1489         # function (which should be provided by isa_desc via a declare)
-1490         # if 'IsVector' is set, add call to the Vector enable check
-1491         # function (which should be provided by isa_desc via a declare)
-1492         if 'IsFloating' in self.flags:
-1493             self.fp_enable_check = 'fault = checkFpEnableFault(xc);'
-1494         elif 'IsVector' in self.flags:
-1495             self.fp_enable_check = 'fault = checkVecEnableFault(xc);'
-1496         else:
-1497             self.fp_enable_check = ''
-```
-
-##templates and string substitution
-When we look at the last let block once again,
-we can find that four templates are used with substitution
-for generating header, decoder, and exec output.
-The generated implementation are respectively written in 
-decoder-ns.hh.inc, decoder-ns.cc.inc, exec-ns.cc.inc files.
-
-Templates generating constructor and execute function 
-are mostly important in Limm microop class generation.
-Also it provides enough information 
-to understand rest of the templates,
-let's take a look at MicroLimmOpExecute and MicroLimmOpConstructor.
-
-###MicroLimmOpConstructor: generate constructor for Limm microop class
+### MicroLimmOpConstructor: generate constructor for Limm microop class
 ```python
 {% raw %}
  92 def template MicroLimmOpConstructor {{
@@ -232,7 +20,7 @@ Note that this constructor is used
 to instantiate Limm microop object
 by the getAllocator function.
 
-###Mystery-between python operand and cpp operand
+### Mystery-between python operand and cpp operand
 Because this constructor invocation code is generated 
 through the LimmOp python class,
 all the parameters required for Limm microop construction
@@ -374,14 +162,14 @@ is used to get microop specific constructor codes
 we need to understand how the attribute is 
 generated by the OperandList.
 
-###OperandList parse operands from code snippets
+### OperandList parse operands from code snippets
 OperandList parses code snippets of microop
 and generate *Operand* objects 
 representing arguments of microop.
 Because each Operand 
 provides useful information to 
 constructor creation and defining execute function of microop,
-it should be parsed before substituting template.
+it should be parsed before substituting templates
 
 OperandList parses code snippets with 
 regular expression and 
@@ -409,7 +197,7 @@ with the merged result,
 we can infer that DestReg is also used a destination register.
 
 
-###Deep dive into OperandList
+### Deep dive into OperandList
 {% raw %}
 ```python
 1127 class OperandList(object):

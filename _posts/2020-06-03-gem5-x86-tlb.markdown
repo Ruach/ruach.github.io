@@ -25,12 +25,6 @@ and what operations should be done by the TLB component?
  430     SimpleExecContext &t_info = *threadInfo[curThread];
  431     SimpleThread* thread = t_info.thread;
  432 
- 433     if (flags & Request::PREFETCH_EN_CACHE) {
- 434         ENHandler handler = thread->readMiscRegNoEffect(MISCREG_EVENT_NOTIFIER);
- 435         uint64_t addr = handler.addr << 8 | handler.redZone;
- 436         DPRINTF(EnCache, "TimingSimpleCPU::initiateMemRead(): ENHandler address for cache is user:%#x\n", addr);
- 437     }
- 438 
  439     Fault fault;
  440     const int asid = 0;
  441     const Addr pc = thread->instAddr();

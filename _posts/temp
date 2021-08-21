@@ -95,7 +95,7 @@ to the dependGraph to generate dependency (line 1395).
 Due to the complexity of the DependencyGraph, I will explain more details here. 
 
 
-
+### Set producer instruction that generates the value for the register 
 ```cpp
 1414 template <class Impl>
 1415 void
@@ -133,9 +133,168 @@ Due to the complexity of the DependencyGraph, I will explain more details here.
 1447     }
 1448 }
 ```
+Consumer instructions wait until the registers become available.
+However, to make those registers to be free, some instructions (producer) 
+should generate result to be written to the registers. 
+When a instruction has a destination register to be filled out, 
+the **addToProducers** function helps the instruction to be registered 
+as the producer instruction of those destination registers. 
+Because the first entry of the dependGraph of specific register should be 
+always dedicated for the producer instruction,
+it should be empty when the addToProducers function is invoked (line 1436-1441).
+If it is the initial entry of the dependGraph, 
+it sets the current instruction as the producer of that register. 
 
 
 ### When the waiting register becomes ready? Who deliver this information?
+```cpp
+1453 void
+1454 DefaultIEW<Impl>::writebackInsts()
+1455 {
+1456     // Loop through the head of the time buffer and wake any
+1457     // dependents.  These instructions are about to write back.  Also
+1458     // mark scoreboard that this instruction is finally complete.
+1459     // Either have IEW have direct access to scoreboard, or have this
+1460     // as part of backwards communication.
+1461     for (int inst_num = 0; inst_num < wbWidth &&
+1462              toCommit->insts[inst_num]; inst_num++) {
+1463         DynInstPtr inst = toCommit->insts[inst_num];
+1464         ThreadID tid = inst->threadNumber;
+1465 
+1466         DPRINTF(IEW, "Sending instructions to commit, [sn:%lli] PC %s.\n",
+1467                 inst->seqNum, inst->pcState());
+1468 
+1469         iewInstsToCommit[tid]++;
+1470         // Notify potential listeners that execution is complete for this
+1471         // instruction.
+1472         ppToCommit->notify(inst);
+1473 
+1474         // Some instructions will be sent to commit without having
+1475         // executed because they need commit to handle them.
+1476         // E.g. Strictly ordered loads have not actually executed when they
+1477         // are first sent to commit.  Instead commit must tell the LSQ
+1478         // when it's ready to execute the strictly ordered load.
+1479         if (!inst->isSquashed() && inst->isExecuted() && inst->getFault() == NoFault) {
+1480             int dependents = instQueue.wakeDependents(inst);
+1481 
+1482             for (int i = 0; i < inst->numDestRegs(); i++) {
+1483                 // Mark register as ready if not pinned
+1484                 if (inst->renamedDestRegIdx(i)->
+1485                         getNumPinnedWritesToComplete() == 0) {
+1486                     DPRINTF(IEW,"Setting Destination Register %i (%s)\n",
+1487                             inst->renamedDestRegIdx(i)->index(),
+1488                             inst->renamedDestRegIdx(i)->className());
+1489                     scoreboard->setReg(inst->renamedDestRegIdx(i));
+1490                 }
+1491             }
+1492 
+1493             if (dependents) {
+1494                 producerInst[tid]++;
+1495                 consumerInst[tid]+= dependents;
+1496             }
+1497             writebackCount[tid]++;
+1498         }
+1499     }
+1500 }
+```
+
+```cpp
+ 988 template <class Impl>
+ 989 int
+ 990 InstructionQueue<Impl>::wakeDependents(const DynInstPtr &completed_inst)
+ 991 {
+ 992     int dependents = 0;
+ 993 
+ 994     // The instruction queue here takes care of both floating and int ops
+ 995     if (completed_inst->isFloating()) {
+ 996         fpInstQueueWakeupAccesses++;
+ 997     } else if (completed_inst->isVector()) {
+ 998         vecInstQueueWakeupAccesses++;
+ 999     } else {
+1000         intInstQueueWakeupAccesses++;
+1001     }
+1002 
+1003     DPRINTF(IQ, "Waking dependents of completed instruction.\n");
+1004 
+1005     assert(!completed_inst->isSquashed());
+1006 
+1007     // Tell the memory dependence unit to wake any dependents on this
+1008     // instruction if it is a memory instruction.  Also complete the memory
+1009     // instruction at this point since we know it executed without issues.
+1010     // @todo: Might want to rename "completeMemInst" to something that
+1011     // indicates that it won't need to be replayed, and call this
+1012     // earlier.  Might not be a big deal.
+1013     if (completed_inst->isMemRef()) {
+1014         memDepUnit[completed_inst->threadNumber].wakeDependents(completed_inst);
+1015         completeMemInst(completed_inst);
+1016     } else if (completed_inst->isMemBarrier() ||
+1017                completed_inst->isWriteBarrier()) {
+1018         memDepUnit[completed_inst->threadNumber].completeBarrier(completed_inst);
+1019     }
+1020 
+1021     for (int dest_reg_idx = 0;
+1022          dest_reg_idx < completed_inst->numDestRegs();
+1023          dest_reg_idx++)
+1024     {
+1025         PhysRegIdPtr dest_reg =
+1026             completed_inst->renamedDestRegIdx(dest_reg_idx);
+1027 
+1028         // Special case of uniq or control registers.  They are not
+1029         // handled by the IQ and thus have no dependency graph entry.
+1030         if (dest_reg->isFixedMapping()) {
+1031             DPRINTF(IQ, "Reg %d [%s] is part of a fix mapping, skipping\n",
+1032                     dest_reg->index(), dest_reg->className());
+1033             continue;
+1034         }
+1035 
+1036         // Avoid waking up dependents if the register is pinned
+1037         dest_reg->decrNumPinnedWritesToComplete();
+1038         if (dest_reg->isPinned())
+1039             completed_inst->setPinnedRegsWritten();
+1040 
+1041         if (dest_reg->getNumPinnedWritesToComplete() != 0) {
+1042             DPRINTF(IQ, "Reg %d [%s] is pinned, skipping\n",
+1043                     dest_reg->index(), dest_reg->className());
+1044             continue;
+1045         }
+1046 
+1047         DPRINTF(IQ, "Waking any dependents on register %i (%s).\n",
+1048                 dest_reg->index(),
+1049                 dest_reg->className());
+1050 
+1051         //Go through the dependency chain, marking the registers as
+1052         //ready within the waiting instructions.
+1053         DynInstPtr dep_inst = dependGraph.pop(dest_reg->flatIndex());
+1054 
+1055         while (dep_inst) {
+1056             DPRINTF(IQ, "Waking up a dependent instruction, [sn:%llu] "
+1057                     "PC %s.\n", dep_inst->seqNum, dep_inst->pcState());
+1058 
+1059             // Might want to give more information to the instruction
+1060             // so that it knows which of its source registers is
+1061             // ready.  However that would mean that the dependency
+1062             // graph entries would need to hold the src_reg_idx.
+1063             dep_inst->markSrcRegReady();
+1064 
+1065             addIfReady(dep_inst);
+1066 
+1067             dep_inst = dependGraph.pop(dest_reg->flatIndex());
+1068 
+1069             ++dependents;
+1070         }
+1071 
+1072         // Reset the head node now that all of its dependents have
+1073         // been woken up.
+1074         assert(dependGraph.empty(dest_reg->flatIndex()));
+1075         dependGraph.clearInst(dest_reg->flatIndex());
+1076 
+1077         // Mark the scoreboard as having that register ready.
+1078         regScoreboard[dest_reg->flatIndex()] = true;
+1079     }
+1080     return dependents;
+1081 }
+```
+
 
 
 
@@ -199,10 +358,9 @@ let's take a look at the DependencyEntry class.
  61 };
 ```
 
-It contains the inst member field notifies 
+It contains the inst member field pointing
 which instruction is the producer instruction of this register.
 Also, it maintains the list of consumers as the next member field. 
-
 
 
 ### insert: generate new dependency on register
@@ -227,6 +385,14 @@ Also, it maintains the list of consumers as the next member field.
 199     ++memAllocCounter;
 200 }
 ```
+For the soure registers (used for read), 
+especially for unavailable registers of the instruction at the iew stage, 
+it should be tracked by the DpendencyGraph because another instruction
+will generate the data for the dependent register that current instruction is waiting for. 
+For that purpose, insert function allows the instruction to be 
+pused back right after the head of the dependGraph indexed with 
+the current unavailable register (idx). 
+
 
 ### setInst: set producer of the dependent register 
 ```cpp
@@ -234,4 +400,11 @@ Also, it maintains the list of consumers as the next member field.
  95     void setInst(PhysRegIndex idx, const DynInstPtr &new_inst)
  96     { dependGraph[idx].inst = new_inst; }
 ```
+All the entries except the first one is maintained for the consumer 
+waiting the registers to be available. However, the first entry 
+of the dependGraph associated with each register is maintained for the 
+producer instruction who will generate the register value 
+at the end of the execution. For that purpose, 
+setInst is provided to set the first entry of the dependGraph for specific register 
+to contains the instruction of the producer. 
 

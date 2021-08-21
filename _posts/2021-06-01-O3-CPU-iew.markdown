@@ -371,7 +371,7 @@ with the associated method provided by the queues, some of them should also be i
 instruction queue. Based on the instruction type, add_to_iq flag is set.
 When this flag is set, the instruction should be added to the instQueue (line 1151-1153). 
 However, for the nonspeculative instruction, they are not managed by the instQueue as 
-normal isntructions. For the details, we will see insertNonSpec function soon.
+normal instructions. For the details, we will see insertNonSpec function soon.
 
 ### End of the dispatching
 ```cpp
@@ -486,70 +486,339 @@ it inserts new entries to the instruction list managed by the instruction queue.
 ```
 Inserting the instruction to the list is done by simple push_back operation of the list.
 However, it invokes two important functions: addToProducers and addToDependents.
+These two functions generates producer and consumer dependency among instructions 
+for registers. When one instruction waits until the specific register's value become ready (consumer),
+it should be tracked by some hardware component. Also, when the data becomes ready 
+as a result of execution of one instruction (producer), it should be forwarded to the 
+consumers waiting for the value. For that purpose, GEM5 utilize the DependencyGraph. 
+This will be explained in the other posting in detail. 
+After producing dependency for the unavailable registers, 
+if the instruction reference memory while its execution,
+it should be specially handled by the memory dependency unit. 
+This details will also be explained together with the DependencyGraph later.
+And at the end of the insert function, it adds instruction 
+to the readyInsts buffer if all the registers are available. 
 
-### addToDependents
 ```cpp
-1366 template <class Impl>
-1367 bool
-1368 InstructionQueue<Impl>::addToDependents(const DynInstPtr &new_inst)
-1369 {
-1370     // Loop through the instruction's source registers, adding
-1371     // them to the dependency list if they are not ready.
-1372     int8_t total_src_regs = new_inst->numSrcRegs();
-1373     bool return_val = false;
-1374 
-1375     for (int src_reg_idx = 0;
-1376          src_reg_idx < total_src_regs;
-1377          src_reg_idx++)
-1378     {
-1379         // Only add it to the dependency graph if it's not ready.
-1380         if (!new_inst->isReadySrcRegIdx(src_reg_idx)) {
-1381             PhysRegIdPtr src_reg = new_inst->renamedSrcRegIdx(src_reg_idx);
-1382 
-1383             // Check the IQ's scoreboard to make sure the register
-1384             // hasn't become ready while the instruction was in flight
-1385             // between stages.  Only if it really isn't ready should
-1386             // it be added to the dependency graph.
-1387             if (src_reg->isFixedMapping()) {
-1388                 continue;
-1389             } else if (!regScoreboard[src_reg->flatIndex()]) {
-1390                 DPRINTF(IQ, "Instruction PC %s has src reg %i (%s) that "
-1391                         "is being added to the dependency chain.\n",
-1392                         new_inst->pcState(), src_reg->index(),
-1393                         src_reg->className());
-1394 
-1395                 dependGraph.insert(src_reg->flatIndex(), new_inst);
-1396 
-1397                 // Change the return value to indicate that something
-1398                 // was added to the dependency graph.
-1399                 return_val = true;
-1400             } else {
-1401                 DPRINTF(IQ, "Instruction PC %s has src reg %i (%s) that "
-1402                         "became ready before it reached the IQ.\n",
-1403                         new_inst->pcState(), src_reg->index(),
-1404                         src_reg->className());
-1405                 // Mark a register ready within the instruction.
-1406                 new_inst->markSrcRegReady(src_reg_idx);
-1407             }
-1408         }
-1409     }
-1410 
-1411     return return_val;
-1412 }
+1450 template <class Impl>
+1451 void
+1452 InstructionQueue<Impl>::addIfReady(const DynInstPtr &inst)
+1453 {
+1454     // If the instruction now has all of its source registers
+1455     // available, then add it to the list of ready instructions.
+1456     if (inst->readyToIssue()) {
+1457 
+1458         //Add the instruction to the proper ready list.
+1459         if (inst->isMemRef()) {
+1460 
+1461             DPRINTF(IQ, "Checking if memory instruction can issue.\n");
+1462 
+1463             // Message to the mem dependence unit that this instruction has
+1464             // its registers ready.
+1465             memDepUnit[inst->threadNumber].regsReady(inst);
+1466 
+1467             return;
+1468         }
+1469 
+1470         OpClass op_class = inst->opClass();
+1471 
+1472         DPRINTF(IQ, "Instruction is ready to issue, putting it onto "
+1473                 "the ready list, PC %s opclass:%i [sn:%llu].\n",
+1474                 inst->pcState(), op_class, inst->seqNum);
+1475 
+1476         readyInsts[op_class].push(inst);
+1477 
+1478         // Will need to reorder the list if either a queue is not on the list,
+1479         // or it has an older instruction than last time.
+1480         if (!queueOnList[op_class]) {
+1481             addToOrderList(op_class);
+1482         } else if (readyInsts[op_class].top()->seqNum  <
+1483                    (*readyIt[op_class]).oldestInst) {
+1484             listOrder.erase(readyIt[op_class]);
+1485             addToOrderList(op_class);
+1486         }
+1487     }
+1488 }
 ```
 
+## Execute
+To understand what should be done after dispatching the instructions,
+let's go back to the tick function of the iew stage. 
+```cpp
+1532     if (exeStatus != Squashing) {
+1533         executeInsts();
+1534 
+1535         writebackInsts();
+1536 
+1537         // Have the instruction queue try to schedule any ready instructions.
+1538         // (In actuality, this scheduling is for instructions that will
+1539         // be executed next cycle.)
+1540         instQueue.scheduleReadyInsts();
+1541 
+1542         // Also should advance its own time buffers if the stage ran.
+1543         // Not the best place for it, but this works (hopefully).
+1544         issueToExecQueue.advance();
+1545     }
+```
+Execute (IEW::executeInsts()). Here execute() function of the compute instruction is invoked and sent to commit. Please note execute() will write results to the destiniation register.
+Writeback (IEW::writebackInsts()). Here InstructionQueue::wakeDependents() is invoked. Dependent instructions will be added to the ready list for scheduling.
+
+### executeInsts
+```cpp
+1205 template <class Impl>
+1206 void
+1207 DefaultIEW<Impl>::executeInsts()
+1208 {
+1209     wbNumInst = 0;
+1210     wbCycle = 0;
+1211 
+1212     list<ThreadID>::iterator threads = activeThreads->begin();
+1213     list<ThreadID>::iterator end = activeThreads->end();
+1214 
+1215     while (threads != end) {
+1216         ThreadID tid = *threads++;
+1217         fetchRedirect[tid] = false;
+1218     }
+1219 
+1220     // Uncomment this if you want to see all available instructions.
+1221     // @todo This doesn't actually work anymore, we should fix it.
+1222 //    printAvailableInsts();
+1223 
+1224     // Execute/writeback any instructions that are available.
+1225     int insts_to_execute = fromIssue->size;
+1226     int inst_num = 0;
+1227     for (; inst_num < insts_to_execute;
+1228           ++inst_num) {
+1229 
+1230         DPRINTF(IEW, "Execute: Executing instructions from IQ.\n");
+1231 
+1232         DynInstPtr inst = instQueue.getInstToExecute();
+1233 
+1234         DPRINTF(IEW, "Execute: Processing PC %s, [tid:%i] [sn:%llu].\n",
+1235                 inst->pcState(), inst->threadNumber,inst->seqNum);
+1236 
+1237         // Notify potential listeners that this instruction has started
+1238         // executing
+1239         ppExecute->notify(inst);
+1240 
+1241         // Check if the instruction is squashed; if so then skip it
+1242         if (inst->isSquashed()) {
+1243             DPRINTF(IEW, "Execute: Instruction was squashed. PC: %s, [tid:%i]"
+1244                          " [sn:%llu]\n", inst->pcState(), inst->threadNumber,
+1245                          inst->seqNum);
+1246 
+1247             // Consider this instruction executed so that commit can go
+1248             // ahead and retire the instruction.
+1249             inst->setExecuted();
+1250 
+1251             // Not sure if I should set this here or just let commit try to
+1252             // commit any squashed instructions.  I like the latter a bit more.
+1253             inst->setCanCommit();
+1254 
+1255             ++iewExecSquashedInsts;
+1256 
+1257             continue;
+1258         }
+1259 
+1260         Fault fault = NoFault;
+1261 
+1262         // Execute instruction.
+1263         // Note that if the instruction faults, it will be handled
+1264         // at the commit stage.
+1265         if (inst->isMemRef()) {
+1266             DPRINTF(IEW, "Execute: Calculating address for memory "
+1267                     "reference.\n");
+1268 
+1269             // Tell the LDSTQ to execute this instruction (if it is a load).
+1270             if (inst->isAtomic()) {
+1271                 // AMOs are treated like store requests
+1272                 fault = ldstQueue.executeStore(inst);
+1273 
+1274                 if (inst->isTranslationDelayed() &&
+1275                     fault == NoFault) {
+1276                     // A hw page table walk is currently going on; the
+1277                     // instruction must be deferred.
+1278                     DPRINTF(IEW, "Execute: Delayed translation, deferring "
+1279                             "store.\n");
+1280                     instQueue.deferMemInst(inst);
+1281                     continue;
+1282                 }
+1283             } else if (inst->isLoad()) {
+1284                 // Loads will mark themselves as executed, and their writeback
+1285                 // event adds the instruction to the queue to commit
+1286                 fault = ldstQueue.executeLoad(inst);
+1287 
+1288                 if (inst->isTranslationDelayed() &&
+1289                     fault == NoFault) {
+1290                     // A hw page table walk is currently going on; the
+1291                     // instruction must be deferred.
+1292                     DPRINTF(IEW, "Execute: Delayed translation, deferring "
+1293                             "load.\n");
+1294                     instQueue.deferMemInst(inst);
+1295                     continue;
+1296                 }
+1297 
+1298                 if (inst->isDataPrefetch() || inst->isInstPrefetch()) {
+1299                     inst->fault = NoFault;
+1300                 }
+1301             } else if (inst->isStore()) {
+1302                 fault = ldstQueue.executeStore(inst);
+1303 
+1304                 if (inst->isTranslationDelayed() &&
+1305                     fault == NoFault) {
+1306                     // A hw page table walk is currently going on; the
+1307                     // instruction must be deferred.
+1308                     DPRINTF(IEW, "Execute: Delayed translation, deferring "
+1309                             "store.\n");
+1310                     instQueue.deferMemInst(inst);
+1311                     continue;
+1312                 }
+1313 
+1314                 // If the store had a fault then it may not have a mem req
+1315                 if (fault != NoFault || !inst->readPredicate() ||
+1316                         !inst->isStoreConditional()) {
+1317                     // If the instruction faulted, then we need to send it along
+1318                     // to commit without the instruction completing.
+1319                     // Send this instruction to commit, also make sure iew stage
+1320                     // realizes there is activity.
+1321                     inst->setExecuted();
+1322                     instToCommit(inst);
+1323                     activityThisCycle();
+1324                 }
+1325 
+1326                 // Store conditionals will mark themselves as
+1327                 // executed, and their writeback event will add the
+1328                 // instruction to the queue to commit.
+1329             } else {
+1330                 panic("Unexpected memory type!\n");
+1331             }
+1332 
+1333         } else {
+1334             // If the instruction has already faulted, then skip executing it.
+1335             // Such case can happen when it faulted during ITLB translation.
+1336             // If we execute the instruction (even if it's a nop) the fault
+1337             // will be replaced and we will lose it.
+1338             if (inst->getFault() == NoFault) {
+1339                 inst->execute();
+1340                 if (!inst->readPredicate())
+1341                     inst->forwardOldRegs();
+1342             }
+1343 
+1344             inst->setExecuted();
+1345 
+1346             instToCommit(inst);
+1347         }
+1348 
+1349         updateExeInstStats(inst);
+1350 
+1351         // Check if branch prediction was correct, if not then we need
+1352         // to tell commit to squash in flight instructions.  Only
+1353         // handle this if there hasn't already been something that
+1354         // redirects fetch in this group of instructions.
+1355 
+1356         // This probably needs to prioritize the redirects if a different
+1357         // scheduler is used.  Currently the scheduler schedules the oldest
+1358         // instruction first, so the branch resolution order will be correct.
+1359         ThreadID tid = inst->threadNumber;
+1360 
+1361         if (!fetchRedirect[tid] ||
+1362             !toCommit->squash[tid] ||
+1363             toCommit->squashedSeqNum[tid] > inst->seqNum) {
+1364 
+1365             // Prevent testing for misprediction on load instructions,
+1366             // that have not been executed.
+1367             bool loadNotExecuted = !inst->isExecuted() && inst->isLoad();
+1368 
+1369             if (inst->mispredicted() && !loadNotExecuted) {
+1370                 fetchRedirect[tid] = true;
+1371 
+1372                 DPRINTF(IEW, "[tid:%i] [sn:%llu] Execute: "
+1373                         "Branch mispredict detected.\n",
+1374                         tid,inst->seqNum);
+1375                 DPRINTF(IEW, "[tid:%i] [sn:%llu] "
+1376                         "Predicted target was PC: %s\n",
+1377                         tid,inst->seqNum,inst->readPredTarg());
+1378                 DPRINTF(IEW, "[tid:%i] [sn:%llu] Execute: "
+1379                         "Redirecting fetch to PC: %s\n",
+1380                         tid,inst->seqNum,inst->pcState());
+1381                 // If incorrect, then signal the ROB that it must be squashed.
+1382                 squashDueToBranch(inst, tid);
+1383 
+1384                 ppMispredict->notify(inst);
+1385 
+1386                 if (inst->readPredTaken()) {
+1387                     predictedTakenIncorrect++;
+1388                 } else {
+1389                     predictedNotTakenIncorrect++;
+1390                 }
+1391             } else if (ldstQueue.violation(tid)) {
+1392                 assert(inst->isMemRef());
+1393                 // If there was an ordering violation, then get the
+1394                 // DynInst that caused the violation.  Note that this
+1395                 // clears the violation signal.
+1396                 DynInstPtr violator;
+1397                 violator = ldstQueue.getMemDepViolator(tid);
+1398 
+1399                 DPRINTF(IEW, "LDSTQ detected a violation. Violator PC: %s "
+1400                         "[sn:%lli], inst PC: %s [sn:%lli]. Addr is: %#x.\n",
+1401                         violator->pcState(), violator->seqNum,
+1402                         inst->pcState(), inst->seqNum, inst->physEffAddr);
+1403 
+1404                 fetchRedirect[tid] = true;
+1405 
+1406                 // Tell the instruction queue that a violation has occured.
+1407                 instQueue.violation(inst, violator);
+1408 
+1409                 // Squash.
+1410                 squashDueToMemOrder(violator, tid);
+1411 
+1412                 ++memOrderViolationEvents;
+1413             }
+1414         } else {
+1415             // Reset any state associated with redirects that will not
+1416             // be used.
+1417             if (ldstQueue.violation(tid)) {
+1418                 assert(inst->isMemRef());
+1419 
+1420                 DynInstPtr violator = ldstQueue.getMemDepViolator(tid);
+1421 
+1422                 DPRINTF(IEW, "LDSTQ detected a violation.  Violator PC: "
+1423                         "%s, inst PC: %s.  Addr is: %#x.\n",
+1424                         violator->pcState(), inst->pcState(),
+1425                         inst->physEffAddr);
+1426                 DPRINTF(IEW, "Violation will not be handled because "
+1427                         "already squashing\n");
+1428 
+1429                 ++memOrderViolationEvents;
+1430             }
+1431         }
+1432     }
+1433 
+1434     // Update and record activity if we processed any instructions.
+1435     if (inst_num) {
+1436         if (exeStatus == Idle) {
+1437             exeStatus = Running;
+1438         }
+1439 
+1440         updatedQueues = true;
+1441 
+1442         cpu->activityThisCycle();
+1443     }
+1444 
+1445     // Need to reset this in case a writeback event needs to write into the
+1446     // iew queue.  That way the writeback event will write into the correct
+1447     // spot in the queue.
+1448     wbNumInst = 0;
+1449 
+1450 }
 
 
 
 
-### addToProducers
-
+```
 
 ## Schedule
 Schedule (InstructionQueue::scheduleReadyInsts()) The IQ manages the ready instructions (operands ready) in a ready list, and schedules them to an available FU. The latency of the FU is set here, and instructions are sent to execution when the FU done.
 
-## Execute
-Execute (IEW::executeInsts()). Here execute() function of the compute instruction is invoked and sent to commit. Please note execute() will write results to the destiniation register.
-Writeback (IEW::writebackInsts()). Here InstructionQueue::wakeDependents() is invoked. Dependent instructions will be added to the ready list for scheduling.
 
 [1]: https://www.gem5.org/documentation/general_docs/cpu_models/O3CPU

@@ -1117,19 +1117,91 @@ registers of the instruction.
 1128     }
 1129 }
 ```
-The main operation of the renameSrcRegs are lookup the register map 
+The main operation of the renameSrcRegs are lookingup the register map 
 if the architecture register used by the current instruction's source 
 has been renamed to the another physical register. 
+
+### lookup renameMap to find physical register if it has been renamed 
+```cpp
+ 66 class SimpleRenameMap
+ 67 {
+......
+122     /**
+123      * Look up the physical register mapped to an architectural register.
+124      * @param arch_reg The architectural register to look up.
+125      * @return The physical register it is currently mapped to.
+126      */
+127     PhysRegIdPtr lookup(const RegId& arch_reg) const
+128     {
+129         assert(arch_reg.flatIndex() <= map.size());
+130         return map[arch_reg.flatIndex()];
+131     }
+......
+170 class UnifiedRenameMap
+171 {
+......
+261     /**
+262      * Look up the physical register mapped to an architectural register.
+263      * This version takes a flattened architectural register id
+264      * and calls the appropriate class-specific rename table.
+265      * @param arch_reg The architectural register to look up.
+266      * @return The physical register it is currently mapped to.
+267      */
+268     PhysRegIdPtr lookup(const RegId& arch_reg) const
+269     {
+270         switch (arch_reg.classValue()) {
+271           case IntRegClass:
+272             return intMap.lookup(arch_reg);
+273 
+274           case FloatRegClass:
+275             return  floatMap.lookup(arch_reg);
+276 
+277           case VecRegClass:
+278             assert(vecMode == Enums::Full);
+279             return  vecMap.lookup(arch_reg);
+280 
+281           case VecElemClass:
+282             assert(vecMode == Enums::Elem);
+283             return  vecElemMap.lookup(arch_reg);
+284 
+285           case VecPredRegClass:
+286             return predMap.lookup(arch_reg);
+287 
+288           case CCRegClass:
+289             return ccMap.lookup(arch_reg);
+290 
+291           case MiscRegClass:
+292             // misc regs aren't really renamed, they keep the same
+293             // mapping throughout the execution.
+294             return regFile->getMiscRegId(arch_reg.flatIndex());
+295 
+296           default:
+297             panic("rename lookup(): unknown reg class %s\n",
+298                   arch_reg.className());
+299         }
+300     }
+```
 If it has been renamed before, the **lookup** function returns 
 actual physical register to which the architecture register has been mapped.
+The map used in the rename stage is UnifiedRenameMap and contains 
+multiple SimpleRenameMap with the various register type.
+Therefore, it first invokes the lookup function of the UnifiedRenameMap,
+and further invokes the lookup function of the SimpleRenameMap 
+depending on the register type that we are trying to rename. 
+
+### check scoreboard
 After the lookup, it checks the scoreboard if the target register is ready to be read. 
 Because O3 is out-of-order processor, and renaming register is utilized 
 to eliminate register dependency such as write after read, scoreboard let the processor
 know when the register is ready to be accessed. 
-If the scoreboard returns the reference of the source register, it makes that source register is ready.
-Also, the getReg function of the freelist remove the register from the freelist 
-because it should not be written by the other instruction 
-until it is read by the current instruction. 
+Particularly, the getReg interface of the scoreboard 
+can be utilized to check specific register is currently available.
+If it returns true, the source register is available to be read, so 
+it sets the instruction marks the source register is ready (markSrcRegReady).
+However, if the getReg returns false, it means that the source register is not available 
+at this cycle, so it should not set the flag and make the instruction to wait 
+in the next issue stage until the register is ready. 
+The scoreboard and its interfaces will be described in the [below section]().
 
 ### renameDestRegs 
 ```cpp
@@ -1187,14 +1259,100 @@ until it is read by the current instruction.
 1182     }
 1183 }
 ```
-
 Basically, the renameDestRegs function is similar to the renameSrcRegs in such a way that 
 it renames the registers. However, renaming destination register incurs some changes 
 on the register map and the scoreboard. 
+
+### rename: renames specific register to the other
+```cpp
+221     /**
+222      * Tell rename map to get a new free physical register to remap
+223      * the specified architectural register. This version takes a
+224      * RegId and reads the  appropriate class-specific rename table.
+225      * @param arch_reg The architectural register id to remap.
+226      * @return A RenameInfo pair indicating both the new and previous
+227      * physical registers.
+228      */
+229     RenameInfo rename(const RegId& arch_reg)
+230     {
+231         switch (arch_reg.classValue()) {
+232           case IntRegClass:
+233             return intMap.rename(arch_reg);
+234           case FloatRegClass:
+235             return floatMap.rename(arch_reg);
+236           case VecRegClass:
+237             assert(vecMode == Enums::Full);
+238             return vecMap.rename(arch_reg);
+239           case VecElemClass:
+240             assert(vecMode == Enums::Elem);
+241             return vecElemMap.rename(arch_reg);
+242           case VecPredRegClass:
+243             return predMap.rename(arch_reg);
+244           case CCRegClass:
+245             return ccMap.rename(arch_reg);
+246           case MiscRegClass:
+247             {
+248             // misc regs aren't really renamed, just remapped
+249             PhysRegIdPtr phys_reg = lookup(arch_reg);
+250             // Set the new register to the previous one to keep the same
+251             // mapping throughout the execution.
+252             return RenameInfo(phys_reg, phys_reg);
+253             }
+254 
+255           default:
+256             panic("rename rename(): unknown reg class %s\n",
+257                   arch_reg.className());
+258         }
+259     }
+```
 Instead of invoking lookup function of the register map, it invokes the rename function.
 
+
+```cpp
+ 73 SimpleRenameMap::RenameInfo
+ 74 SimpleRenameMap::rename(const RegId& arch_reg)
+ 75 {
+ 76     PhysRegIdPtr renamed_reg;
+ 77     // Record the current physical register that is renamed to the
+ 78     // requested architected register.
+ 79     PhysRegIdPtr prev_reg = map[arch_reg.flatIndex()];
+ 80 
+ 81     if (arch_reg == zeroReg) {
+ 82         assert(prev_reg->isZeroReg());
+ 83         renamed_reg = prev_reg;
+ 84     } else if (prev_reg->getNumPinnedWrites() > 0) {
+ 85         // Do not rename if the register is pinned
+ 86         assert(arch_reg.getNumPinnedWrites() == 0);  // Prevent pinning the
+ 87                                                      // same register twice
+ 88         DPRINTF(Rename, "Renaming pinned reg, numPinnedWrites %d\n",
+ 89                 prev_reg->getNumPinnedWrites());
+ 90         renamed_reg = prev_reg;
+ 91         renamed_reg->decrNumPinnedWrites();
+ 92     } else {
+ 93         renamed_reg = freeList->getReg();
+ 94         map[arch_reg.flatIndex()] = renamed_reg;
+ 95         renamed_reg->setNumPinnedWrites(arch_reg.getNumPinnedWrites());
+ 96         renamed_reg->setNumPinnedWritesToComplete(
+ 97             arch_reg.getNumPinnedWrites() + 1);
+ 98     }
+ 99 
+100     DPRINTF(Rename, "Renamed reg %d to physical reg %d (%d) old mapping was"
+101             " %d (%d)\n",
+102             arch_reg, renamed_reg->flatIndex(), renamed_reg->flatIndex(),
+103             prev_reg->flatIndex(), prev_reg->flatIndex());
+104 
+105     return RenameInfo(renamed_reg, prev_reg);
+106 }
+```
+
+### Make the renamed register as not ready
+it invokes unsetReg.
+
+
+
+
 ### Populating history buffer entry per destination register rename 
-As shown in the Line 1161-1163, after the renaming is done, 
+After the renaming is done (line 1161-1163),
 it generates history entry for providing \TODO{is it for precise exception?? what purpose is it?}
 
 ```cpp
@@ -1228,6 +1386,7 @@ After renaming destination and source registers,
 it pushes the renamed instruction to the toIEW register. 
 
 ### End of the main loop
+```cpp
  781     instsInProgress[tid] += renamed_insts;
  782     renameRenamedInsts += renamed_insts;
  783 
@@ -1248,3 +1407,122 @@ it pushes the renamed instruction to the toIEW register.
  798     }
  799 }
 ```
+
+
+## scoreboard
+### scoreboard interface
+*gem5/src/cpu/o3/scoreboard.hh*
+```cpp
+ 46 /**
+ 47  * Implements a simple scoreboard to track which registers are
+ 48  * ready. This class operates on the unified physical register space,
+ 49  * because the different classes of registers do not need to be distinguished.
+ 50  * Registers being part of a fixed mapping are always considered ready.
+ 51  */
+ 52 class Scoreboard
+ 53 {
+ 54   private:
+ 55     /** The object name, for DPRINTF.  We have to declare this
+ 56      *  explicitly because Scoreboard is not a SimObject. */
+ 57     const std::string _name;
+ 58 
+ 59     /** Scoreboard of physical integer registers, saying whether or not they
+ 60      *  are ready. */
+ 61     std::vector<bool> regScoreBoard;
+ 62 
+ 63     /** The number of actual physical registers */
+ 64     unsigned M5_CLASS_VAR_USED numPhysRegs;
+ 65 
+ 66   public:
+ 67     /** Constructs a scoreboard.
+ 68      *  @param _numPhysicalRegs Number of physical registers.
+ 69      *  @param _numMiscRegs Number of miscellaneous registers.
+ 70      */
+ 71     Scoreboard(const std::string &_my_name,
+ 72                unsigned _numPhysicalRegs);
+ 73 
+ 74     /** Destructor. */
+ 75     ~Scoreboard() {}
+ 76 
+ 77     /** Returns the name of the scoreboard. */
+ 78     std::string name() const { return _name; };
+ 79 
+ 80     /** Checks if the register is ready. */
+ 81     bool getReg(PhysRegIdPtr phys_reg) const
+ 82     {
+ 83         assert(phys_reg->flatIndex() < numPhysRegs);
+ 84 
+ 85         if (phys_reg->isFixedMapping()) {
+ 86             // Fixed mapping regs are always ready
+ 87             return true;
+ 88         }
+ 89 
+ 90         bool ready = regScoreBoard[phys_reg->flatIndex()];
+ 91 
+ 92         if (phys_reg->isZeroReg())
+ 93             assert(ready);
+ 94 
+ 95         return ready;
+ 96     }
+ 97 
+ 98     /** Sets the register as ready. */
+ 99     void setReg(PhysRegIdPtr phys_reg)
+100     {
+101         assert(phys_reg->flatIndex() < numPhysRegs);
+102 
+103         if (phys_reg->isFixedMapping()) {
+104             // Fixed mapping regs are always ready, ignore attempts to change
+105             // that
+106             return;
+107         }
+108 
+109         DPRINTF(Scoreboard, "Setting reg %i (%s) as ready\n",
+110                 phys_reg->index(), phys_reg->className());
+111 
+112         regScoreBoard[phys_reg->flatIndex()] = true;
+113     }
+114 
+115     /** Sets the register as not ready. */
+116     void unsetReg(PhysRegIdPtr phys_reg)
+117     {
+118         assert(phys_reg->flatIndex() < numPhysRegs);
+119 
+120         if (phys_reg->isFixedMapping()) {
+121             // Fixed mapping regs are always ready, ignore attempts to
+122             // change that
+123             return;
+124         }
+125 
+126         // zero reg should never be marked unready
+127         if (phys_reg->isZeroReg())
+128             return;
+129 
+130         regScoreBoard[phys_reg->flatIndex()] = false;
+131     }
+132 
+133 };
+```
+Scoreboard is implemented as a simple vector (regScoreBoard) to indicate 
+specific register is ready to be used or not. 
+And it provide three interfaces to set or get the status 
+of the specific register maintained by the scoreboard. 
+
+### scoreboard used by the O3 CPU
+*gem5/src/cpu/o3/cpu.hh*
+```cpp
+602     /** Integer Register Scoreboard */
+603     Scoreboard scoreboard; 
+```
+
+*gem5/src/cpu/o3/cpu.cc*
+```cpp
+ 218     rename.setScoreboard(&scoreboard);
+ 219     iew.setScoreboard(&scoreboard);
+```
+
+At the real hardware implementation, the scoreboard should be accessible by the 
+multiple stages at the same time. However, because it is software emulation,
+GEM5 doesn't provide port-wise emulation to service different modules at the same time.
+Note that GEM5 executes in single thread and cannot be executed in multi-threads. 
+Anyway, the scoreboard is accessed by two different stages in the O3CPU: rename and iew.
+

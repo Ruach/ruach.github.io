@@ -1,0 +1,555 @@
+# IEW: Issue/Execute/Writeback
+>GEM5 handles both execute and writeback when the execute() 
+>function is called on an instruction. Therefore, GEM5 combines 
+>Issue, Execute, and Writeback stage into one stage called IEW. 
+>This stage (IEW) handles dispatching instructions to the 
+>instruction queue, telling the instruction queue to issue 
+>instruction, and executing and writing back instructions.
+
+Nice description about the IEW stage provided by the <cite>[GEM5 Documentation][1]</cite>.
+Also, this documentation provide which functions are mainly 
+designed to achieve those three operations.
+
+```cpp
+Rename::tick()->Rename::RenameInsts()
+IEW::tick()->IEW::dispatchInsts()
+IEW::tick()->InstructionQueue::scheduleReadyInsts()
+IEW::tick()->IEW::executeInsts()
+IEW::tick()->IEW::writebackInsts()
+```
+
+I already explained details of the rename stage. 
+It renames registers the renamed instruction is pushed to the IEW stage. 
+It also checks that the IQ/LSQ is available to hold the new instruction.
+In this posting, I will explain dispatch, schedule, execute, and write back in details.
+The commit stage will be studied in the other posting. 
+The tick function of the iew stage is the main body of execution 
+as other stages. Therefore, I will explain each part of the iew stage 
+following the tick implementation. 
+
+ It handles the dispatching of instructions to the LSQ/IQ 
+ as part of the issue stage, and has the IQ try to issue instructions each cycle. 
+ The execute latency is actually tied into the issue latency 
+ to allow the IQ to be able to do back-to-back scheduling 
+ without having to speculatively schedule instructions. 
+ %
+ This happens by having the IQ have access to the functional units, and 
+ the IQ gets the execution latencies from the FUs when it issues instructions. 
+ Instructions reach the execute stage on the last cycle of their execution, 
+ which is when the IQ knows to wake up any dependent instructions, 
+ allowing back to back scheduling. The execute portion of IEW separates 
+ memory instructions from non-memory instructions, either telling the LSQ
+ to execute the instruction, or executing the instruction directly.
+ %
+ The writeback portion of IEW completes the instructions by waking up 
+ any dependents, and marking the register ready on the scoreboard.
+
+## Dispatch 
+```cpp
+1502 template<class Impl>
+1503 void
+1504 DefaultIEW<Impl>::tick()
+1505 {
+1506     wbNumInst = 0;
+1507     wbCycle = 0;
+1508 
+1509     wroteToTimeBuffer = false;
+1510     updatedQueues = false;
+1511 
+1512     ldstQueue.tick();
+1513 
+1514     sortInsts();
+1515 
+1516     // Free function units marked as being freed this cycle.
+1517     fuPool->processFreeUnits();
+1518 
+1519     list<ThreadID>::iterator threads = activeThreads->begin();
+1520     list<ThreadID>::iterator end = activeThreads->end();
+1521 
+1522     // Check stall and squash signals, dispatch any instructions.
+1523     while (threads != end) {
+1524         ThreadID tid = *threads++;
+1525 
+1526         DPRINTF(IEW,"Issue: Processing [tid:%i]\n",tid);
+1527 
+1528         checkSignalsAndUpdate(tid);
+1529         dispatch(tid);
+1530     }
+```
+As shown in the tick function, after checking signal such as block and squash, 
+the first job done by the IEW is the dispatching renamed instructions. 
+The main goal of the dispatch is inserting the renamed instruction into the IQ and LSQ.
+
+### Dispatch implementation
+```cpp
+ 911 template<class Impl>
+ 912 void
+ 913 DefaultIEW<Impl>::dispatch(ThreadID tid)
+ 914 {
+ 915     // If status is Running or idle,
+ 916     //     call dispatchInsts()
+ 917     // If status is Unblocking,
+ 918     //     buffer any instructions coming from rename
+ 919     //     continue trying to empty skid buffer
+ 920     //     check if stall conditions have passed
+ 921 
+ 922     if (dispatchStatus[tid] == Blocked) {
+ 923         ++iewBlockCycles;
+ 924 
+ 925     } else if (dispatchStatus[tid] == Squashing) {
+ 926         ++iewSquashCycles;
+ 927     }
+ 928 
+ 929     // Dispatch should try to dispatch as many instructions as its bandwidth
+ 930     // will allow, as long as it is not currently blocked.
+ 931     if (dispatchStatus[tid] == Running ||
+ 932         dispatchStatus[tid] == Idle) {
+ 933         DPRINTF(IEW, "[tid:%i] Not blocked, so attempting to run "
+ 934                 "dispatch.\n", tid);
+ 935 
+ 936         dispatchInsts(tid);
+ 937     } else if (dispatchStatus[tid] == Unblocking) {
+ 938         // Make sure that the skid buffer has something in it if the
+ 939         // status is unblocking.
+ 940         assert(!skidsEmpty());
+ 941 
+ 942         // If the status was unblocking, then instructions from the skid
+ 943         // buffer were used.  Remove those instructions and handle
+ 944         // the rest of unblocking.
+ 945         dispatchInsts(tid);
+ 946 
+ 947         ++iewUnblockCycles;
+ 948 
+ 949         if (validInstsFromRename()) {
+ 950             // Add the current inputs to the skid buffer so they can be
+ 951             // reprocessed when this stage unblocks.
+ 952             skidInsert(tid);
+ 953         }
+ 954 
+ 955         unblock(tid);
+ 956     }
+ 957 }
+```
+The dispatch function is just a wrapper function of the dispatchInsts. 
+Based on the current status of the dispatch, associated operations 
+should be executed in addition to the main dispatch function, dispatchInsts.
+Because the dispatchInsts is fairly complex, I will explain part by part. 
+
+### Checking availability of resources to dispatch instruction
+```cpp
+959 template <class Impl>
+ 960 void
+ 961 DefaultIEW<Impl>::dispatchInsts(ThreadID tid)
+ 962 {
+ 963     // Obtain instructions from skid buffer if unblocking, or queue from rename
+ 964     // otherwise.
+ 965     std::queue<DynInstPtr> &insts_to_dispatch =
+ 966         dispatchStatus[tid] == Unblocking ?
+ 967         skidBuffer[tid] : insts[tid];
+ 968 
+ 969     int insts_to_add = insts_to_dispatch.size();
+ 970 
+ 971     DynInstPtr inst;
+ 972     bool add_to_iq = false;
+ 973     int dis_num_inst = 0;
+ 974 
+ 975     // Loop through the instructions, putting them in the instruction
+ 976     // queue.
+ 977     for ( ; dis_num_inst < insts_to_add &&
+ 978               dis_num_inst < dispatchWidth;
+ 979           ++dis_num_inst)
+ 980     {
+ 981         inst = insts_to_dispatch.front();
+ 982 
+ 983         if (dispatchStatus[tid] == Unblocking) {
+ 984             DPRINTF(IEW, "[tid:%i] Issue: Examining instruction from skid "
+ 985                     "buffer\n", tid);
+ 986         }
+ 987 
+ 988         // Make sure there's a valid instruction there.
+ 989         assert(inst);
+ 990 
+ 991         DPRINTF(IEW, "[tid:%i] Issue: Adding PC %s [sn:%lli] [tid:%i] to "
+ 992                 "IQ.\n",
+ 993                 tid, inst->pcState(), inst->seqNum, inst->threadNumber);
+ 994 
+ 995         // Be sure to mark these instructions as ready so that the
+ 996         // commit stage can go ahead and execute them, and mark
+ 997         // them as issued so the IQ doesn't reprocess them.
+ 998 
+ 999         // Check for squashed instructions.
+1000         if (inst->isSquashed()) {
+1001             DPRINTF(IEW, "[tid:%i] Issue: Squashed instruction encountered, "
+1002                     "not adding to IQ.\n", tid);
+1003 
+1004             ++iewDispSquashedInsts;
+1005 
+1006             insts_to_dispatch.pop();
+1007 
+1008             //Tell Rename That An Instruction has been processed
+1009             if (inst->isLoad()) {
+1010                 toRename->iewInfo[tid].dispatchedToLQ++;
+1011             }
+1012             if (inst->isStore() || inst->isAtomic()) {
+1013                 toRename->iewInfo[tid].dispatchedToSQ++;
+1014             }
+1015 
+1016             toRename->iewInfo[tid].dispatched++;
+1017    
+1018             continue;
+1019         }
+1020  
+1021         // Check for full conditions.
+1022         if (instQueue.isFull(tid)) {
+1023             DPRINTF(IEW, "[tid:%i] Issue: IQ has become full.\n", tid);
+1024    
+1025             // Call function to start blocking.
+1026             block(tid);
+1027    
+1028             // Set unblock to false. Special case where we are using
+1029             // skidbuffer (unblocking) instructions but then we still
+1030             // get full in the IQ.
+1031             toRename->iewUnblock[tid] = false;
+1032    
+1033             ++iewIQFullEvents;
+1034             break;
+1035         }
+1036    
+1037         // Check LSQ if inst is LD/ST
+1038         if ((inst->isAtomic() && ldstQueue.sqFull(tid)) ||
+1039             (inst->isLoad() && ldstQueue.lqFull(tid)) ||
+1040             (inst->isStore() && ldstQueue.sqFull(tid))) {
+1041             DPRINTF(IEW, "[tid:%i] Issue: %s has become full.\n",tid,
+1042                     inst->isLoad() ? "LQ" : "SQ");
+1043    
+1044             // Call function to start blocking.
+1045             block(tid);
+1046    
+1047             // Set unblock to false. Special case where we are using
+1048             // skidbuffer (unblocking) instructions but then we still
+1049             // get full in the IQ.
+1050             toRename->iewUnblock[tid] = false;
+1051 
+1052             ++iewLSQFullEvents;
+1053             break;
+1054         }
+```
+First it checks whether the current instruction has been already squashed. 
+If yes, then ignore the current instruction and skip to the next ones. 
+If the instructions is not squashed, then it checks the availability of resource 
+required for issuing the instruction. Regardless of the instruction type, 
+it requires one entry from the instruction queue. Also, if it is the memory related 
+instruction, it require one entry from the load queue or store queue 
+based on whether it is load or store instruction. 
+
+### Checking instruction type
+```cpp
+1056         // Otherwise issue the instruction just fine.
+1057         if (inst->isAtomic()) {
+1058             DPRINTF(IEW, "[tid:%i] Issue: Memory instruction "
+1059                     "encountered, adding to LSQ.\n", tid);
+1060 
+1061             ldstQueue.insertStore(inst);
+1062 
+1063             ++iewDispStoreInsts;
+1064 
+1065             // AMOs need to be set as "canCommit()"
+1066             // so that commit can process them when they reach the
+1067             // head of commit.
+1068             inst->setCanCommit();
+1069             instQueue.insertNonSpec(inst);
+1070             add_to_iq = false;
+1071 
+1072             ++iewDispNonSpecInsts;
+1073 
+1074             toRename->iewInfo[tid].dispatchedToSQ++;
+1075         } else if (inst->isLoad()) {
+1076             DPRINTF(IEW, "[tid:%i] Issue: Memory instruction "
+1077                     "encountered, adding to LSQ.\n", tid);
+1078 
+1079             // Reserve a spot in the load store queue for this
+1080             // memory access.
+1081             ldstQueue.insertLoad(inst);
+1082 
+1083             ++iewDispLoadInsts;
+1084 
+1085             add_to_iq = true;
+1086 
+1087             toRename->iewInfo[tid].dispatchedToLQ++;
+1088         } else if (inst->isStore()) {
+1089             DPRINTF(IEW, "[tid:%i] Issue: Memory instruction "
+1090                     "encountered, adding to LSQ.\n", tid);
+1091 
+1092             ldstQueue.insertStore(inst);
+1093 
+1094             ++iewDispStoreInsts;
+1095 
+1096             if (inst->isStoreConditional()) {
+1097                 // Store conditionals need to be set as "canCommit()"
+1098                 // so that commit can process them when they reach the
+1099                 // head of commit.
+1100                 // @todo: This is somewhat specific to Alpha.
+1101                 inst->setCanCommit();
+1102                 instQueue.insertNonSpec(inst);
+1103                 add_to_iq = false;
+1104 
+1105                 ++iewDispNonSpecInsts;
+1106             } else {
+1107                 add_to_iq = true;
+1108             }
+1109 
+1110             toRename->iewInfo[tid].dispatchedToSQ++;
+1111         } else if (inst->isMemBarrier() || inst->isWriteBarrier()) {
+1112             // Same as non-speculative stores.
+1113             inst->setCanCommit();
+1114             instQueue.insertBarrier(inst);
+1115             add_to_iq = false;
+1116         } else if (inst->isNop()) {
+1117             DPRINTF(IEW, "[tid:%i] Issue: Nop instruction encountered, "
+1118                     "skipping.\n", tid);
+1119 
+1120             inst->setIssued();
+1121             inst->setExecuted();
+1122             inst->setCanCommit();
+1123 
+1124             instQueue.recordProducer(inst);
+1125 
+1126             iewExecutedNop[tid]++;
+1127 
+1128             add_to_iq = false;
+1129         } else {
+1130             assert(!inst->isExecuted());
+1131             add_to_iq = true;
+1132         }
+```
+Although it is not clear until we understand the internal of the instQueue and ldstQueue,
+but the above code pushes the instructions based on the instruction type.
+For example, for the load operation, it pushes the instruction
+to the ldstQueue with insertLoad function. 
+For the write operation, it is inserted to the same queue with the insertStore function.
+And because the memory instructions should be processed differently, 
+it is passed to the instruction queue with the insertBarrier instruction.
+For the normal instructions they will be just enqueued to the instQueue. 
+
+### Issuing instruction
+```cpp
+1134         if (add_to_iq && inst->isNonSpeculative()) {
+1135             DPRINTF(IEW, "[tid:%i] Issue: Nonspeculative instruction "
+1136                     "encountered, skipping.\n", tid);
+1137 
+1138             // Same as non-speculative stores.
+1139             inst->setCanCommit();
+1140 
+1141             // Specifically insert it as nonspeculative.
+1142             instQueue.insertNonSpec(inst);
+1143 
+1144             ++iewDispNonSpecInsts;
+1145 
+1146             add_to_iq = false;
+1147         }
+1148 
+1149         // If the instruction queue is not full, then add the
+1150         // instruction.
+1151         if (add_to_iq) {
+1152             instQueue.insert(inst);
+1153         }
+1154 
+1155         insts_to_dispatch.pop();
+1156 
+1157         toRename->iewInfo[tid].dispatched++;
+1158 
+1159         ++iewDispatchedInsts;
+1160 
+1161 #if TRACING_ON
+1162         inst->dispatchTick = curTick() - inst->fetchTick;
+1163 #endif
+1164         ppDispatch->notify(inst);
+1165     }
+```
+After special instructions are handled by inserting them to the corresponding queue 
+with the associated method provided by the queues, some of them should also be inserted to the 
+instruction queue. Based on the instruction type, add_to_iq flag is set.
+When this flag is set, the instruction should be added to the instQueue (line 1151-1153). 
+However, for the nonspeculative instruction, they are not managed by the instQueue as 
+normal isntructions. For the details, we will see insertNonSpec function soon.
+
+### End of the dispatching
+```cpp
+1167     if (!insts_to_dispatch.empty()) {
+1168         DPRINTF(IEW,"[tid:%i] Issue: Bandwidth Full. Blocking.\n", tid);
+1169         block(tid);
+1170         toRename->iewUnblock[tid] = false;
+1171     }
+1172 
+1173     if (dispatchStatus[tid] == Idle && dis_num_inst) {
+1174         dispatchStatus[tid] = Running;
+1175 
+1176         updatedQueues = true;
+1177     }
+1178 
+1179     dis_num_inst = 0;
+1180 }
+```
+After processing all the renamed instruction, it should check whether 
+it still has some instructions in the queue. 
+When the instruction cannot be processed further because of throttling,
+it should block and handle rest of the instructions at the next cycle. 
+
+## Instruction Queue and Load/Store queue 
+Before moving on to the next stage, I'd like to cover some part of the IQ and LSQ.
+
+### Instruction queue has several lists to keep issued instructions 
+Mainly the job of the queue is managing instructions and provides some interfaces
+to process those instructions. Therefore, to understand the queue, 
+we need to understand which lists the instruction queue manages 
+to keep the instructions. 
+
+*gem5/src/cpu/o3/inst_queue.hh*
+```cpp
+311     //////////////////////////////////////
+312     // Instruction lists, ready queues, and ordering
+313     //////////////////////////////////////
+314 
+315     /** List of all the instructions in the IQ (some of which may be issued). */
+316     std::list<DynInstPtr> instList[Impl::MaxThreads];
+317 
+318     /** List of instructions that are ready to be executed. */
+319     std::list<DynInstPtr> instsToExecute;
+320 
+321     /** List of instructions waiting for their DTB translation to
+322      *  complete (hw page table walk in progress).
+323      */
+324     std::list<DynInstPtr> deferredMemInsts;
+325 
+326     /** List of instructions that have been cache blocked. */
+327     std::list<DynInstPtr> blockedMemInsts;
+328 
+329     /** List of instructions that were cache blocked, but a retry has been seen
+330      * since, so they can now be retried. May fail again go on the blocked list.
+331      */
+332     std::list<DynInstPtr> retryMemInsts;
+```
+
+### Insert new entries to the instruction queue
+Because instruction queue has data structure managing the issued instructions,
+it should provide proper interface to interact with the 
+issue queue particularly lists of the instruction queue. 
+The insert function is the essential example of those interface because 
+it inserts new entries to the instruction list managed by the instruction queue. 
+
+```cpp
+ 578 template <class Impl>
+ 579 void
+ 580 InstructionQueue<Impl>::insert(const DynInstPtr &new_inst)
+ 581 {
+ 582     if (new_inst->isFloating()) {
+ 583         fpInstQueueWrites++;
+ 584     } else if (new_inst->isVector()) {
+ 585         vecInstQueueWrites++;
+ 586     } else {
+ 587         intInstQueueWrites++;
+ 588     }
+ 589     // Make sure the instruction is valid
+ 590     assert(new_inst);
+ 591 
+ 592     DPRINTF(IQ, "Adding instruction [sn:%llu] PC %s to the IQ.\n",
+ 593             new_inst->seqNum, new_inst->pcState());
+ 594 
+ 595     assert(freeEntries != 0);
+ 596 
+ 597     instList[new_inst->threadNumber].push_back(new_inst);
+ 598 
+ 599     --freeEntries;
+ 600 
+ 601     new_inst->setInIQ();
+ 602 
+ 603     // Look through its source registers (physical regs), and mark any
+ 604     // dependencies.
+ 605     addToDependents(new_inst);
+ 606 
+ 607     // Have this instruction set itself as the producer of its destination
+ 608     // register(s).
+ 609     addToProducers(new_inst);
+ 610 
+ 611     if (new_inst->isMemRef()) {
+ 612         memDepUnit[new_inst->threadNumber].insert(new_inst);
+ 613     } else {
+ 614         addIfReady(new_inst);
+ 615     }
+ 616 
+ 617     ++iqInstsAdded;
+ 618 
+ 619     count[new_inst->threadNumber]++;
+ 620 
+ 621     assert(freeEntries == (numEntries - countInsts()));
+ 622 }
+```
+Inserting the instruction to the list is done by simple push_back operation of the list.
+However, it invokes two important functions: addToProducers and addToDependents.
+
+### addToDependents
+```cpp
+1366 template <class Impl>
+1367 bool
+1368 InstructionQueue<Impl>::addToDependents(const DynInstPtr &new_inst)
+1369 {
+1370     // Loop through the instruction's source registers, adding
+1371     // them to the dependency list if they are not ready.
+1372     int8_t total_src_regs = new_inst->numSrcRegs();
+1373     bool return_val = false;
+1374 
+1375     for (int src_reg_idx = 0;
+1376          src_reg_idx < total_src_regs;
+1377          src_reg_idx++)
+1378     {
+1379         // Only add it to the dependency graph if it's not ready.
+1380         if (!new_inst->isReadySrcRegIdx(src_reg_idx)) {
+1381             PhysRegIdPtr src_reg = new_inst->renamedSrcRegIdx(src_reg_idx);
+1382 
+1383             // Check the IQ's scoreboard to make sure the register
+1384             // hasn't become ready while the instruction was in flight
+1385             // between stages.  Only if it really isn't ready should
+1386             // it be added to the dependency graph.
+1387             if (src_reg->isFixedMapping()) {
+1388                 continue;
+1389             } else if (!regScoreboard[src_reg->flatIndex()]) {
+1390                 DPRINTF(IQ, "Instruction PC %s has src reg %i (%s) that "
+1391                         "is being added to the dependency chain.\n",
+1392                         new_inst->pcState(), src_reg->index(),
+1393                         src_reg->className());
+1394 
+1395                 dependGraph.insert(src_reg->flatIndex(), new_inst);
+1396 
+1397                 // Change the return value to indicate that something
+1398                 // was added to the dependency graph.
+1399                 return_val = true;
+1400             } else {
+1401                 DPRINTF(IQ, "Instruction PC %s has src reg %i (%s) that "
+1402                         "became ready before it reached the IQ.\n",
+1403                         new_inst->pcState(), src_reg->index(),
+1404                         src_reg->className());
+1405                 // Mark a register ready within the instruction.
+1406                 new_inst->markSrcRegReady(src_reg_idx);
+1407             }
+1408         }
+1409     }
+1410 
+1411     return return_val;
+1412 }
+```
+
+
+
+
+
+### addToProducers
+
+
+## Schedule
+Schedule (InstructionQueue::scheduleReadyInsts()) The IQ manages the ready instructions (operands ready) in a ready list, and schedules them to an available FU. The latency of the FU is set here, and instructions are sent to execution when the FU done.
+
+## Execute
+Execute (IEW::executeInsts()). Here execute() function of the compute instruction is invoked and sent to commit. Please note execute() will write results to the destiniation register.
+Writeback (IEW::writebackInsts()). Here InstructionQueue::wakeDependents() is invoked. Dependent instructions will be added to the ready list for scheduling.
+
+[1]: https://www.gem5.org/documentation/general_docs/cpu_models/O3CPU

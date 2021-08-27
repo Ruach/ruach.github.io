@@ -496,8 +496,6 @@ After producing dependency for the unavailable registers,
 if the instruction reference memory while its execution,
 it should be specially handled by the memory dependency unit. 
 This details will also be explained together with the DependencyGraph later.
-And at the end of the insert function, it adds instruction 
-to the readyInsts buffer if all the registers are available. 
 
 ```cpp
 1450 template <class Impl>
@@ -540,10 +538,19 @@ to the readyInsts buffer if all the registers are available.
 1487     }
 1488 }
 ```
+At the end of the insert function, it adds instruction 
+to the **readyInsts** buffer if all the registers are available (line 1476).
+If the instruction is not ready, which means 
+the source registers are not available at this moment of insertion, 
+the instruction should not be inqueued to the readyInsts buffer.
+The instructions waiting for the source register will become ready 
+will be added to the readyInsts buffer when other dependent instructions complete. 
+
 
 ## Execute
 To understand what should be done after dispatching the instructions,
 let's go back to the tick function of the iew stage. 
+
 ```cpp
 1532     if (exeStatus != Squashing) {
 1533         executeInsts();
@@ -560,8 +567,15 @@ let's go back to the tick function of the iew stage.
 1544         issueToExecQueue.advance();
 1545     }
 ```
-Execute (IEW::executeInsts()). Here execute() function of the compute instruction is invoked and sent to commit. Please note execute() will write results to the destiniation register.
-Writeback (IEW::writebackInsts()). Here InstructionQueue::wakeDependents() is invoked. Dependent instructions will be added to the ready list for scheduling.
+
+If the execution stage is not in the squashing state, 
+it will execute instructions stored in the instQueue, particularly readyInsts queue. 
+Here execute() function of the compute instruction is invoked and sent to commit. 
+Please note execute() will write results to the destination registers.
+Therefore, after executeInsts is invoked, 
+writebackInsts is called to write the result to destination registers.
+Furthermore, when there are dependent instructions to the currently executed one,
+those instructions will be added to the ready list for scheduling.
 
 ### executeInsts
 ```cpp
@@ -582,7 +596,7 @@ Writeback (IEW::writebackInsts()). Here InstructionQueue::wakeDependents() is in
 1219 
 1220     // Uncomment this if you want to see all available instructions.
 1221     // @todo This doesn't actually work anymore, we should fix it.
-1222 //    printAvailableInsts();
+1222     // printAvailableInsts();
 1223 
 1224     // Execute/writeback any instructions that are available.
 1225     int insts_to_execute = fromIssue->size;
@@ -619,6 +633,19 @@ Writeback (IEW::writebackInsts()). Here InstructionQueue::wakeDependents() is in
 1256 
 1257             continue;
 1258         }
+```
+The executeInsts function execute an many instruction as it can afford,
+which is implemented as the loop in the line 1227 and after. 
+First it retrieves instruction that can be executed by invoking
+getInstToExecute function of the instQueue. 
+After one instruction is retrieved, it checks if the instruction
+should be squashed. 
+Although the squashed instructions are not really executed,
+but it should be treated as executed because it should be committed. 
+After this condition is checked, depending on the type of the instruction,
+it will process the instruction separately. 
+
+### execute memory instruction 
 1259 
 1260         Fault fault = NoFault;
 1261 
@@ -694,6 +721,345 @@ Writeback (IEW::writebackInsts()). Here InstructionQueue::wakeDependents() is in
 1331             }
 1332 
 1333         } else {
+```
+
+For the memory operation, it can be one of three instruction type:
+atomic, load, store. 
+Basically, the loadstore queue in charge of executing memory instructions,
+but based on the type of memory operation, it needs to handle 
+instruction differently. 
+Let's take a look at how the load and store instruction will be processed.
+
+### Execute load instruction
+```cpp
+1283             } else if (inst->isLoad()) {
+1284                 // Loads will mark themselves as executed, and their writeback
+1285                 // event adds the instruction to the queue to commit
+1286                 fault = ldstQueue.executeLoad(inst);
+1287
+1288                 if (inst->isTranslationDelayed() &&
+1289                     fault == NoFault) {
+1290                     // A hw page table walk is currently going on; the
+1291                     // instruction must be deferred.
+1292                     DPRINTF(IEW, "Execute: Delayed translation, deferring "
+1293                             "load.\n");
+1294                     instQueue.deferMemInst(inst);
+1295                     continue;
+1296                 }
+1297
+1298                 if (inst->isDataPrefetch() || inst->isInstPrefetch()) {
+1299                     inst->fault = NoFault;
+1300                 }
+```
+The main execution of the load instruction is done by the executeLoad function of the ldstQueue. 
+After the execution, it needs to check whether the translation is the 
+bottleneck of making progress on the load operation.
+Note that when the virtual to physical address resolution is delayed 
+because of long TLB latency, 
+it should be executed at the next or later clock cycle 
+when the TLB is ready. 
+Therefore, when the instruction cannot be executed at this moment,
+it should set the current load instruction is deferred (deferMemInst).
+Also, when the load operation was just prefetch,
+then any fault generated by this operation should be ignored 
+(line 1298-1299). Let's take our important function executeLoad in detail!
+
+*gem5/src/o3/cpu/lsq_impl.hh*
+```cpp
+ 251 template<class Impl>
+ 252 Fault
+ 253 LSQ<Impl>::executeLoad(const DynInstPtr &inst)
+ 254 {
+ 255     ThreadID tid = inst->threadNumber;
+ 256
+ 257     return thread[tid].executeLoad(inst);
+ 258 }
+```
+*gem5/src/o3/cpu/lsq.hh*
+```cpp
+  63 template <class Impl>
+  64 class LSQ
+  65 
+  66 {
+......
+1104     /** Total Size of LQ Entries. */
+1105     unsigned LQEntries;
+1106     /** Total Size of SQ Entries. */
+1107     unsigned SQEntries;
+1108 
+1109     /** Max LQ Size - Used to Enforce Sharing Policies. */
+1110     unsigned maxLQEntries;
+1111 
+1112     /** Max SQ Size - Used to Enforce Sharing Policies. */
+1113     unsigned maxSQEntries;
+1114 
+1115     /** Data port. */
+1116     DcachePort dcachePort;
+1117 
+1118     /** The LSQ units for individual threads. */
+1119     std::vector<LSQUnit> thread;
+1120 
+1121     /** Number of Threads. */
+1122     ThreadID numThreads;
+1123 };
+```
+
+
+
+*gem5/src/o3/cpu/lsq_unit_impl.hh*
+```cpp
+ 558 template <class Impl>
+ 559 Fault
+ 560 LSQUnit<Impl>::executeLoad(const DynInstPtr &inst)
+ 561 {  
+ 562     using namespace TheISA;
+ 563     // Execute a specific load.
+ 564     Fault load_fault = NoFault;
+ 565    
+ 566     DPRINTF(LSQUnit, "Executing load PC %s, [sn:%lli]\n",
+ 567             inst->pcState(), inst->seqNum);
+ 568    
+ 569     assert(!inst->isSquashed());
+ 570    
+ 571     load_fault = inst->initiateAcc();
+ 572 
+ 573     if (load_fault == NoFault && !inst->readMemAccPredicate()) {
+ 574         assert(inst->readPredicate());
+ 575         inst->setExecuted();
+ 576         inst->completeAcc(nullptr);
+ 577         iewStage->instToCommit(inst);
+ 578         iewStage->activityThisCycle();
+ 579         return NoFault;
+ 580     }
+ 581        
+ 582     if (inst->isTranslationDelayed() && load_fault == NoFault)
+ 583         return load_fault;
+ 584            
+ 585     if (load_fault != NoFault && inst->translationCompleted() &&
+ 586         inst->savedReq->isPartialFault() && !inst->savedReq->isComplete()) {
+ 587         assert(inst->savedReq->isSplit());
+ 588         // If we have a partial fault where the mem access is not complete yet
+ 589         // then the cache must have been blocked. This load will be re-executed
+ 590         // when the cache gets unblocked. We will handle the fault when the
+ 591         // mem access is complete.
+ 592         return NoFault;
+ 593     }  
+ 594        
+ 595     // If the instruction faulted or predicated false, then we need to send it
+ 596     // along to commit without the instruction completing.
+ 597     if (load_fault != NoFault || !inst->readPredicate()) {
+ 598         // Send this instruction to commit, also make sure iew stage
+ 599         // realizes there is activity.  Mark it as executed unless it
+ 600         // is a strictly ordered load that needs to hit the head of
+ 601         // commit.
+ 602         if (!inst->readPredicate())
+ 603             inst->forwardOldRegs();
+ 604         DPRINTF(LSQUnit, "Load [sn:%lli] not executed from %s\n",
+ 605                 inst->seqNum,
+ 606                 (load_fault != NoFault ? "fault" : "predication"));
+ 607         if (!(inst->hasRequest() && inst->strictlyOrdered()) ||
+ 608             inst->isAtCommit()) {
+ 609             inst->setExecuted();
+ 610         }
+ 611         iewStage->instToCommit(inst);
+ 612         iewStage->activityThisCycle();
+ 613     } else {
+ 614         if (inst->effAddrValid()) {
+ 615             auto it = inst->lqIt;
+ 616             ++it;
+ 617 
+ 618             if (checkLoads)
+ 619                 return checkViolations(it, inst);
+ 620         }
+ 621     }
+ 622 
+ 623     return load_fault;
+ 624 }
+```
+
+### InitiateAcc
+I already covered InitiateAcc of the memory instructions before. 
+However, compared to simple processors, the O3 cpu have different way to 
+process the InitateAcc. 
+```cpp
+ 962 template<class Impl>
+ 963 Fault
+ 964 BaseDynInst<Impl>::initiateMemRead(Addr addr, unsigned size,
+ 965                                    Request::Flags flags,
+ 966                                    const std::vector<bool>& byte_enable)
+ 967 {
+ 968     assert(byte_enable.empty() || byte_enable.size() == size);
+ 969     return cpu->pushRequest(
+ 970             dynamic_cast<typename DynInstPtr::PtrType>(this),
+ 971             /* ld */ true, nullptr, size, addr, flags, nullptr, nullptr,
+ 972             byte_enable);
+ 973 }
+```
+Because the instruction of the O3 CPU is instance of BaseO3DynInst
+inheriting the BaseDynInst, when the instruction implementation invokes 
+initateMemRead (invoked through the InitateAcc implementation of the instruction),
+it invokes the corresponding method implemented in the BaseDynInst class. 
+
+```cpp
+713     /** CPU pushRequest function, forwards request to LSQ. */
+714     Fault pushRequest(const DynInstPtr& inst, bool isLoad, uint8_t *data,
+715                       unsigned int size, Addr addr, Request::Flags flags,
+716                       uint64_t *res, AtomicOpFunctorPtr amo_op = nullptr,
+717                       const std::vector<bool>& byte_enable =
+718                           std::vector<bool>())
+719 
+720     {
+721         return iew.ldstQueue.pushRequest(inst, isLoad, data, size, addr,
+722                 flags, res, std::move(amo_op), byte_enable);
+723     }
+```
+
+Instead of directly handling the load operation, 
+it pushes the request to the load queue through the pushRequest function. 
+This design seems to be odd because the initateAcc function has been invoked 
+by the lsq at the first place, and the instruction forward the request 
+to the loadstore queue once again. It might have been just implemented 
+as simple function that handles the request directly without going through
+multiple different units. 
+
+### pushRequest
+```cpp
+ 693 template<class Impl>
+ 694 Fault
+ 695 LSQ<Impl>::pushRequest(const DynInstPtr& inst, bool isLoad, uint8_t *data,
+ 696                        unsigned int size, Addr addr, Request::Flags flags,
+ 697                        uint64_t *res, AtomicOpFunctorPtr amo_op,
+ 698                        const std::vector<bool>& byte_enable)
+ 699 {
+ 700     // This comming request can be either load, store or atomic.
+ 701     // Atomic request has a corresponding pointer to its atomic memory
+ 702     // operation
+ 703     bool isAtomic M5_VAR_USED = !isLoad && amo_op;
+ 704 
+ 705     ThreadID tid = cpu->contextToThread(inst->contextId());
+ 706     auto cacheLineSize = cpu->cacheLineSize();
+ 707     bool needs_burst = transferNeedsBurst(addr, size, cacheLineSize);
+ 708     LSQRequest* req = nullptr;
+ 709 
+ 710     // Atomic requests that access data across cache line boundary are
+ 711     // currently not allowed since the cache does not guarantee corresponding
+ 712     // atomic memory operations to be executed atomically across a cache line.
+ 713     // For ISAs such as x86 that supports cross-cache-line atomic instructions,
+ 714     // the cache needs to be modified to perform atomic update to both cache
+ 715     // lines. For now, such cross-line update is not supported.
+ 716     assert(!isAtomic || (isAtomic && !needs_burst));
+ 717 
+ 718     if (inst->translationStarted()) {
+ 719         req = inst->savedReq;
+ 720         assert(req);
+ 721     } else {
+ 722         if (needs_burst) {
+ 723             req = new SplitDataRequest(&thread[tid], inst, isLoad, addr,
+ 724                     size, flags, data, res);
+ 725         } else {
+ 726             req = new SingleDataRequest(&thread[tid], inst, isLoad, addr,
+ 727                     size, flags, data, res, std::move(amo_op));
+ 728         }
+ 729         assert(req);
+ 730         if (!byte_enable.empty()) {
+ 731             req->_byteEnable = byte_enable;
+ 732         }
+ 733         inst->setRequest();
+ 734         req->taskId(cpu->taskId());
+ 735 
+ 736         // There might be fault from a previous execution attempt if this is
+ 737         // a strictly ordered load
+ 738         inst->getFault() = NoFault;
+ 739 
+ 740         req->initiateTranslation();
+ 741     }
+ 742 
+ 743     /* This is the place were instructions get the effAddr. */
+ 744     if (req->isTranslationComplete()) {
+ 745         if (req->isMemAccessRequired()) {
+ 746             inst->effAddr = req->getVaddr();
+ 747             inst->effSize = size;
+ 748             inst->effAddrValid(true);
+ 749 
+ 750             if (cpu->checker) {
+ 751                 inst->reqToVerify = std::make_shared<Request>(*req->request());
+ 752             }
+ 753             Fault fault;
+ 754             if (isLoad)
+ 755                 fault = cpu->read(req, inst->lqIdx);
+ 756             else
+ 757                 fault = cpu->write(req, data, inst->sqIdx);
+ 758             // inst->getFault() may have the first-fault of a
+ 759             // multi-access split request at this point.
+ 760             // Overwrite that only if we got another type of fault
+ 761             // (e.g. re-exec).
+ 762             if (fault != NoFault)
+ 763                 inst->getFault() = fault;
+ 764         } else if (isLoad) {
+ 765             inst->setMemAccPredicate(false);
+ 766             // Commit will have to clean up whatever happened.  Set this
+ 767             // instruction as executed.
+ 768             inst->setExecuted();
+ 769         }
+ 770     }
+ 771 
+ 772     if (inst->traceData)
+ 773         inst->traceData->setMem(addr, size, flags);
+ 774 
+ 775     return inst->getFault();
+ 776 }
+```
+The dynamic instruction can track whether the current instruction has started 
+TLB translation by checking the flag stored in the instruction.
+It provide the interface to access that information, called 
+**translationStarted**
+When the instruction set that flag, 
+it means that the instruction already started the TLB access but waiting response.
+In the delayed TLB response case, the instruction stores the request information 
+in its instruction object. 
+Therefore, it can retrieve the request that has sent to TLB before. 
+
+```cpp
+ 860 template<class Impl>
+ 861 void
+ 862 LSQ<Impl>::SingleDataRequest::initiateTranslation()
+ 863 {
+ 864     assert(_requests.size() == 0);
+ 865 
+ 866     this->addRequest(_addr, _size, _byteEnable);
+ 867 
+ 868     if (_requests.size() > 0) {
+ 869         _requests.back()->setReqInstSeqNum(_inst->seqNum);
+ 870         _requests.back()->taskId(_taskId);
+ 871         _inst->translationStarted(true);
+ 872         setState(State::Translation);
+ 873         flags.set(Flag::TranslationStarted);
+ 874 
+ 875         _inst->savedReq = this;
+ 876         sendFragmentToTranslation(0);
+ 877     } else {
+ 878         _inst->setMemAccPredicate(false);
+ 879     }
+ 880 }
+```
+However, if it is the first time of execution, then 
+it should generate new request
+and set proper flags of the instruction object to indicate 
+the instruction initiated the TLB access. 
+
+Regardless of this condition, 
+we can retrieve the request object, so 
+The translationStarted function makes the instruction set proper flag
+indicating the TLB translation has been started. 
+
+
+### Execute store instruction
+
+
+### Execute non-memory instruction
+
+```cpp
+1333         } else {
 1334             // If the instruction has already faulted, then skip executing it.
 1335             // Such case can happen when it faulted during ITLB translation.
 1336             // If we execute the instruction (even if it's a nop) the fault
@@ -710,7 +1076,8 @@ Writeback (IEW::writebackInsts()). Here InstructionQueue::wakeDependents() is in
 1347         }
 1348 
 1349         updateExeInstStats(inst);
-1350 
+```
+
 1351         // Check if branch prediction was correct, if not then we need
 1352         // to tell commit to squash in flight instructions.  Only
 1353         // handle this if there hasn't already been something that
@@ -811,11 +1178,8 @@ Writeback (IEW::writebackInsts()). Here InstructionQueue::wakeDependents() is in
 1448     wbNumInst = 0;
 1449 
 1450 }
-
-
-
-
 ```
+
 
 ## Schedule
 Schedule (InstructionQueue::scheduleReadyInsts()) The IQ manages the ready instructions (operands ready) in a ready list, and schedules them to an available FU. The latency of the FU is set here, and instructions are sent to execution when the FU done.

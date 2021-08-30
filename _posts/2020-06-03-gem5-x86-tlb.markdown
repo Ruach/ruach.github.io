@@ -166,7 +166,7 @@ that we are interested in.
 
 translate function first asks TLB to find 
 whether the required translation entry exist in the TLB already (line 345, lookup function)
-When the TLB entry is not found,
+When the TLB entry is **not found**,
 it starts to traverse pagetable stored in the memory
 to get virtual to physical translation (line 351-395)
 Because I assume that readers want to make use of the fullsystem emulation,
@@ -330,7 +330,7 @@ Yes we are in the WalkerState class instance now.
 692 }
 ```
 Because modern processor makes use of multi-level page tables,
-timing CPU cannot acccess all of them at once.
+timing CPU cannot access all of them at once.
 If the multiple accesses should happen in one CPU clock cycles,
 then it incurs severe performance overhead
 because of slow clock frequency. 
@@ -338,7 +338,7 @@ Therefore, TLB accesses are done by multi stages
 where each stage access one level of page table.
 
 Because pagetable_walker **doesn't have memory**,
-but does have memory-subsystem maintaining acutal page-tables,
+but does have memory-subsystem maintaining actual page-tables,
 it should send different packet 
 to the memory-subsystem 
 at every different stage 

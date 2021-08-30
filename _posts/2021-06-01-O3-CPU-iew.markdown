@@ -1018,6 +1018,18 @@ it means that the instruction already started the TLB access but waiting respons
 In the delayed TLB response case, the instruction stores the request information 
 in its instruction object. 
 Therefore, it can retrieve the request that has sent to TLB before. 
+However, if it is the first time of execution, then 
+it should generate new request.
+As shown in line 722-728, 
+if the request should access two separate cache blocks,
+it generates **SplitDataRequest** request object. 
+However, if it only access one block, then 
+**SingleDataRequest** request object is generated instead. 
+After the request has been produced, 
+it should set proper flags of the instruction object to indicate 
+the instruction initiated the TLB access (line 733). 
+After that, the **initiateTranslation** function provided by the request object is invoked 
+to actually generate accesses to the TLBs.
 
 ```cpp
  860 template<class Impl>
@@ -1042,15 +1054,64 @@ Therefore, it can retrieve the request that has sent to TLB before.
  879     }
  880 }
 ```
-However, if it is the first time of execution, then 
-it should generate new request
-and set proper flags of the instruction object to indicate 
-the instruction initiated the TLB access. 
 
-Regardless of this condition, 
-we can retrieve the request object, so 
-The translationStarted function makes the instruction set proper flag
-indicating the TLB translation has been started. 
+The **addRequest** just generates packet need to be sent to the TLB unit.
+Although the current object can be interpreted as just an request itself 
+that can be directly sent to the TLB unit, but it is a wrapper for 
+all the required interface and data structures to resolve TLB access.
+For example, it includes the ports connected with the TLB unit so that 
+the generated request and its response can be communicated through that port.
+Anyway, the addRequest function just generates the real packet 
+understandable by the TLB unit.
+
+```cpp
+ 407         void
+ 408         addRequest(Addr addr, unsigned size,
+ 409                    const std::vector<bool>& byte_enable)
+ 410         {
+ 411             if (byte_enable.empty() ||
+ 412                 isAnyActiveElement(byte_enable.begin(), byte_enable.end())) {
+ 413                 auto request = std::make_shared<Request>(_inst->getASID(),
+ 414                         addr, size, _flags, _inst->masterId(),
+ 415                         _inst->instAddr(), _inst->contextId(),
+ 416                         std::move(_amo_op));
+ 417                 if (!byte_enable.empty()) {
+ 418                     request->setByteEnable(byte_enable);
+ 419                 }
+ 420                 _requests.push_back(request);                                                                                                                                                                  
+ 421             }
+ 422         }
+```
+
+The addRequest function of the LSQRquest class
+just generates the request and save it to the **_requests** vector 
+to send them later. 
+After the request packets are generated, 
+initiateTranslation invokes **sendFragmentToTranslation** to 
+send the generated packet(s) to the TLB.
+
+```cpp
+ 980 template<class Impl>
+ 981 void
+ 982 LSQ<Impl>::LSQRequest::sendFragmentToTranslation(int i)
+ 983 {
+ 984     numInTranslationFragments++;
+ 985     _port.dTLB()->translateTiming(
+ 986             this->request(i),
+ 987             this->_inst->thread->getTC(), this,
+ 988             this->isLoad() ? BaseTLB::Read : BaseTLB::Write);
+ 989 }
+```
+
+Remember that the **SingleDataRequest** has only one request packet.
+Therefore, it has only one entry in the _requests vector. 
+This function sends the request stored in the _requests vector to the TLB.
+Note that the argument is used to index the entry stored in the _requests vector. 
+You can see that it invokes the translateTiming of the dTLB connected to the LSQ.
+The details of the translateTiming function of the TLB is explained in the previous posting.
+Also, note that it passes the **this** as the translation object parameter. 
+
+
 
 
 ### Execute store instruction

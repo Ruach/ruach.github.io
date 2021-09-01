@@ -907,6 +907,31 @@ Because CPU goes through the data cache
 before touching the physical memory, 
 the sendTimingReq is invoked on the DcachePort.
 
+*gem5/src/mem/port.hh*
+```cpp
+444 inline bool
+445 MasterPort::sendTimingReq(PacketPtr pkt)
+446 {
+447     return TimingRequestProtocol::sendReq(_slavePort, pkt);
+448 }
+```
+*mem/protocol/timing.cc*
+```cpp
+ 47 /* The request protocol. */
+ 48 
+ 49 bool
+ 50 TimingRequestProtocol::sendReq(TimingResponseProtocol *peer, PacketPtr pkt)
+ 51 {
+ 52     assert(pkt->isRequest());
+ 53     return peer->recvTimingReq(pkt);
+ 54 }
+```
+
+
+
+
+### recvTimingResp
+
 When the request has been handled by the slave (DCache),
 recvTimingResp method of DcachePort will be invoked 
 to handle result of memory access.

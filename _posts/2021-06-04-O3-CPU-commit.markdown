@@ -769,7 +769,7 @@ For further memory allocation, the invalidated block is returned.
 ```
 
 
-## Revisiting revTimingReq of the BaseCache to handle cache hit and miss
+# Revisiting revTimingReq of the BaseCache to handle cache hit and miss
 
 ```cpp
  349 void
@@ -1207,8 +1207,7 @@ but I will not deal with them currently.
 
 
 
-
-## BaseCache::handleTimingReqMiss actually process the cache miss 
+## BaseCache::handleTimingReqMiss process the cache miss with MSHR 
 Because this function is quite long, I will split it in two parts: 
 when MSHR exists and when MSHR doesn't existing.
 
@@ -1441,6 +1440,15 @@ represented as a Target type.
  347 }
 ```
 
+It first checks whether the current memory request is Eviction request. 
+Note that cache miss can happen either because of the read and write operation.
+Therefore, when the blk is not a Null pointer and valid,
+it is the write miss. (\TODO{need verification})
+When it is not a miss caused by Eviction request,
+then it invokes allocateMissBuffer function.
+
+
+### allocateMissBuffer 
 ```cpp
 1164     MSHR *allocateMissBuffer(PacketPtr pkt, Tick time, bool sched_send = true)
 1165     {
@@ -1460,12 +1468,89 @@ represented as a Target type.
 1179         return mshr;
 1180     }
 ```
-allocateMissBuffer generates new mshr entry.
+When there is no MSHR entry associated with current request, 
+the first priority job is allocating new MSHR entry for it and further memory operation.
+mshrQueue maintains all MSHR entries and provide allocate interface
+that adds new MSHR entry to the queue. 
+After that, because the allocateMissBuffer by default set sched_send,
+it invokes schedMemSideSendEvent to let the lower level cache or memory
+to fetch data.
 
 
 
-### When and Who manages the targets of the MSHR? 
+### schedMemSideSendEvent
 ```cpp
+1257     /**
+1258      * Schedule a send event for the memory-side port. If already
+1259      * scheduled, this may reschedule the event at an earlier
+1260      * time. When the specified time is reached, the port is free to
+1261      * send either a response, a request, or a prefetch request.
+1262      *      
+1263      * @param time The time when to attempt sending a packet.
+1264      */ 
+1265     void schedMemSideSendEvent(Tick time) 
+1266     { 
+1267         memSidePort.schedSendEvent(time);
+1268     }  
+```
+We took a look at the schedSendEvent function provided by the PacketQueue. 
+The major job of the function was registering event to process 
+deferred packet and send response to the CpuSidePort.
+However, note that we are currently looking at the memSidePort's 
+schedSendEvent. 
+
+```cpp
+ 234     /**
+ 235      * The memory-side port extends the base cache request port with
+ 236      * access functions for functional, atomic and timing snoops.
+ 237      */
+ 238     class MemSidePort : public CacheRequestPort
+ 239     {
+ 240       private:
+ 241 
+ 242         /** The cache-specific queue. */
+ 243         CacheReqPacketQueue _reqQueue;
+ 244 
+ 245         SnoopRespPacketQueue _snoopRespQueue;
+ 246 
+ 247         // a pointer to our specific cache implementation
+ 248         BaseCache *cache;
+ 249 
+ 250       protected:
+ 251 
+ 252         virtual void recvTimingSnoopReq(PacketPtr pkt);
+ 253 
+ 254         virtual bool recvTimingResp(PacketPtr pkt);
+ 255 
+ 256         virtual Tick recvAtomicSnoop(PacketPtr pkt);
+ 257 
+ 258         virtual void recvFunctionalSnoop(PacketPtr pkt);
+ 259 
+ 260       public:
+ 261 
+ 262         MemSidePort(const std::string &_name, BaseCache *_cache,
+ 263                     const std::string &_label);
+ 264     };
+```
+
+Because it doesn't provide the function schedSendEvent,
+we should go deeper to its parent class, CacheRequestPort.
+
+```cpp
+ 143     /**
+ 144      * A cache request port is used for the memory-side port of the
+ 145      * cache, and in addition to the basic timing port that only sends
+ 146      * response packets through a transmit list, it also offers the
+ 147      * ability to schedule and send request packets (requests &
+ 148      * writebacks). The send event is scheduled through schedSendEvent,
+ 149      * and the sendDeferredPacket of the timing port is modified to
+ 150      * consider both the transmit list and the requests from the MSHR.
+ 151      */
+ 152     class CacheRequestPort : public QueuedRequestPort
+ 153     {
+ 154 
+ 155       public:
+ 156 
  157         /**
  158          * Schedule a send of a request packet (from the MSHR). Note
  159          * that we could already have a retry outstanding.
@@ -1475,27 +1560,80 @@ allocateMissBuffer generates new mshr entry.
  163             DPRINTF(CachePort, "Scheduling send event at %llu\n", time);
  164             reqQueue.schedSendEvent(time);
  165         }
-......
-1257     /**
-1258      * Schedule a send event for the memory-side port. If already
-1259      * scheduled, this may reschedule the event at an earlier
-1260      * time. When the specified time is reached, the port is free to
-1261      * send either a response, a request, or a prefetch request.
-1262      *
-1263      * @param time The time when to attempt sending a packet.
-1264      */
-1265     void schedMemSideSendEvent(Tick time)
-1266     {
-1267         memSidePort.schedSendEvent(time);
-1268     }
-
+ 166 
+ 167       protected:
+ 168 
+ 169         CacheRequestPort(const std::string &_name, BaseCache *_cache,
+ 170                         ReqPacketQueue &_reqQueue,
+ 171                         SnoopRespPacketQueue &_snoopRespQueue) :
+ 172             QueuedRequestPort(_name, _cache, _reqQueue, _snoopRespQueue)
+ 173         { }
+ 174 
+ 175         /**
+ 176          * Memory-side port always snoops.
+ 177          *
+ 178          * @return always true
+ 179          */
+ 180         virtual bool isSnooping() const { return true; }
+ 181     };
 ```
 
+Yeah this has very similar interfaces with the CpuSidePort. 
+However, the schedSendEvent function invokes schedSendEvent function 
+of the reqQueue instead of the respQueue. 
 
+```cpp
+154 void
+155 PacketQueue::schedSendEvent(Tick when)
+156 {
+157     // if we are waiting on a retry just hold off
+158     if (waitingOnRetry) {
+159         DPRINTF(PacketQueue, "Not scheduling send as waiting for retry\n");
+160         assert(!sendEvent.scheduled());
+161         return;
+162     }
+163 
+164     if (when != MaxTick) {
+165         // we cannot go back in time, and to be consistent we stick to
+166         // one tick in the future
+167         when = std::max(when, curTick() + 1);
+168         // @todo Revisit the +1
+169 
+170         if (!sendEvent.scheduled()) {
+171             em.schedule(&sendEvent, when);
+172         } else if (when < sendEvent.when()) {
+173             // if the new time is earlier than when the event
+174             // currently is scheduled, move it forward
+175             em.reschedule(&sendEvent, when);
+176         }
+177     } else {
+178         // we get a MaxTick when there is no more to send, so if we're
+179         // draining, we may be done at this point
+180         if (drainState() == DrainState::Draining &&
+181             transmitList.empty() && !sendEvent.scheduled()) {
+182 
+183             DPRINTF(Drain, "PacketQueue done draining,"
+184                     "processing drain event\n");
+185             signalDrainDone();
+186         }
+187     }
+188 }
+```
 
+Although the reqQueue type is different from respQueue,
+the same methods are invoked because they are both inherit the PacketQueue class.
+However, when the sendEvent raises and processSendEvent function is invoked,
+different sendTiming function will be invoked. 
+Because the respQueue is ReqPacketQueue object, 
+it will invokes the sendTiming implemented like below. 
 
-
-
+```cpp
+245 bool
+246 ReqPacketQueue::sendTiming(PacketPtr pkt)
+247 {
+248     return memSidePort.sendTimingReq(pkt);
+249 }
+```
 
 
 

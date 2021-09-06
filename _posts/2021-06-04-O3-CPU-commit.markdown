@@ -1580,7 +1580,7 @@ we should go deeper to its parent class, CacheRequestPort.
 
 Yeah this has very similar interfaces with the CpuSidePort. 
 However, the schedSendEvent function invokes schedSendEvent function 
-of the reqQueue instead of the respQueue. 
+of the **reqQueue** instead of the respQueue. 
 
 ```cpp
 154 void
@@ -1622,18 +1622,628 @@ of the reqQueue instead of the respQueue.
 
 Although the reqQueue type is different from respQueue,
 the same methods are invoked because they are both inherit the PacketQueue class.
-However, when the sendEvent raises and processSendEvent function is invoked,
-different sendTiming function will be invoked. 
-Because the respQueue is ReqPacketQueue object, 
-it will invokes the sendTiming implemented like below. 
+It schedules sendEvent and involves processSendEvent when the event fires. 
+However, when the sendEvent raises, processSendEvent function invokes 
+different sendDeferredPacket function.
+Note that respQueue is CacheReqPacketQueue inheriting ReqPacketQueue. 
+Also, the CacheReqPacketQueue overrides sendDeferredPacket implemented in the 
+PacketQueue class. Although the CacheReqPacketQueue inherits the PacketQueue class,
+it has overidden implementation of sendDeferredPacket, it will be invoked instead. 
+
 
 ```cpp
-245 bool
-246 ReqPacketQueue::sendTiming(PacketPtr pkt)
-247 {
-248     return memSidePort.sendTimingReq(pkt);
-249 }
+2549 void
+2550 BaseCache::CacheReqPacketQueue::sendDeferredPacket()
+2551 {
+2552     // sanity check
+2553     assert(!waitingOnRetry);
+2554 
+2555     // there should never be any deferred request packets in the
+2556     // queue, instead we resly on the cache to provide the packets
+2557     // from the MSHR queue or write queue
+2558     assert(deferredPacketReadyTime() == MaxTick);
+2559 
+2560     // check for request packets (requests & writebacks)
+2561     QueueEntry* entry = cache.getNextQueueEntry();
+2562 
+2563     if (!entry) {
+2564         // can happen if e.g. we attempt a writeback and fail, but
+2565         // before the retry, the writeback is eliminated because
+2566         // we snoop another cache's ReadEx.
+2567     } else {
+2568         // let our snoop responses go first if there are responses to
+2569         // the same addresses
+2570         if (checkConflictingSnoop(entry->getTarget()->pkt)) {
+2571             return;
+2572         }
+2573         waitingOnRetry = entry->sendPacket(cache);
+2574     }
+2575 
+2576     // if we succeeded and are not waiting for a retry, schedule the
+2577     // next send considering when the next queue is ready, note that
+2578     // snoop responses have their own packet queue and thus schedule
+2579     // their own events
+2580     if (!waitingOnRetry) {
+2581         schedSendEvent(cache.nextQueueReadyTime());
+2582     }
+2583 }
 ```
+
+You might remember that the sendDeferredPacket of the PacketQueue utilizes the 
+transmitList to dequeue the packets and send it to the CPU in our previous 
+cache hit cases (sending response to the CPU). 
+However, when the cache miss happens, it needs help from complicated cache units 
+MSHR and writeBuffer. 
+Also, you might have noticed that the packet had not been pushed to the 
+transmitList but MSHR or writeBuffer. 
+Therefore, when the event fires, the packet should be retrieved from either 
+MSHR or writeBuffer not the transmitList. 
+
+
+### getNextQueueEntry 
+```cpp
+ 773 QueueEntry*
+ 774 BaseCache::getNextQueueEntry()
+ 775 {
+ 776     // Check both MSHR queue and write buffer for potential requests,
+ 777     // note that null does not mean there is no request, it could
+ 778     // simply be that it is not ready
+ 779     MSHR *miss_mshr  = mshrQueue.getNext();
+ 780     WriteQueueEntry *wq_entry = writeBuffer.getNext();
+ 781 
+ 782     // If we got a write buffer request ready, first priority is a
+ 783     // full write buffer, otherwise we favour the miss requests
+ 784     if (wq_entry && (writeBuffer.isFull() || !miss_mshr)) {
+ 785         // need to search MSHR queue for conflicting earlier miss.
+ 786         MSHR *conflict_mshr = mshrQueue.findPending(wq_entry);
+ 787 
+ 788         if (conflict_mshr && conflict_mshr->order < wq_entry->order) {
+ 789             // Service misses in order until conflict is cleared.
+ 790             return conflict_mshr;
+ 791 
+ 792             // @todo Note that we ignore the ready time of the conflict here
+ 793         }
+ 794 
+ 795         // No conflicts; issue write
+ 796         return wq_entry;
+ 797     } else if (miss_mshr) {
+ 798         // need to check for conflicting earlier writeback
+ 799         WriteQueueEntry *conflict_mshr = writeBuffer.findPending(miss_mshr);
+ 800         if (conflict_mshr) {
+ 801             // not sure why we don't check order here... it was in the
+ 802             // original code but commented out.
+ 803 
+ 804             // The only way this happens is if we are
+ 805             // doing a write and we didn't have permissions
+ 806             // then subsequently saw a writeback (owned got evicted)
+ 807             // We need to make sure to perform the writeback first
+ 808             // To preserve the dirty data, then we can issue the write
+ 809 
+ 810             // should we return wq_entry here instead?  I.e. do we
+ 811             // have to flush writes in order?  I don't think so... not
+ 812             // for Alpha anyway.  Maybe for x86?
+ 813             return conflict_mshr;
+ 814 
+ 815             // @todo Note that we ignore the ready time of the conflict here
+ 816         }
+ 817 
+ 818         // No conflicts; issue read
+ 819         return miss_mshr;
+ 820     }
+ 821 
+ 822     // fall through... no pending requests.  Try a prefetch.
+ 823     assert(!miss_mshr && !wq_entry);
+ 824     if (prefetcher && mshrQueue.canPrefetch() && !isBlocked()) {
+ 825         // If we have a miss queue slot, we can try a prefetch
+ 826         PacketPtr pkt = prefetcher->getPacket();
+ 827         if (pkt) {
+ 828             Addr pf_addr = pkt->getBlockAddr(blkSize);
+ 829             if (tags->findBlock(pf_addr, pkt->isSecure())) {
+ 830                 DPRINTF(HWPrefetch, "Prefetch %#x has hit in cache, "
+ 831                         "dropped.\n", pf_addr);
+ 832                 prefetcher->pfHitInCache();
+ 833                 // free the request and packet
+ 834                 delete pkt;
+ 835             } else if (mshrQueue.findMatch(pf_addr, pkt->isSecure())) {
+ 836                 DPRINTF(HWPrefetch, "Prefetch %#x has hit in a MSHR, "
+ 837                         "dropped.\n", pf_addr);
+ 838                 prefetcher->pfHitInMSHR();
+ 839                 // free the request and packet
+ 840                 delete pkt;
+ 841             } else if (writeBuffer.findMatch(pf_addr, pkt->isSecure())) {
+ 842                 DPRINTF(HWPrefetch, "Prefetch %#x has hit in the "
+ 843                         "Write Buffer, dropped.\n", pf_addr);
+ 844                 prefetcher->pfHitInWB();
+ 845                 // free the request and packet
+ 846                 delete pkt;
+ 847             } else {
+ 848                 // Update statistic on number of prefetches issued
+ 849                 // (hwpf_mshr_misses)
+ 850                 assert(pkt->req->requestorId() < system->maxRequestors());
+ 851                 stats.cmdStats(pkt).mshrMisses[pkt->req->requestorId()]++;
+ 852 
+ 853                 // allocate an MSHR and return it, note
+ 854                 // that we send the packet straight away, so do not
+ 855                 // schedule the send
+ 856                 return allocateMissBuffer(pkt, curTick(), false);
+ 857             }
+ 858         }
+ 859     }
+ 860 
+ 861     return nullptr;
+ 862 }
+```
+
+You might remember that allocate function of the mshrQueue grab one free entry 
+from its freeList maintained by the Queue class which is the parent of the MSHRQueue. 
+And then by invoking allocate method of the MSHR, it sets the selected MSHR entry 
+to be pushed into the ready queue and sorted based on the readyTime. 
+Therefore, when one entry is retrieved with the getNext method in 
+the getNextQueueEntry function, it returns the MSHR entry 
+that waits the longest time among them. 
+Also, the request might reside in the writeBuffer instead of the mshrQueue. 
+Because the writeBuffer is object of WriteBuffer which is the child of the Queue class,
+it can retrieve the most adequate entry need to be processed at the moment. 
+
+### Priority is important in selecting next packet
+It is important to note that the port from the cache unit to the memory is 
+limited resource. However, because we have two input sources to choose
+we need to determine which packet retrieved from where should be sent to the memory.
+
+```cpp
+ 782     // If we got a write buffer request ready, first priority is a
+ 783     // full write buffer, otherwise we favour the miss requests
+ 784     if (wq_entry && (writeBuffer.isFull() || !miss_mshr)) {
+ 785         // need to search MSHR queue for conflicting earlier miss.
+ 786         MSHR *conflict_mshr = mshrQueue.findPending(wq_entry);
+ 787
+ 788         if (conflict_mshr && conflict_mshr->order < wq_entry->order) {
+ 789             // Service misses in order until conflict is cleared.
+ 790             return conflict_mshr;
+ 791
+ 792             // @todo Note that we ignore the ready time of the conflict here
+ 793         }
+ 794
+ 795         // No conflicts; issue write
+ 796         return wq_entry;
+```
+
+Here, the logic put more priority in consuming full writeBuffer.
+When the writeBuffer is not full, then MSHRqueue will be consumed.
+Also, even when the writeBuffer is full, 
+if there is conflicting and earlier entry in the MSHR, 
+then the selected entry should be replaced with the conflicting MSHR entry. 
+Otherwise, the selected entry from the writeBuffer will be returned. 
+
+```cpp
+ 797     } else if (miss_mshr) {
+ 798         // need to check for conflicting earlier writeback
+ 799         WriteQueueEntry *conflict_mshr = writeBuffer.findPending(miss_mshr);
+ 800         if (conflict_mshr) {
+ 801             // not sure why we don't check order here... it was in the
+ 802             // original code but commented out.
+ 803
+ 804             // The only way this happens is if we are
+ 805             // doing a write and we didn't have permissions
+ 806             // then subsequently saw a writeback (owned got evicted)
+ 807             // We need to make sure to perform the writeback first
+ 808             // To preserve the dirty data, then we can issue the write
+ 809
+ 810             // should we return wq_entry here instead?  I.e. do we
+ 811             // have to flush writes in order?  I don't think so... not
+ 812             // for Alpha anyway.  Maybe for x86?
+ 813             return conflict_mshr;
+ 814
+ 815             // @todo Note that we ignore the ready time of the conflict here
+ 816         }
+ 817
+ 818         // No conflicts; issue read
+ 819         return miss_mshr;
+ 820     }
+```
+
+Based on the comment in the left part of the getNextQueueEntry function,
+it seems that the selecting order is somewhat controversial, so I will skip them. 
+
+```cpp
+ 822     // fall through... no pending requests.  Try a prefetch.
+ 823     assert(!miss_mshr && !wq_entry);
+ 824     if (prefetcher && mshrQueue.canPrefetch() && !isBlocked()) {
+ 825         // If we have a miss queue slot, we can try a prefetch
+ 826         PacketPtr pkt = prefetcher->getPacket();
+ 827         if (pkt) {
+ 828             Addr pf_addr = pkt->getBlockAddr(blkSize);
+ 829             if (tags->findBlock(pf_addr, pkt->isSecure())) {
+ 830                 DPRINTF(HWPrefetch, "Prefetch %#x has hit in cache, "
+ 831                         "dropped.\n", pf_addr);
+ 832                 prefetcher->pfHitInCache();
+ 833                 // free the request and packet
+ 834                 delete pkt;
+ 835             } else if (mshrQueue.findMatch(pf_addr, pkt->isSecure())) {
+ 836                 DPRINTF(HWPrefetch, "Prefetch %#x has hit in a MSHR, "
+ 837                         "dropped.\n", pf_addr);
+ 838                 prefetcher->pfHitInMSHR();
+ 839                 // free the request and packet
+ 840                 delete pkt;
+ 841             } else if (writeBuffer.findMatch(pf_addr, pkt->isSecure())) {
+ 842                 DPRINTF(HWPrefetch, "Prefetch %#x has hit in the "
+ 843                         "Write Buffer, dropped.\n", pf_addr);
+ 844                 prefetcher->pfHitInWB();
+ 845                 // free the request and packet
+ 846                 delete pkt;
+ 847             } else {
+ 848                 // Update statistic on number of prefetches issued
+ 849                 // (hwpf_mshr_misses)
+ 850                 assert(pkt->req->requestorId() < system->maxRequestors());
+ 851                 stats.cmdStats(pkt).mshrMisses[pkt->req->requestorId()]++;
+ 852                 
+ 853                 // allocate an MSHR and return it, note
+ 854                 // that we send the packet straight away, so do not
+ 855                 // schedule the send
+ 856                 return allocateMissBuffer(pkt, curTick(), false);
+ 857             }
+ 858         }
+ 859     }
+ 860
+ 861     return nullptr;
+```
+
+The fall through pass can only be reachable when 
+there are no suitable request waiting in the writeBuffer and mshrQueue. 
+In that case, it tries to prefetch entries.
+Note that this prefetching is not software thing, but 
+a hardware prefetcher generated addresses are accessed.
+Because hardware prefetcher doesn't know whether the cache 
+or other waiting queues already have entry for that prefetched cache line,
+it checks them to confirm this is the fresh prefetch request. 
+If it is the fresh request, then add the request to the MSHR.
+Because the added request will be handled later when the next events happen,
+so it returns nullptr to report that there is no packet to be sent to the memory
+at this cycle. 
+
+
+### finally sendPacket
+```cpp
+2549 void
+2550 BaseCache::CacheReqPacketQueue::sendDeferredPacket()
+......
+2561     QueueEntry* entry = cache.getNextQueueEntry();
+2562
+2563     if (!entry) {
+2564         // can happen if e.g. we attempt a writeback and fail, but
+2565         // before the retry, the writeback is eliminated because
+2566         // we snoop another cache's ReadEx.
+2567     } else {
+2568         // let our snoop responses go first if there are responses to
+2569         // the same addresses
+2570         if (checkConflictingSnoop(entry->getTarget()->pkt)) {
+2571             return;
+2572         }
+2573         waitingOnRetry = entry->sendPacket(cache);
+2574     }
+2575
+2576     // if we succeeded and are not waiting for a retry, schedule the
+2577     // next send considering when the next queue is ready, note that
+2578     // snoop responses have their own packet queue and thus schedule
+2579     // their own events
+2580     if (!waitingOnRetry) {
+2581         schedSendEvent(cache.nextQueueReadyTime());
+2582     }
+2583 }
+```
+After the getNextQueueEntry returns the packet to send,
+it first checks whether the returned entry is null or real packet. 
+When it returns the real packet to send,
+it invokes sendPacket of the returned entry.
+Note that entry is QueueEntry type and has sendPacket as **virtual** memeber function.
+Note that the MSHR entry and WriteQueueEntry both inherits 
+QueueEntry and implements their own sendPacket
+Therefore, based on which type of packet is selected,
+one of below sendPacket implementation will be invoked. 
+Also note that the CacheReqPacketQueue has member field cache which is the reference of the BaseCache. 
+And this cache field is initialized as the cache object itself 
+who owns this CacheReqPacketQueue. 
+In our case it will be the Cache object. 
+
+```cpp
+705 bool
+706 MSHR::sendPacket(BaseCache &cache)
+707 {
+708     return cache.sendMSHRQueuePacket(this);
+709 }
+```
+
+```cpp
+140 bool
+141 WriteQueueEntry::sendPacket(BaseCache &cache)
+142 {
+143     return cache.sendWriteQueuePacket(this);
+144 }
+```
+
+
+### Cache::sendMSHRQueuePacket
+```cpp
+1358 bool
+1359 Cache::sendMSHRQueuePacket(MSHR* mshr)
+1360 {
+1361     assert(mshr);
+1362 
+1363     // use request from 1st target
+1364     PacketPtr tgt_pkt = mshr->getTarget()->pkt;
+1365 
+1366     if (tgt_pkt->cmd == MemCmd::HardPFReq && forwardSnoops) {
+1367         DPRINTF(Cache, "%s: MSHR %s\n", __func__, tgt_pkt->print());
+1368 
+1369         // we should never have hardware prefetches to allocated
+1370         // blocks
+1371         assert(!tags->findBlock(mshr->blkAddr, mshr->isSecure));
+1372 
+1373         // We need to check the caches above us to verify that
+1374         // they don't have a copy of this block in the dirty state
+1375         // at the moment. Without this check we could get a stale
+1376         // copy from memory that might get used in place of the
+1377         // dirty one.
+1378         Packet snoop_pkt(tgt_pkt, true, false);
+1379         snoop_pkt.setExpressSnoop();
+1380         // We are sending this packet upwards, but if it hits we will
+1381         // get a snoop response that we end up treating just like a
+1382         // normal response, hence it needs the MSHR as its sender
+1383         // state
+1384         snoop_pkt.senderState = mshr;
+1385         cpuSidePort.sendTimingSnoopReq(&snoop_pkt);
+1386 
+1387         // Check to see if the prefetch was squashed by an upper cache (to
+1388         // prevent us from grabbing the line) or if a Check to see if a
+1389         // writeback arrived between the time the prefetch was placed in
+1390         // the MSHRs and when it was selected to be sent or if the
+1391         // prefetch was squashed by an upper cache.
+1392 
+1393         // It is important to check cacheResponding before
+1394         // prefetchSquashed. If another cache has committed to
+1395         // responding, it will be sending a dirty response which will
+1396         // arrive at the MSHR allocated for this request. Checking the
+1397         // prefetchSquash first may result in the MSHR being
+1398         // prematurely deallocated.
+1399         if (snoop_pkt.cacheResponding()) {
+1400             GEM5_VAR_USED auto r = outstandingSnoop.insert(snoop_pkt.req);
+1401             assert(r.second);
+1402 
+1403             // if we are getting a snoop response with no sharers it
+1404             // will be allocated as Modified
+1405             bool pending_modified_resp = !snoop_pkt.hasSharers();
+1406             markInService(mshr, pending_modified_resp);
+1407 
+1408             DPRINTF(Cache, "Upward snoop of prefetch for addr"
+1409                     " %#x (%s) hit\n",
+1410                     tgt_pkt->getAddr(), tgt_pkt->isSecure()? "s": "ns");
+1411             return false;
+1412         }
+1413 
+1414         if (snoop_pkt.isBlockCached()) {
+1415             DPRINTF(Cache, "Block present, prefetch squashed by cache.  "
+1416                     "Deallocating mshr target %#x.\n",
+1417                     mshr->blkAddr);
+1418 
+1419             // Deallocate the mshr target
+1420             if (mshrQueue.forceDeallocateTarget(mshr)) {
+1421                 // Clear block if this deallocation resulted freed an
+1422                 // mshr when all had previously been utilized
+1423                 clearBlocked(Blocked_NoMSHRs);
+1424             }
+1425 
+1426             // given that no response is expected, delete Request and Packet
+1427             delete tgt_pkt;
+1428 
+1429             return false;
+1430         }
+1431     }
+1432 
+1433     return BaseCache::sendMSHRQueuePacket(mshr);
+1434 }
+```
+
+### BaseCache::sendMSHRQueuePacket
+```cpp
+1789 bool
+1790 BaseCache::sendMSHRQueuePacket(MSHR* mshr)
+1791 {
+1792     assert(mshr);
+1793 
+1794     // use request from 1st target
+1795     PacketPtr tgt_pkt = mshr->getTarget()->pkt;
+1796 
+1797     DPRINTF(Cache, "%s: MSHR %s\n", __func__, tgt_pkt->print());
+1798 
+1799     // if the cache is in write coalescing mode or (additionally) in
+1800     // no allocation mode, and we have a write packet with an MSHR
+1801     // that is not a whole-line write (due to incompatible flags etc),
+1802     // then reset the write mode
+1803     if (writeAllocator && writeAllocator->coalesce() && tgt_pkt->isWrite()) {
+1804         if (!mshr->isWholeLineWrite()) {
+1805             // if we are currently write coalescing, hold on the
+1806             // MSHR as many cycles extra as we need to completely
+1807             // write a cache line
+1808             if (writeAllocator->delay(mshr->blkAddr)) {
+1809                 Tick delay = blkSize / tgt_pkt->getSize() * clockPeriod();
+1810                 DPRINTF(CacheVerbose, "Delaying pkt %s %llu ticks to allow "
+1811                         "for write coalescing\n", tgt_pkt->print(), delay);
+1812                 mshrQueue.delay(mshr, delay);
+1813                 return false;
+1814             } else {
+1815                 writeAllocator->reset();
+1816             }
+1817         } else {
+1818             writeAllocator->resetDelay(mshr->blkAddr);
+1819         }
+1820     }
+1821 
+1822     CacheBlk *blk = tags->findBlock(mshr->blkAddr, mshr->isSecure);
+1823 
+1824     // either a prefetch that is not present upstream, or a normal
+1825     // MSHR request, proceed to get the packet to send downstream
+1826     PacketPtr pkt = createMissPacket(tgt_pkt, blk, mshr->needsWritable(),
+1827                                      mshr->isWholeLineWrite());
+1828 
+1829     mshr->isForward = (pkt == nullptr);
+1830 
+1831     if (mshr->isForward) {
+1832         // not a cache block request, but a response is expected
+1833         // make copy of current packet to forward, keep current
+1834         // copy for response handling
+1835         pkt = new Packet(tgt_pkt, false, true);
+1836         assert(!pkt->isWrite());
+1837     }
+1838 
+1839     // play it safe and append (rather than set) the sender state,
+1840     // as forwarded packets may already have existing state
+1841     pkt->pushSenderState(mshr);
+1842 
+1843     if (pkt->isClean() && blk && blk->isSet(CacheBlk::DirtyBit)) {
+1844         // A cache clean opearation is looking for a dirty block. Mark
+1845         // the packet so that the destination xbar can determine that
+1846         // there will be a follow-up write packet as well.
+1847         pkt->setSatisfied();
+1848     }
+1849 
+1850     if (!memSidePort.sendTimingReq(pkt)) {
+1851         // we are awaiting a retry, but we
+1852         // delete the packet and will be creating a new packet
+1853         // when we get the opportunity
+1854         delete pkt;
+1855 
+1856         // note that we have now masked any requestBus and
+1857         // schedSendEvent (we will wait for a retry before
+1858         // doing anything), and this is so even if we do not
+1859         // care about this packet and might override it before
+1860         // it gets retried
+1861         return true;
+1862     } else {
+1863         // As part of the call to sendTimingReq the packet is
+1864         // forwarded to all neighbouring caches (and any caches
+1865         // above them) as a snoop. Thus at this point we know if
+1866         // any of the neighbouring caches are responding, and if
+1867         // so, we know it is dirty, and we can determine if it is
+1868         // being passed as Modified, making our MSHR the ordering
+1869         // point
+1870         bool pending_modified_resp = !pkt->hasSharers() &&
+1871             pkt->cacheResponding();
+1872         markInService(mshr, pending_modified_resp);
+1873 
+1874         if (pkt->isClean() && blk && blk->isSet(CacheBlk::DirtyBit)) {
+1875             // A cache clean opearation is looking for a dirty
+1876             // block. If a dirty block is encountered a WriteClean
+1877             // will update any copies to the path to the memory
+1878             // until the point of reference.
+1879             DPRINTF(CacheVerbose, "%s: packet %s found block: %s\n",
+1880                     __func__, pkt->print(), blk->print());
+1881             PacketPtr wb_pkt = writecleanBlk(blk, pkt->req->getDest(),
+1882                                              pkt->id);
+1883             PacketList writebacks;
+1884             writebacks.push_back(wb_pkt);
+1885             doWritebacks(writebacks, 0);
+1886         }
+1887 
+1888         return false;
+1889     }
+1890 }
+```
+
+
+### createMissPacket 
+```cpp
+ 476 PacketPtr
+ 477 Cache::createMissPacket(PacketPtr cpu_pkt, CacheBlk *blk,
+ 478                         bool needsWritable,
+ 479                         bool is_whole_line_write) const
+ 480 {
+ 481     // should never see evictions here
+ 482     assert(!cpu_pkt->isEviction());
+ 483 
+ 484     bool blkValid = blk && blk->isValid();
+ 485 
+ 486     if (cpu_pkt->req->isUncacheable() ||
+ 487         (!blkValid && cpu_pkt->isUpgrade()) ||
+ 488         cpu_pkt->cmd == MemCmd::InvalidateReq || cpu_pkt->isClean()) {
+ 489         // uncacheable requests and upgrades from upper-level caches
+ 490         // that missed completely just go through as is
+ 491         return nullptr;
+ 492     }
+ 493 
+ 494     assert(cpu_pkt->needsResponse());
+ 495 
+ 496     MemCmd cmd;
+ 497     // @TODO make useUpgrades a parameter.
+ 498     // Note that ownership protocols require upgrade, otherwise a
+ 499     // write miss on a shared owned block will generate a ReadExcl,
+ 500     // which will clobber the owned copy.
+ 501     const bool useUpgrades = true;
+ 502     assert(cpu_pkt->cmd != MemCmd::WriteLineReq || is_whole_line_write);
+ 503     if (is_whole_line_write) {
+ 504         assert(!blkValid || !blk->isSet(CacheBlk::WritableBit));
+ 505         // forward as invalidate to all other caches, this gives us
+ 506         // the line in Exclusive state, and invalidates all other
+ 507         // copies
+ 508         cmd = MemCmd::InvalidateReq;
+ 509     } else if (blkValid && useUpgrades) {
+ 510         // only reason to be here is that blk is read only and we need
+ 511         // it to be writable
+ 512         assert(needsWritable);
+ 513         assert(!blk->isSet(CacheBlk::WritableBit));
+ 514         cmd = cpu_pkt->isLLSC() ? MemCmd::SCUpgradeReq : MemCmd::UpgradeReq;
+ 515     } else if (cpu_pkt->cmd == MemCmd::SCUpgradeFailReq ||
+ 516                cpu_pkt->cmd == MemCmd::StoreCondFailReq) {
+ 517         // Even though this SC will fail, we still need to send out the
+ 518         // request and get the data to supply it to other snoopers in the case
+ 519         // where the determination the StoreCond fails is delayed due to
+ 520         // all caches not being on the same local bus.
+ 521         cmd = MemCmd::SCUpgradeFailReq;
+ 522     } else {
+ 523         // block is invalid
+ 524 
+ 525         // If the request does not need a writable there are two cases
+ 526         // where we need to ensure the response will not fetch the
+ 527         // block in dirty state:
+ 528         // * this cache is read only and it does not perform
+ 529         //   writebacks,
+ 530         // * this cache is mostly exclusive and will not fill (since
+ 531         //   it does not fill it will have to writeback the dirty data
+ 532         //   immediately which generates uneccesary writebacks).
+ 533         bool force_clean_rsp = isReadOnly || clusivity == enums::mostly_excl;
+ 534         cmd = needsWritable ? MemCmd::ReadExReq :
+ 535             (force_clean_rsp ? MemCmd::ReadCleanReq : MemCmd::ReadSharedReq);
+ 536     }
+ 537     PacketPtr pkt = new Packet(cpu_pkt->req, cmd, blkSize);
+ 538 
+ 539     // if there are upstream caches that have already marked the
+ 540     // packet as having sharers (not passing writable), pass that info
+ 541     // downstream
+ 542     if (cpu_pkt->hasSharers() && !needsWritable) {
+ 543         // note that cpu_pkt may have spent a considerable time in the
+ 544         // MSHR queue and that the information could possibly be out
+ 545         // of date, however, there is no harm in conservatively
+ 546         // assuming the block has sharers
+ 547         pkt->setHasSharers();
+ 548         DPRINTF(Cache, "%s: passing hasSharers from %s to %s\n",
+ 549                 __func__, cpu_pkt->print(), pkt->print());
+ 550     }
+ 551 
+ 552     // the packet should be block aligned
+ 553     assert(pkt->getAddr() == pkt->getBlockAddr(blkSize));
+ 554 
+ 555     pkt->allocate();
+ 556     DPRINTF(Cache, "%s: created %s from %s\n", __func__, pkt->print(),
+ 557             cpu_pkt->print());
+ 558     return pkt;
+ 559 }
+
+
+
+```
+
+
+
+
 
 
 
@@ -2307,4 +2917,8 @@ and organize events using the schedule method and EventFunctionWrapper.
 223     DrainState drain() override;
 224 };
 ```
+
+
+
+
 

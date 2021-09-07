@@ -595,7 +595,13 @@ will be handled.
 ```
 
 After processing all targets of the currently selected MSHR entry, 
-we should deallocate the MSHR entry.
+we should promote deferred targets or deallocate the MSHR entry.
+Although we finish processing the targets of the selected MSHR, 
+there could be deferred targets for that MSHR entry.
+In that case, those targets should be moved to the MSHR, and 
+the selected MSHR should not be freed. 
+However, if there is no deferred targets, then the selected MSHR 
+can be freed. 
 Also, if the cache was blocked because of full of MSHR, 
 it clear blocking. Furthermore, if possible, 
 it generates prefetch request and send it to the memory. 

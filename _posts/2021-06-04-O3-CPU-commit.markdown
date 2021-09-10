@@ -3497,9 +3497,6 @@ and organize events using the schedule method and EventFunctionWrapper.
 122     }
 ```
 
-### Example with Cache 
-
-
 
 ```cpp
  200 Port &
@@ -3513,4 +3510,4 @@ and organize events using the schedule method and EventFunctionWrapper.
  208         return ClockedObject::getPort(if_name, idx);
  209     }
  210 }
-```
+r``

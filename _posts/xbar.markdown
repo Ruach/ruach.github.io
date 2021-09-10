@@ -258,26 +258,7 @@ because this port is used to receive packet from the other units.
 ```
 
 
-### Connecting ports
-```cpp
- 87 Port &
- 88 BaseXBar::getPort(const std::string &if_name, PortID idx)
- 89 {
- 90     if (if_name == "mem_side_ports" && idx < memSidePorts.size()) {
- 91         // the memory-side ports index translates directly to the vector
- 92         // position
- 93         return *memSidePorts[idx];
- 94     } else  if (if_name == "default") {
- 95         return *memSidePorts[defaultPortID];
- 96     } else if (if_name == "cpu_side_ports" && idx < cpuSidePorts.size()) {
- 97         // the CPU-side ports index translates directly to the vector position
- 98         return *cpuSidePorts[idx];
- 99     } else {
-100         return ClockedObject::getPort(if_name, idx);
-101     }
-102 }
-```
-
+## Connecting ports
 ```python
 143     def createCacheHierarchy(self):
 144         # Create an L3 cache (with crossbar)
@@ -316,6 +297,16 @@ because this port is used to receive packet from the other units.
 177         # Connect the L3 cache to the membus
 178         self.l3cache.connectMemSideBus(self.membus)
 ```
+
+As shown in the above code, 
+l3 cache is connected with two different components of the system.
+First, it's CPUSideBus is connected to the l3bus 
+which is the CoherencyXBar.
+Note that the other side of the l3bus is connected with the
+L2 cache (Line 172).
+And the L3 cache should be connected to the memory 
+through the membus of the system (line 178).
+
 
 ```python
 147 # We use a coherent crossbar to connect multiple requestors to the L2
@@ -371,6 +362,11 @@ because this port is used to receive packet from the other units.
 197     point_of_unification = True
 ```
 
+On the above code, there are two implmenetations for the XBar. 
+One is the L2Xbar connecting L2 cache and L3 cache.
+The other is the SystemXBar connecting the L3 cache and the memory.
+
+
 ```python
 148 class L3Cache(Cache):
 149     """Simple L3 Cache bank with default values
@@ -398,5 +394,53 @@ because this port is used to receive packet from the other units.
 171     def connectMemSideBus(self, bus):
 172         self.mem_side = bus.slave
 173 
-
 ```
+
+To connect the L3cache with the system memory through the SystemXBar,
+L3Cache python class provides connectXXXSideBus interface functions.
+It just allocates the proper parameter of the 
+bus's ports to the corredponding ports of the L3Cache. 
+When you look up the python script defining all the parameters
+required for initiating L3cache and the XBar, 
+you can understand whar are those ports in the above 
+configuration script. 
+
+```cpp
+ 75 class BaseCache(ClockedObject):
+ 76     type = 'BaseCache'
+......
+113     cpu_side = SlavePort("Upstream port closer to the CPU and/or device")
+114     mem_side = MasterPort("Downstream port closer to memory")
+```
+
+```cpp
+ 49 class BaseXBar(ClockedObject):
+ 50     type = 'BaseXBar'
+ 51     abstract = True
+ 52     cxx_header = "mem/xbar.hh"
+ 53 
+ 54     slave = VectorSlavePort("Vector port for connecting masters")
+ 55     master = VectorMasterPort("Vector port for connecting slaves")
+```
+
+Yeah two classes have different names for ports
+connecting different sides of the modules 
+to the other components. 
+When the connectMemSideBus function is invoked of the L3 cache, 
+the mem_side of the L3 cache is attached to the slave part of the XBar.
+The slave of the XBar is the CpuSidePort of the XBar.
+Therefore, the slave port is used to receive packets 
+sent from the connected cache.
+On the other hand,
+the master port is used to send packets from the 
+XBar to the connected memory ports. 
+Therefore, it is a memSidePort. 
+The name of the ports are slightly confusing 
+it is very similar of those cpuSide and memSide things.
+
+## 
+
+
+
+
+

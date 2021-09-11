@@ -1114,25 +1114,28 @@ For further memory allocation, the invalidated block is returned.
 
 ```
 
-*gem5/src/mem/cache/tags/base.cc*
+*gem5/src/mem/cache/tags/base_set_assoc.cc*
 ```cpp
-249     /**
-250      * This function updates the tags when a block is invalidated
-251      *
-252      * @param blk A valid block to invalidate.
-253      */
-254     virtual void invalidate(CacheBlk *blk)
-255     {
-256         assert(blk);
-257         assert(blk->isValid());
-258 
-259         stats.occupancies[blk->getSrcRequestorId()]--;
-260         stats.totalRefs += blk->getRefCount();
-261         stats.sampledRefs++;
-262 
-263         blk->invalidate();
-264     }
+ 88 void
+ 89 BaseSetAssoc::invalidate(CacheBlk *blk)
+ 90 {
+ 91     BaseTags::invalidate(blk);
+ 92 
+ 93     // Decrease the number of tags in use
+ 94     stats.tagsInUse--;
+ 95 
+ 96     // Invalidate replacement data
+ 97     replacementPolicy->invalidate(blk->replacementData);
+ 98 }
 ```
+Because the invalidate function of the BaseTag class is virtual function,
+it should be implemented by its children class.
+I utilize the base_set_assoc tags for generating cache 
+in my system, so I will follow the implementation 
+of the BaseSetAssoc class. 
+Note that it invokes the invalidate function of the block first
+and then invalidate replacement data.
+
 
 *gem5/src/mem/cache_blk.hh*
 ```cpp
@@ -1158,6 +1161,15 @@ For further memory allocation, the invalidated block is returned.
 212     }
 ```
 
+Although the invalidate function of the CacheBlk is defined 
+as virtual function,
+the system utilize the CahceBlk class as it is 
+instead of adopting another class inheriting CacheBlk.
+Therefore, the invalidate function of the CacheBlk is called.
+Most importantly it inovkes the invalidate function 
+of its parent class TaggedEntry. 
+Also, it clears all the coherence bits and prefetched bit
+if they are set. 
 
 *gem5/src/mem/tags/tagged_entry*
 ```cpp
@@ -1171,8 +1183,11 @@ For further memory allocation, the invalidated block is returned.
 106         setTag(MaxAddr);
 107         clearSecure();
 108     }
-
 ```
+
+Finally, it sets the _valid member field 
+of the CacheBlk as false and clear secure flag.
+
 
 
 # Revisiting revTimingReq of the BaseCache to handle cache hit and miss

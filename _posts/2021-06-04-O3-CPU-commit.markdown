@@ -1863,10 +1863,12 @@ represented as a Target type.
 
 It first checks whether the current memory request is Eviction request. 
 Note that cache miss can happen either because of the read and write operation.
-Therefore, when the blk is not a Null pointer and valid,
-it is the write miss. (\TODO{need verification})
-When it is not a miss caused by Eviction request,
-then it invokes allocateMissBuffer function.
+When it already has a valid block, but the cache access returns miss,
+it means that the block exists but not writable. 
+In that case, it first set the selected block as non-readable 
+because the data should not be read until
+the write miss is resolved through the XBar.
+To handle the write miss request, it invokes allocateMissBuffer function. 
 
 
 ### allocateMissBuffer 
@@ -2043,6 +2045,27 @@ of the **reqQueue** instead of the respQueue.
 
 Although the reqQueue type is different from respQueue,
 the same methods are invoked because they are both inherit the PacketQueue class.
+
+```cpp
+ 50 PacketQueue::PacketQueue(EventManager& _em, const std::string& _label,
+ 51                          const std::string& _sendEventName,
+ 52                          bool force_order,
+ 53                          bool disable_sanity_check)
+ 54     : em(_em), sendEvent([this]{ processSendEvent(); }, _sendEventName),
+ 55       _disableSanityCheck(disable_sanity_check),
+ 56       forceOrder(force_order),
+ 57       label(_label), waitingOnRetry(false)
+ 58 {
+ 59 }
+......
+220 void 
+221 PacketQueue::processSendEvent()
+222 {
+223     assert(!waitingOnRetry);
+224     sendDeferredPacket();
+225 }
+
+```
 It schedules sendEvent and involves processSendEvent when the event fires. 
 However, when the sendEvent raises, processSendEvent function invokes 
 different sendDeferredPacket function.
@@ -2060,7 +2083,7 @@ it has overidden implementation of sendDeferredPacket, it will be invoked instea
 2553     assert(!waitingOnRetry);
 2554 
 2555     // there should never be any deferred request packets in the
-2556     // queue, instead we resly on the cache to provide the packets
+2556     // queue, instead we rely on the cache to provide the packets
 2557     // from the MSHR queue or write queue
 2558     assert(deferredPacketReadyTime() == MaxTick);
 2559 
@@ -2322,8 +2345,48 @@ Because the added request will be handled later when the next events happen,
 so it returns nullptr to report that there is no packet to be sent to the memory
 at this cycle. 
 
+#$# checkConflictingSnoop
+```cpp
+ 212         /**
+ 213          * Check if there is a conflicting snoop response about to be
+ 214          * send out, and if so simply stall any requests, and schedule
+ 215          * a send event at the same time as the next snoop response is
+ 216          * being sent out.
+ 217          *
+ 218          * @param pkt The packet to check for conflicts against.
+ 219          */
+ 220         bool checkConflictingSnoop(const PacketPtr pkt)
+ 221         {   
+ 222             if (snoopRespQueue.checkConflict(pkt, cache.blkSize)) {
+ 223                 DPRINTF(CachePort, "Waiting for snoop response to be "
+ 224                         "sent\n");
+ 225                 Tick when = snoopRespQueue.deferredPacketReadyTime();
+ 226                 schedSendEvent(when);
+ 227                 return true;
+ 228             }
+ 229             return false;
+ 230         }
+```
 
-### finally sendPacket
+```cpp
+ 74 bool             
+ 75 PacketQueue::checkConflict(const PacketPtr pkt, const int blk_size) const
+ 76 {
+ 77     // caller is responsible for ensuring that all packets have the
+ 78     // same alignment
+ 79     for (const auto& p : transmitList) {
+ 80         if (p.pkt->matchBlockAddr(pkt, blk_size))
+ 81             return true;
+ 82     }
+ 83     return false;
+ 84 }
+```
+
+Because the SnoopRespPacketQueue is the child of PacketQueue,
+it invokes the above checkConflict function. 
+
+
+## finally sendPacket
 ```cpp
 2549 void
 2550 BaseCache::CacheReqPacketQueue::sendDeferredPacket()
@@ -2658,10 +2721,9 @@ In our case it will be the Cache object.
  558     return pkt;
  559 }
 
-
-
 ```
 
+# end of the recvTimingReq of the cache. 
 
 
 

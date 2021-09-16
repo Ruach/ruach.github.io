@@ -521,7 +521,7 @@ to the proper member fields, cpuSidePorts and memSidePorts.
 Instead of the SnoopRespLayer it generates SnnopRespPort 
 per receiving ports connected to the cache. 
 
-### recvTimingReq
+## recvTimingReq
 ```cpp
  88     class CoherentXBarResponsePort : public QueuedResponsePort
  89     {
@@ -647,10 +647,90 @@ mean anything when it has sharers.
  687      */
 ```
 
-
+### finding port and checking its availability
+After checking the condition of the packet, 
+it first need to retrieve the port that the packet should be 
+delivered to. 
+Based on the address requested by the cpuSide component, 
+the memSidePort will be determined. 
 
 ```cpp
- 175 
+330 PortID
+331 BaseXBar::findPort(AddrRange addr_range)
+332 {
+333     // we should never see any address lookups before we've got the
+334     // ranges of all connected CPU-side-port modules
+335     assert(gotAllAddrRanges);
+336     
+337     // Check the address map interval tree
+338     auto i = portMap.contains(addr_range);
+339     if (i != portMap.end()) {
+340         return i->second;
+341     }
+342 
+343     // Check if this matches the default range
+344     if (useDefaultRange) {
+345         if (addr_range.isSubset(defaultRange)) {
+346             DPRINTF(AddrRanges, "  found addr %s on default\n",
+347                     addr_range.to_string());
+348             return defaultPortID;
+349         }
+350     } else if (defaultPortID != InvalidPortID) {
+351         DPRINTF(AddrRanges, "Unable to find destination for %s, "
+352                 "will use default port\n", addr_range.to_string());
+353         return defaultPortID;
+354     }
+355 
+356     // we should use the range for the default port and it did not
+357     // match, or the default port is not set
+358     fatal("Unable to find destination for %s on %s\n", addr_range.to_string(),
+359           name());
+360 }
+```
+
+findPort function searches portMap and return 
+the number of memSidePort.
+You might remember the each port is 
+managed by the layer in the XBar.
+Therefore, to check its availability,
+we need to invoke the tryTiming function of the 
+request layer associated with the found port number. 
+
+```cpp
+181 template <typename SrcType, typename DstType>
+182 bool
+183 BaseXBar::Layer<SrcType, DstType>::tryTiming(SrcType* src_port)
+184 {
+185     // if we are in the retry state, we will not see anything but the
+186     // retrying port (or in the case of the snoop ports the snoop
+187     // response port that mirrors the actual CPU-side port) as we leave
+188     // this state again in zero time if the peer does not immediately
+189     // call the layer when receiving the retry
+190 
+191     // first we see if the layer is busy, next we check if the
+192     // destination port is already engaged in a transaction waiting
+193     // for a retry from the peer
+194     if (state == BUSY || waitingForPeer != NULL) {
+195         // the port should not be waiting already
+196         assert(std::find(waitingForLayer.begin(), waitingForLayer.end(),
+197                          src_port) == waitingForLayer.end());
+198 
+199         // put the port at the end of the retry list waiting for the
+200         // layer to be freed up (and in the case of a busy peer, for
+201         // that transaction to go through, and then the layer to free
+202         // up)
+203         waitingForLayer.push_back(src_port);
+204         return false;
+205     }
+206 
+207     state = BUSY;
+208 
+209     return true;
+210 }
+```
+
+## Handling snoop request in the recvTimingReq 
+```cpp
  176     // store size and command as they might be modified when
  177     // forwarding the packet
  178     unsigned int pkt_size = pkt->hasData() ? pkt->getSize() : 0;
@@ -676,6 +756,40 @@ mean anything when it has sharers.
  198 
  199     const bool snoop_caches = !system->bypassCaches() &&
  200         pkt->cmd != MemCmd::WriteClean;
+ ```
+First of all, it inspects packet to figure out 
+where is the destination of the packet.
+
+```cpp
+414     bool    
+415     isDestination(const PacketPtr pkt) const        
+416     {       
+417         return (pkt->req->isToPOC() && pointOfCoherency) ||
+418             (pkt->req->isToPOU() && pointOfUnification);
+419     }
+```
+
+When you look up the implementation of the isDestination function,
+it compares the packet's isToPOC and isToPOU with pointOfCoherency and pointOfUnification, respectively.
+The pointOfXXX is the member field of the XBar and initialized with 
+parameters passed from the configuration script.
+Based on the where the XBar is located,
+for example, in between the L2 cache and L3 cache 
+or L3 cache and external memories,
+either of those flags can be set. 
+The PoU for a core is the point at which the instruction and data caches and translation table walks of the core are guaranteed to see the same copy of a memory location.
+For a particular address, the PoC is the point at which all observers, for example, cores, DSPs, or DMA engines, that can access memory, are guaranteed to see the same copy of a memory location.
+Also, it checks whether the current packet should be 
+checked regarding the snoop.
+Note that the WriteClean event means that writes dirty data below without evicting. 
+\XXX{This type of packet is usually generated when the cache block 
+is evicted without any modification until its eviction.}
+Most of the time the cache should not be bypassed 
+and the packet command is not the WriteClean,
+the below condition should be executed. 
+
+
+```cpp
  201     if (snoop_caches) {
  202         assert(pkt->snoopDelay == 0);
  203 
@@ -727,6 +841,101 @@ mean anything when it has sharers.
  249         pkt->headerDelay += pkt->snoopDelay;
  250         pkt->snoopDelay = 0;
  251     }
+```
+
+### Forward snooping requests 
+```cpp
+307     /**
+308      * Forward a timing packet to our snoopers, potentially excluding
+309      * one of the connected coherent requestors to avoid sending a packet
+310      * back to where it came from.
+311      *
+312      * @param pkt Packet to forward
+313      * @param exclude_cpu_side_port_id Id of CPU-side port to exclude
+314      */
+315     void
+316     forwardTiming(PacketPtr pkt, PortID exclude_cpu_side_port_id)
+317     {
+318         forwardTiming(pkt, exclude_cpu_side_port_id, snoopPorts);
+319     }
+```
+
+```cpp
+ 123 void
+ 124 CoherentXBar::init()
+ 125 {
+ 126     BaseXBar::init();
+ 127 
+ 128     // iterate over our CPU-side ports and determine which of our
+ 129     // neighbouring memory-side ports are snooping and add them as snoopers
+ 130     for (const auto& p: cpuSidePorts) {
+ 131         // check if the connected memory-side port is snooping
+ 132         if (p->isSnooping()) {
+ 133             DPRINTF(AddrRanges, "Adding snooping requestor %s\n",
+ 134                     p->getPeer());
+ 135             snoopPorts.push_back(p);
+ 136         }
+ 137     }
+ 138 
+ 139     if (snoopPorts.empty())
+ 140         warn("CoherentXBar %s has no snooping ports attached!\n", name());
+ 141 
+ 142     // inform the snoop filter about the CPU-side ports so it can create
+ 143     // its own internal representation
+ 144     if (snoopFilter)
+ 145         snoopFilter->setCPUSidePorts(cpuSidePorts);
+ 146 }
+```
+
+For the forwardTiming, when it doesn't have a vector 
+containing all the destination ports to send the snoop requests,
+it sends the request to the snoopPorts 
+populated at its initialization function. 
+
+```cpp
+ 699 void
+ 700 CoherentXBar::forwardTiming(PacketPtr pkt, PortID exclude_cpu_side_port_id,
+ 701                            const std::vector<QueuedResponsePort*>& dests)
+ 702 {
+ 703     DPRINTF(CoherentXBar, "%s for %s\n", __func__, pkt->print());
+ 704 
+ 705     // snoops should only happen if the system isn't bypassing caches
+ 706     assert(!system->bypassCaches());
+ 707 
+ 708     unsigned fanout = 0;
+ 709 
+ 710     for (const auto& p: dests) {
+ 711         // we could have gotten this request from a snooping requestor
+ 712         // (corresponding to our own CPU-side port that is also in
+ 713         // snoopPorts) and should not send it back to where it came
+ 714         // from
+ 715         if (exclude_cpu_side_port_id == InvalidPortID ||
+ 716             p->getId() != exclude_cpu_side_port_id) {
+ 717             // cache is not allowed to refuse snoop
+ 718             p->sendTimingSnoopReq(pkt);
+ 719             fanout++;
+ 720         }
+ 721     }
+ 722 
+ 723     // Stats for fanout of this forward operation
+ 724     snoopFanout.sample(fanout);
+ 725 }
+```
+
+The forwardTiming functions sends the snooping request 
+to the other components connected to the XBar
+except the one that is currently receiving the packet 
+from the cache side. 
+Note that it traverse all destination ports 
+passed to the function and invokes sendTimingSnoopReq function.
+However, note that it excludes the one 
+specified as exclude_cpu_side_port_id. 
+This one mostly is the port initially received the 
+cache snoop packet. 
+
+
+## Sink packet or forward packet to the next level 
+```cpp
  252 
  253     // set up a sensible starting point
  254     bool success = true;
@@ -780,6 +989,51 @@ mean anything when it has sharers.
  302         }
  303     }
  304 
+ ```
+
+### Check packet's flags to figure out next step 
+```cpp
+1079 bool
+1080 CoherentXBar::sinkPacket(const PacketPtr pkt) const
+1081 {
+1082     // we can sink the packet if:
+1083     // 1) the crossbar is the point of coherency, and a cache is
+1084     //    responding after being snooped
+1085     // 2) the crossbar is the point of coherency, and the packet is a
+1086     //    coherency packet (not a read or a write) that does not
+1087     //    require a response
+1088     // 3) this is a clean evict or clean writeback, but the packet is
+1089     //    found in a cache above this crossbar
+1090     // 4) a cache is responding after being snooped, and the packet
+1091     //    either does not need the block to be writable, or the cache
+1092     //    that has promised to respond (setting the cache responding
+1093     //    flag) is providing writable and thus had a Modified block,
+1094     //    and no further action is needed
+1095     return (pointOfCoherency && pkt->cacheResponding()) ||
+1096         (pointOfCoherency && !(pkt->isRead() || pkt->isWrite()) &&
+1097          !pkt->needsResponse()) ||
+1098         (pkt->isCleanEviction() && pkt->isBlockCached()) ||
+1099         (pkt->cacheResponding() &&
+1100          (!pkt->needsWritable() || pkt->responderHadWritable()));
+1101 }
+1102 
+1103 bool
+1104 CoherentXBar::forwardPacket(const PacketPtr pkt)
+1105 {
+1106     // we are forwarding the packet if:
+1107     // 1) this is a cache clean request to the PoU/PoC and this
+1108     //    crossbar is above the PoU/PoC
+1109     // 2) this is a read or a write
+1110     // 3) this crossbar is above the point of coherency
+1111     if (pkt->isClean()) {
+1112         return !isDestination(pkt);
+1113     }
+1114     return pkt->isRead() || pkt->isWrite() || !pointOfCoherency;
+1115 }
+
+```
+
+ ```cpp
  305     if (snoopFilter && snoop_caches) {
  306         // Let the snoop filter know about the success of the send operation
  307         snoopFilter->finishRequest(!success, addr, pkt->isSecure());

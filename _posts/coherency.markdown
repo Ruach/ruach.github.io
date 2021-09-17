@@ -164,7 +164,77 @@ as described in the following code.
 ```
 
 ### XXX{need recvTimingSnoopReq of the XBAR}
+```cpp
+ 509 void
+ 510 CoherentXBar::recvTimingSnoopReq(PacketPtr pkt, PortID mem_side_port_id)
+ 511 {   
+ 512     DPRINTF(CoherentXBar, "%s: src %s packet %s\n", __func__,
+ 513             memSidePorts[mem_side_port_id]->name(), pkt->print());
+ 514     
+ 515     // update stats here as we know the forwarding will succeed
+ 516     unsigned int pkt_size = pkt->hasData() ? pkt->getSize() : 0;
+ 517     transDist[pkt->cmdToIndex()]++;
+ 518     snoops++;
+ 519     snoopTraffic += pkt_size;
+ 520     
+ 521     // we should only see express snoops from caches
+ 522     assert(pkt->isExpressSnoop());
+ 523     
+ 524     // set the packet header and payload delay, for now use forward latency
+ 525     // @todo Assess the choice of latency further
+ 526     calcPacketTiming(pkt, forwardLatency * clockPeriod());
+ 527     
+ 528     // remember if a cache has already committed to responding so we
+ 529     // can see if it changes during the snooping
+ 530     const bool cache_responding = pkt->cacheResponding();
+ 531     
+ 532     assert(pkt->snoopDelay == 0);
+ 533     
+ 534     if (snoopFilter) {
+ 535         // let the Snoop Filter work its magic and guide probing
+ 536         auto sf_res = snoopFilter->lookupSnoop(pkt);
+ 537         // the time required by a packet to be delivered through
+ 538         // the xbar has to be charged also with to lookup latency
+ 539         // of the snoop filter
+ 540         pkt->headerDelay += sf_res.second * clockPeriod();
+ 541         DPRINTF(CoherentXBar, "%s: src %s packet %s SF size: %i lat: %i\n",
+ 542                 __func__, memSidePorts[mem_side_port_id]->name(),
+ 543                 pkt->print(), sf_res.first.size(), sf_res.second);
+ 544         
+ 545         // forward to all snoopers
+ 546         forwardTiming(pkt, InvalidPortID, sf_res.first);
+ 547     } else {
+ 548         forwardTiming(pkt, InvalidPortID);
+ 549     }
+ 550     
+ 551     // add the snoop delay to our header delay, and then reset it
+ 552     pkt->headerDelay += pkt->snoopDelay;
+ 553     pkt->snoopDelay = 0;
+ 554     
+ 555     // if we can expect a response, remember how to route it
+ 556     if (!cache_responding && pkt->cacheResponding()) {
+ 557         assert(routeTo.find(pkt->req) == routeTo.end());
+ 558         routeTo[pkt->req] = mem_side_port_id;
+ 559     }
+ 560 
+ 561     // a snoop request came from a connected CPU-side-port device (one of
+ 562     // our memory-side ports), and if it is not coming from the CPU-side-port
+ 563     // device responsible for the address range something is
+ 564     // wrong, hence there is nothing further to do as the packet
+ 565     // would be going back to where it came from
+ 566     assert(findPort(pkt->getAddrRange()) == mem_side_port_id);
+ 567 }
+```
 
+The details about forwardTiming is described in the previous posting.
+After forwarding the snoop request to the other component
+connected to the XBar,
+it should memorize the sender's identity (mem_side_port_id)
+to the routeTo map, when the snoop request requires response.
+Therefore, when the response for the snoop request packet is 
+delivered to the XBar, 
+it can figure out which entity send the snoop request
+so that the response packet can be delivered to that entity.
 
 ```cpp
 1199 void

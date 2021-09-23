@@ -163,7 +163,7 @@ as described in the following code.
 2526 }
 ```
 
-### XXX{need recvTimingSnoopReq of the XBAR}
+### recvTimingSnoopReq on the XBar side
 ```cpp
  509 void
  510 CoherentXBar::recvTimingSnoopReq(PacketPtr pkt, PortID mem_side_port_id)
@@ -235,6 +235,13 @@ Therefore, when the response for the snoop request packet is
 delivered to the XBar, 
 it can figure out which entity send the snoop request
 so that the response packet can be delivered to that entity.
+
+## Generic way to handle snoop request on the cache
+When the forwardTiming is invoked,
+it delivers the snoop packets to the connected 
+end points, which would be the caches. 
+As a result, the recvTimingSnoopReq function 
+of each cache unit connected to the XBar will be executed.
 
 ```cpp
 1199 void
@@ -356,8 +363,7 @@ so that the response packet can be delivered to that entity.
 1315 }
 ```
 
-
-## Generic way to handle snoop request
+### handleSnoop1: forward snoop packet to the upward cache
 ```cpp
  983 uint32_t
  984 Cache::handleSnoop(PacketPtr pkt, CacheBlk *blk, bool is_timing,
@@ -434,7 +440,7 @@ so that the response packet can be delivered to that entity.
 ```
 
 
-### Checking if the current cache has the block associated with snoop packet
+### handleSnoop2: checks existence of the request block in the current cache.
 ```cpp
 1056     bool respond = false;
 1057     bool blk_valid = blk && blk->isValid();
@@ -551,7 +557,7 @@ then it should invoke setHasSharers of the packet
 to let the sender know that some caches has the 
 shared read only cache block. 
 
-### respond to the snoop request
+### handleSnoop3: respond to the snoop request
 ```cpp
 1138 
 1139     if (respond) {
@@ -604,7 +610,7 @@ shared read only cache block.
 1186     }
 ```
 
-When there is no need for respond, 
+When there is no need for response, 
 it just deletes the snoop packet and returns.
 However, on the other hand,
 when the current cache owns or modified the cache block
@@ -614,14 +620,14 @@ The first think to be done is make
 the sender know that current cache 
 contains the request cache block and will respond.
 This is done by setting the flag of the packet 
-through the setCacheResponding function.
-Note that this might not be possible implementation
+through the setCacheResponding function (Line 1143).
+Note that this might not be realistic implementation
 because the snooping packet might be concurrently checked
 by the multiple entries connected to the XBar.
 
 Anyway, when it needs to respond,
 which means that the selected cache block 
-is set as dirty and the request packet requires response,
+is set as dirty and the request packet requires response (Line 1105),
 there are two conditions for the matching block
 regarding its status: owned or modified. 
 When the cache block is in the owned state, 
@@ -633,11 +639,11 @@ including itself is evicted or modified.
 However, the modified condition means that 
 the current cache has sole copy and modified 
 in its cache. 
-To distinguish the modified state from owned,
+To distinguish the modified state from the owned,
 it invokes setResponderHadWritable
 and set RESPONDER_HAD_WRITABLE flag.
 
-### doTimingSupplyResponse: generate and send the snoop response
+### handleSnoop4(doTimingSupplyResponse): generate and send the snoop response
 ```cpp
  938 void
  939 Cache::doTimingSupplyResponse(PacketPtr req_pkt, const uint8_t *blk_data,
@@ -688,7 +694,7 @@ and set RESPONDER_HAD_WRITABLE flag.
 Based on the request type, it generates the response packet. 
 The response packet for the read operation 
 requires the data cached in the current cache to share it 
-to the snoop requester. 
+to the snoop requester (Line 959-961). 
 However, for the other request, 
 the current cache data would not be necessary.
 When the packet is populated,
@@ -700,7 +706,7 @@ to the requester.
 ### End of the handleSnoop (also recvTimingSnoopReq).
 Because the handleSnoop is the last function 
 invoked by the recvTimingSnoopReq function,
-when one ends the other also ends. 
+the ends of the handleSnoop means the ends of the recvTimingSnoopReq. 
 
 ```cpp
 1187 
@@ -715,8 +721,18 @@ when one ends the other also ends.
 1196 }
 ```
 
+When the blk is found in the current cache,
+and the request packet's comment has Invalidate flag,
+it should invalidate the block in the responding cache. 
+
 
 ## recvTimingSnoopResp of the XBar: receiving response from the other cache
+When one cache sends the response packet 
+associated with the previous request sent from the 
+other cache through the XBar, 
+it first invokes the recvTimingSnoopResp function of the XBar
+as a result of snoop request.
+
 ```cpp
  569 bool
  570 CoherentXBar::recvTimingSnoopResp(PacketPtr pkt, PortID cpu_side_port_id)

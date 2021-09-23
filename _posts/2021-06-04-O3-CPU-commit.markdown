@@ -399,7 +399,7 @@ Because the cache unit is connected to the dcachePort on the other side of the C
 we will take a look at the recvTimingReq implementation of the cache unit.
 
 
-# Cache, Cache, Cahce! 
+# Cache, Cache, Cache! 
 ## recvTimingReq of the BaseCache: how to process the cache access? 
 ```cpp
 2448 bool
@@ -467,6 +467,7 @@ than the recvTimingReq cause it emulates
 actual cache accesses in the GEM5 cache. 
 Let's take a look at its implementation one by one. 
 
+### access1: check if the cache block exist in current cache
 ```cpp
 1152 bool
 1153 BaseCache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
@@ -492,7 +493,6 @@ associated with current request address.
 Because the tags member field manages all CacheBlk of the cache,
 it invokes the accessBlock function of the tags. 
 
-### accessBlock: check if the cache block exist
 ```cpp
 117     /**
 118      * Access block and update replacement data. May not succeed, in which case
@@ -565,16 +565,19 @@ based on the Tag value, by checking the tag value
 of way entries in one set mapped to current request's address,
 it can find whether the cache already contains the cache block
 mapped to current request address. 
-Also, note that it returns nullptr when there is no cache hit,
-but returns existing CacheBlk mapped to the request. 
-Therefore, by checking the returned CacheBlk of the findBlock function,
+
+Also, note that it can return nullptr
+when there is no cache hit.
+Therefore, by checking the returned CacheBlk 
+as a result of the findBlock function,
 it can distinguish cache hit and miss. 
-When the cache hit happens, it invokes touch function of the replacementPolicy
-to update the replacement policy associated with current CacheBlk. 
+When the cache hit happens, 
+it invokes touch function of the replacementPolicy
+to update the replacement policy 
+associated with current CacheBlk. 
 
 
-
-### Cache maintenance 
+### access2: handling cache maintenance packet
 Let's go back to the access function. 
 After the accessBlock function returns, it checks 
 types of the packet. 
@@ -594,6 +597,7 @@ types of the packet.
 1181 
 1182         return false;
 1183     }
+
 ```cpp
 1001     /**
 1002      * Accessor functions to determine whether this request is part of
@@ -640,7 +644,7 @@ When the packet is sent to the cache for its maintenance
 it returns immediately from the access function and set the 
 satisfied variable as false, which indicates the miss event happens. 
 
-### Eviction packet
+### access3: handling eviction request packet
 ```cpp
 1185     if (pkt->isEviction()) {
 1186         // We check for presence of block in above caches before issuing
@@ -684,6 +688,7 @@ satisfied variable as false, which indicates the miss event happens.
 1224         }
 1225     }
 ```
+
 ```cpp
  91     { {IsWrite, IsRequest, IsEviction, HasData, FromCache},
  92             InvalidCmd, "WritebackDirty" },
@@ -696,30 +701,7 @@ satisfied variable as false, which indicates the miss event happens.
 102     { {IsRequest, IsEviction, FromCache}, InvalidCmd, "CleanEvict" },
 ```
 
-### writeback packet 
-
-Condition for checking writeback request is described in the below code.
-```cpp
- 229     /**
- 230      * A writeback is an eviction that carries data.
- 231      */
- 232     bool isWriteback() const       { return testCmdAttrib(IsEviction) &&
- 233                                             testCmdAttrib(HasData); }
-```
-
-```cpp
- 91     { {IsWrite, IsRequest, IsEviction, HasData, FromCache},
- 92             InvalidCmd, "WritebackDirty" },
- 93     /* WritebackClean - This allows the upstream cache to writeback a
- 94      * line to the downstream cache without it being considered
- 95      * dirty. */
- 96     { {IsWrite, IsRequest, IsEviction, HasData, FromCache},
- 97             InvalidCmd, "WritebackClean" },
-```
-
-When the packet is one of writeback operation, 
-then it should execute the below conditional block. 
-
+### access4: handle writeback packets 
 ```cpp
 1227     // The critical latency part of a write depends only on the tag access
 1228     if (pkt->isWrite()) {
@@ -799,7 +781,36 @@ then it should execute the below conditional block.
 1302         return true;
 1303     } else if (pkt->cmd == MemCmd::CleanEvict) {
 ```
-### CleanEvict
+
+The GEM5 defines the condition for writeback as below.
+```cpp
+ 229     /**
+ 230      * A writeback is an eviction that carries data.
+ 231      */
+ 232     bool isWriteback() const       { return testCmdAttrib(IsEviction) &&
+ 233                                             testCmdAttrib(HasData); }
+```
+
+When the request packet sets IsEviction and HasData, 
+it means that current request packet invoked the access function
+was the writeback request packet. 
+Below code specified the commands that satisfy above condition.
+
+```cpp
+ 91     { {IsWrite, IsRequest, IsEviction, HasData, FromCache},
+ 92             InvalidCmd, "WritebackDirty" },
+ 93     /* WritebackClean - This allows the upstream cache to writeback a
+ 94      * line to the downstream cache without it being considered
+ 95      * dirty. */
+ 96     { {IsWrite, IsRequest, IsEviction, HasData, FromCache},
+ 97             InvalidCmd, "WritebackClean" },
+```
+
+When those conditions are met, the access function handles writeback packet.
+\XXX{need more explain for this case}
+
+
+### access5: handle CleanEvict and writeClean packets
 ```cpp
 1303     } else if (pkt->cmd == MemCmd::CleanEvict) {
 1304         // A CleanEvict does not need to access the data array
@@ -878,6 +889,10 @@ then it should execute the below conditional block.
 1377 
 1378         // If this a write-through packet it will be sent to cache below
 1379         return !pkt->writeThrough();
+```
+
+### access6: handle normal read or write request to existing block with adequate properties 
+```cpp
 1380     } else if (blk && (pkt->needsWritable() ?
 1381             blk->isSet(CacheBlk::WritableBit) :
 1382             blk->isSet(CacheBlk::ReadableBit))) {
@@ -903,6 +918,31 @@ then it should execute the below conditional block.
 1402         return true;
 1403     }
 1404 
+```
+To handle the read and write access to existing cache block,
+it first should check the properties of the 
+existing cache block such as writable and readable bit.
+If those conditions of the cached block met 
+requirement of the current request's type such as read or write,
+then it can be handled in the above condition statement. 
+Note that it returns true at the end because 
+the request can be handled with the cached block, which means cache hit.
+
+
+Also, it invokes the satisfyRequest function to \XXX{do what?}
+The satisfyRequest function is the virtual function of the BaseCache
+and implemented also by its children class Cache class.
+There are two main places that satisfyRequest is invoked,
+the access function and serviceMSHRTarget.
+
+```cpp
+
+
+```
+
+### access7: other cases, mainly cache misses
+
+```cpp
 1405     // Can't satisfy access normally... either no block (blk == nullptr)
 1406     // or have block but need writable
 1407 
@@ -918,280 +958,17 @@ then it should execute the below conditional block.
 1417 
 1418     return false;
 1419 }
-
 ```
+This cases includes cache misses, write request to non-writable block,
+or read request to non-readable block, etc.
+When all conditions doesn't match with the current' request,
+then it should be handled by the 
+rest of the recvTimingReq function, particularly cache miss handling.
+Note that it returns false.
 
 
 
-
-
-
-
-
-
-### allocateBlock
-```cpp
-1529 CacheBlk*
-1530 BaseCache::allocateBlock(const PacketPtr pkt, PacketList &writebacks)
-1531 {  
-1532     // Get address
-1533     const Addr addr = pkt->getAddr();
-1534 
-1535     // Get secure bit
-1536     const bool is_secure = pkt->isSecure();
-1537 
-1538     // Block size and compression related access latency. Only relevant if
-1539     // using a compressor, otherwise there is no extra delay, and the block
-1540     // is fully sized
-1541     std::size_t blk_size_bits = blkSize*8;
-1542     Cycles compression_lat = Cycles(0);
-1543     Cycles decompression_lat = Cycles(0);
-1544 
-1545     // If a compressor is being used, it is called to compress data before
-1546     // insertion. Although in Gem5 the data is stored uncompressed, even if a
-1547     // compressor is used, the compression/decompression methods are called to
-1548     // calculate the amount of extra cycles needed to read or write compressed
-1549     // blocks.
-1550     if (compressor && pkt->hasData()) {
-1551         const auto comp_data = compressor->compress(
-1552             pkt->getConstPtr<uint64_t>(), compression_lat, decompression_lat);
-1553         blk_size_bits = comp_data->getSizeBits();
-1554     }
-1555 
-1556     // Find replacement victim
-1557     std::vector<CacheBlk*> evict_blks;
-1558     CacheBlk *victim = tags->findVictim(addr, is_secure, blk_size_bits,
-1559                                         evict_blks);
-1560    
-1561     // It is valid to return nullptr if there is no victim
-1562     if (!victim)
-1563         return nullptr;
-1564 
-1565     // Print victim block's information
-1566     DPRINTF(CacheRepl, "Replacement victim: %s\n", victim->print());
-1567 
-1568     // Try to evict blocks; if it fails, give up on allocation
-1569     if (!handleEvictions(evict_blks, writebacks)) {
-1570         return nullptr;
-1571     }
-1572 
-1573     // Insert new block at victimized entry
-1574     tags->insertBlock(pkt, victim);
-1575 
-1576     // If using a compressor, set compression data. This must be done after
-1577     // insertion, as the compression bit may be set.
-1578     if (compressor) {
-1579         compressor->setSizeBits(victim, blk_size_bits);
-1580         compressor->setDecompressionLatency(victim, decompression_lat);
-1581     }
-1582 
-1583     return victim;
-1584 }
-```
-
-
-```cpp
-158     /**
-159      * Find replacement victim based on address. The list of evicted blocks
-160      * only contains the victim.
-161      *
-162      * @param addr Address to find a victim for.
-163      * @param is_secure True if the target memory space is secure.
-164      * @param size Size, in bits, of new block to allocate.
-165      * @param evict_blks Cache blocks to be evicted.
-166      * @return Cache block to be replaced.
-167      */
-168     CacheBlk* findVictim(Addr addr, const bool is_secure,
-169                          const std::size_t size,
-170                          std::vector<CacheBlk*>& evict_blks) override
-171     {
-172         // Get possible entries to be victimized
-173         const std::vector<ReplaceableEntry*> entries =
-174             indexingPolicy->getPossibleEntries(addr);
-175 
-176         // Choose replacement victim from replacement candidates
-177         CacheBlk* victim = static_cast<CacheBlk*>(replacementPolicy->getVictim(
-178                                 entries));
-179 
-180         // There is only one eviction for this replacement
-181         evict_blks.push_back(victim);
-182 
-183         return victim;
-184     }
-```
-
-getPossibleEntries select entries of one set 
-associated with the address passed to the findVictim function.
-Because it returns N-ways of entries mapped to one set, 
-the getVictim function should search proper entry to evict.
-As a result, one entry will be selected and pushed into the eviction list.
-For further memory allocation, the invalidated block is returned. 
-
-
-```cpp
- 864 bool
- 865 BaseCache::handleEvictions(std::vector<CacheBlk*> &evict_blks,
- 866     PacketList &writebacks)
- 867 {
- 868     bool replacement = false;
- 869     for (const auto& blk : evict_blks) {
- 870         if (blk->isValid()) {
- 871             replacement = true;
- 872 
- 873             const MSHR* mshr =
- 874                 mshrQueue.findMatch(regenerateBlkAddr(blk), blk->isSecure());
- 875             if (mshr) {
- 876                 // Must be an outstanding upgrade or clean request on a block
- 877                 // we're about to replace
- 878                 assert((!blk->isSet(CacheBlk::WritableBit) &&
- 879                     mshr->needsWritable()) || mshr->isCleaning());
- 880                 return false;
- 881             }
- 882         }
- 883     }
- 884 
- 885     // The victim will be replaced by a new entry, so increase the replacement
- 886     // counter if a valid block is being replaced
- 887     if (replacement) {
- 888         stats.replacements++;
- 889 
- 890         // Evict valid blocks associated to this victim block
- 891         for (auto& blk : evict_blks) {
- 892             if (blk->isValid()) {
- 893                 evictBlock(blk, writebacks);
- 894             }
- 895         }
- 896     }
- 897 
- 898     return true;
- 899 }
-```
-
-```cpp
-1606 void
-1607 BaseCache::evictBlock(CacheBlk *blk, PacketList &writebacks)
-1608 {
-1609     PacketPtr pkt = evictBlock(blk);
-1610     if (pkt) {
-1611         writebacks.push_back(pkt);
-1612     }
-1613 }
-```
-
-```cpp
- 899 PacketPtr
- 900 Cache::evictBlock(CacheBlk *blk)
- 901 {
- 902     PacketPtr pkt = (blk->isSet(CacheBlk::DirtyBit) || writebackClean) ?
- 903         writebackBlk(blk) : cleanEvictBlk(blk);
- 904 
- 905     invalidateBlock(blk);
- 906 
- 907     return pkt;
- 908 }
-```
-
-```cpp
-1586 void
-1587 BaseCache::invalidateBlock(CacheBlk *blk)
-1588 {
-1589     // If block is still marked as prefetched, then it hasn't been used
-1590     if (blk->wasPrefetched()) {
-1591         prefetcher->prefetchUnused();
-1592     }
-1593 
-1594     // Notify that the data contents for this address are no longer present
-1595     updateBlockData(blk, nullptr, blk->isValid());
-1596 
-1597     // If handling a block present in the Tags, let it do its invalidation
-1598     // process, which will update stats and invalidate the block itself
-1599     if (blk != tempBlock) {
-1600         tags->invalidate(blk);
-1601     } else {
-1602         tempBlock->invalidate();
-1603     }
-1604 }   
-
-```
-
-*gem5/src/mem/cache/tags/base_set_assoc.cc*
-```cpp
- 88 void
- 89 BaseSetAssoc::invalidate(CacheBlk *blk)
- 90 {
- 91     BaseTags::invalidate(blk);
- 92 
- 93     // Decrease the number of tags in use
- 94     stats.tagsInUse--;
- 95 
- 96     // Invalidate replacement data
- 97     replacementPolicy->invalidate(blk->replacementData);
- 98 }
-```
-Because the invalidate function of the BaseTag class is virtual function,
-it should be implemented by its children class.
-I utilize the base_set_assoc tags for generating cache 
-in my system, so I will follow the implementation 
-of the BaseSetAssoc class. 
-Note that it invokes the invalidate function of the block first
-and then invalidate replacement data.
-
-
-*gem5/src/mem/cache_blk.hh*
-```cpp
- 70 class CacheBlk : public TaggedEntry
- 71 {
- 72   public:
-......
-197     /**
-198      * Invalidate the block and clear all state.
-199      */
-200     virtual void invalidate() override
-201     {
-202         TaggedEntry::invalidate();
-203 
-204         clearPrefetched();
-205         clearCoherenceBits(AllBits);
-206 
-207         setTaskId(context_switch_task_id::Unknown);
-208         setWhenReady(MaxTick);
-209         setRefCount(0);
-210         setSrcRequestorId(Request::invldRequestorId);
-211         lockList.clear();
-212     }
-```
-
-Although the invalidate function of the CacheBlk is defined 
-as virtual function,
-the system utilize the CahceBlk class as it is 
-instead of adopting another class inheriting CacheBlk.
-Therefore, the invalidate function of the CacheBlk is called.
-Most importantly it inovkes the invalidate function 
-of its parent class TaggedEntry. 
-Also, it clears all the coherence bits and prefetched bit
-if they are set. 
-
-*gem5/src/mem/tags/tagged_entry*
-```cpp
- 46 class TaggedEntry : public ReplaceableEntry
- 47 {
-......
-102     /** Invalidate the block. Its contents are no longer valid. */
-103     virtual void invalidate()
-104     {
-105         _valid = false;
-106         setTag(MaxAddr);
-107         clearSecure();
-108     }
-```
-
-Finally, it sets the _valid member field 
-of the CacheBlk as false and clear secure flag.
-
-
-
-# Revisiting revTimingReq of the BaseCache to handle cache hit and miss
-
+### Revisiting revTimingReq of the BaseCache to handle cache hit and miss
 ```cpp
  349 void
  350 BaseCache::recvTimingReq(PacketPtr pkt)
@@ -1528,9 +1305,9 @@ That's it!
 
 
 
-## When the cache doesn't hit 
+## When the cache miss happens 
 When the access function cannot return cache block associated with 
-current request, it returns false and satisfied condition doesn't met.
+current request, the satisfied condition is set as false.
 Therefore, the handleTimingReqMiss function is executed to fetch 
 cache block from the upper level cache or memory. 
 
@@ -1615,20 +1392,19 @@ cache block from the upper level cache or memory.
  400 }
 ```
 
-When cache miss happens, the first thing to do is searching the MSHR entry.
-The findMatch function of the mshrQueue containing all the previous MSHR entries 
-will be invoked to search if there is MSHR entry associated with the current request.
-After the serching MSHR queue, it can or cannot find the matching entry.
-Regardless of the result, 
-it invokes the handleTimingReqMiss of the BaseCache to further handles the cache miss.
-Briefly speaking, this function handles cache miss differently based on 
-whether the MSHR entry exists or not.
-Although some additional operations are done if the missed request is prefetch or uncacheable, 
-but I will not deal with them currently. 
+When cache miss happens, the first thing to do is 
+searching the MSHR entry.
+The findMatch function of the mshrQueue containing 
+all the previous MSHR entries 
+will be invoked to search 
+if there is MSHR entry associated with the current request.
 
-
-
-# BaseCache::handleTimingReqMiss process the cache miss with MSHR 
+Whether it has matching MSHR entry or not,
+it invokes the handleTimingReqMiss of the BaseCache 
+to further handles the cache miss.
+Briefly speaking, 
+this function handles cache miss 
+based on whether the MSHR entry exists or not.
 Because this function is quite long, I will split it in two parts: 
 when MSHR exists and when MSHR doesn't existing.
 
@@ -1693,10 +1469,12 @@ when MSHR exists and when MSHR doesn't existing.
  307         }
 ```
 
-You have to understand that one MSHR entry can tracks multiple 
-memory requests associated with the address handled by the particular MSHR entry. 
-Therefore, the first job needs to be done is registering the missed request 
-to the MSHR entry as its target. 
+You have to understand that one MSHR entry can track 
+multiple memory requests associated with 
+the address handled by the particular MSHR entry. 
+Therefore, the first job needs to be done is 
+registering the missed request 
+to the MSHR entry as its **target**. 
 Based on the type of the memory request,
 it might not add the missed request as the targets of the MSHR entry.
 However, in most of the cases, when the L1 cache miss happens, 
@@ -1817,7 +1595,7 @@ represented as a Target type.
 ```
 
 
-## When no MSHR is present 
+### When no MSHR is present 
 ```cpp
  308     } else {
  309         // no MSHR
@@ -1865,13 +1643,13 @@ It first checks whether the current memory request is Eviction request.
 Note that cache miss can happen either because of the read and write operation.
 When it already has a valid block, but the cache access returns miss,
 it means that the block exists but not writable. 
-In that case, it first set the selected block as non-readable 
+In that case, it first set the selected block as non-readable (line 339)
 because the data should not be read until
 the write miss is resolved through the XBar.
 To handle the write miss request, it invokes allocateMissBuffer function. 
 
 
-### allocateMissBuffer: allocate MSHR entry for the miss event
+### allocateMissBuffer: allocate MSHR entry for the write miss event
 ```cpp
 1164     MSHR *allocateMissBuffer(PacketPtr pkt, Tick time, bool sched_send = true)
 1165     {
@@ -1892,7 +1670,8 @@ To handle the write miss request, it invokes allocateMissBuffer function.
 1180     }
 ```
 When there is no MSHR entry associated with current request, 
-the first priority job is allocating new MSHR entry for it and further memory operation.
+the first priority job is allocating new MSHR entry 
+for this memory request and further memory requests.
 mshrQueue maintains all MSHR entries and provide allocate interface
 that adds new MSHR entry to the queue. 
 After that, because the allocateMissBuffer by default set sched_send parameter,
@@ -1922,6 +1701,7 @@ processed by the schedMemSideSendEvent later.
  79     return mshr;
  80 }
 ```
+
 The MSHRQueue manages entire MSHR entries in the system.
 Also, the MSHRQueue is the child class of the Queue class.
 Therefore, to understand how each MSHR entry is allocated,
@@ -2028,6 +1808,7 @@ For that purpose, the schedMemSideSendEvent function is invoked.
 1267         memSidePort.schedSendEvent(time);
 1268     }  
 ```
+
 We took a look at the schedSendEvent function provided by the PacketQueue. 
 The major job of the function was registering event to process 
 deferred packet and send response to the CpuSidePort.
@@ -3720,4 +3501,274 @@ and organize events using the schedule method and EventFunctionWrapper.
  208         return ClockedObject::getPort(if_name, idx);
  209     }
  210 }
-r``
+```
+
+
+
+
+
+
+
+
+
+
+#######################
+### allocateBlock
+```cpp
+1529 CacheBlk*
+1530 BaseCache::allocateBlock(const PacketPtr pkt, PacketList &writebacks)
+1531 {  
+1532     // Get address
+1533     const Addr addr = pkt->getAddr();
+1534 
+1535     // Get secure bit
+1536     const bool is_secure = pkt->isSecure();
+1537 
+1538     // Block size and compression related access latency. Only relevant if
+1539     // using a compressor, otherwise there is no extra delay, and the block
+1540     // is fully sized
+1541     std::size_t blk_size_bits = blkSize*8;
+1542     Cycles compression_lat = Cycles(0);
+1543     Cycles decompression_lat = Cycles(0);
+1544 
+1545     // If a compressor is being used, it is called to compress data before
+1546     // insertion. Although in Gem5 the data is stored uncompressed, even if a
+1547     // compressor is used, the compression/decompression methods are called to
+1548     // calculate the amount of extra cycles needed to read or write compressed
+1549     // blocks.
+1550     if (compressor && pkt->hasData()) {
+1551         const auto comp_data = compressor->compress(
+1552             pkt->getConstPtr<uint64_t>(), compression_lat, decompression_lat);
+1553         blk_size_bits = comp_data->getSizeBits();
+1554     }
+1555 
+1556     // Find replacement victim
+1557     std::vector<CacheBlk*> evict_blks;
+1558     CacheBlk *victim = tags->findVictim(addr, is_secure, blk_size_bits,
+1559                                         evict_blks);
+1560    
+1561     // It is valid to return nullptr if there is no victim
+1562     if (!victim)
+1563         return nullptr;
+1564 
+1565     // Print victim block's information
+1566     DPRINTF(CacheRepl, "Replacement victim: %s\n", victim->print());
+1567 
+1568     // Try to evict blocks; if it fails, give up on allocation
+1569     if (!handleEvictions(evict_blks, writebacks)) {
+1570         return nullptr;
+1571     }
+1572 
+1573     // Insert new block at victimized entry
+1574     tags->insertBlock(pkt, victim);
+1575 
+1576     // If using a compressor, set compression data. This must be done after
+1577     // insertion, as the compression bit may be set.
+1578     if (compressor) {
+1579         compressor->setSizeBits(victim, blk_size_bits);
+1580         compressor->setDecompressionLatency(victim, decompression_lat);
+1581     }
+1582 
+1583     return victim;
+1584 }
+```
+
+
+```cpp
+158     /**
+159      * Find replacement victim based on address. The list of evicted blocks
+160      * only contains the victim.
+161      *
+162      * @param addr Address to find a victim for.
+163      * @param is_secure True if the target memory space is secure.
+164      * @param size Size, in bits, of new block to allocate.
+165      * @param evict_blks Cache blocks to be evicted.
+166      * @return Cache block to be replaced.
+167      */
+168     CacheBlk* findVictim(Addr addr, const bool is_secure,
+169                          const std::size_t size,
+170                          std::vector<CacheBlk*>& evict_blks) override
+171     {
+172         // Get possible entries to be victimized
+173         const std::vector<ReplaceableEntry*> entries =
+174             indexingPolicy->getPossibleEntries(addr);
+175 
+176         // Choose replacement victim from replacement candidates
+177         CacheBlk* victim = static_cast<CacheBlk*>(replacementPolicy->getVictim(
+178                                 entries));
+179 
+180         // There is only one eviction for this replacement
+181         evict_blks.push_back(victim);
+182 
+183         return victim;
+184     }
+```
+
+getPossibleEntries select entries of one set 
+associated with the address passed to the findVictim function.
+Because it returns N-ways of entries mapped to one set, 
+the getVictim function should search proper entry to evict.
+As a result, one entry will be selected and pushed into the eviction list.
+For further memory allocation, the invalidated block is returned. 
+
+
+```cpp
+ 864 bool
+ 865 BaseCache::handleEvictions(std::vector<CacheBlk*> &evict_blks,
+ 866     PacketList &writebacks)
+ 867 {
+ 868     bool replacement = false;
+ 869     for (const auto& blk : evict_blks) {
+ 870         if (blk->isValid()) {
+ 871             replacement = true;
+ 872 
+ 873             const MSHR* mshr =
+ 874                 mshrQueue.findMatch(regenerateBlkAddr(blk), blk->isSecure());
+ 875             if (mshr) {
+ 876                 // Must be an outstanding upgrade or clean request on a block
+ 877                 // we're about to replace
+ 878                 assert((!blk->isSet(CacheBlk::WritableBit) &&
+ 879                     mshr->needsWritable()) || mshr->isCleaning());
+ 880                 return false;
+ 881             }
+ 882         }
+ 883     }
+ 884 
+ 885     // The victim will be replaced by a new entry, so increase the replacement
+ 886     // counter if a valid block is being replaced
+ 887     if (replacement) {
+ 888         stats.replacements++;
+ 889 
+ 890         // Evict valid blocks associated to this victim block
+ 891         for (auto& blk : evict_blks) {
+ 892             if (blk->isValid()) {
+ 893                 evictBlock(blk, writebacks);
+ 894             }
+ 895         }
+ 896     }
+ 897 
+ 898     return true;
+ 899 }
+```
+
+```cpp
+1606 void
+1607 BaseCache::evictBlock(CacheBlk *blk, PacketList &writebacks)
+1608 {
+1609     PacketPtr pkt = evictBlock(blk);
+1610     if (pkt) {
+1611         writebacks.push_back(pkt);
+1612     }
+1613 }
+```
+
+```cpp
+ 899 PacketPtr
+ 900 Cache::evictBlock(CacheBlk *blk)
+ 901 {
+ 902     PacketPtr pkt = (blk->isSet(CacheBlk::DirtyBit) || writebackClean) ?
+ 903         writebackBlk(blk) : cleanEvictBlk(blk);
+ 904 
+ 905     invalidateBlock(blk);
+ 906 
+ 907     return pkt;
+ 908 }
+```
+
+```cpp
+1586 void
+1587 BaseCache::invalidateBlock(CacheBlk *blk)
+1588 {
+1589     // If block is still marked as prefetched, then it hasn't been used
+1590     if (blk->wasPrefetched()) {
+1591         prefetcher->prefetchUnused();
+1592     }
+1593 
+1594     // Notify that the data contents for this address are no longer present
+1595     updateBlockData(blk, nullptr, blk->isValid());
+1596 
+1597     // If handling a block present in the Tags, let it do its invalidation
+1598     // process, which will update stats and invalidate the block itself
+1599     if (blk != tempBlock) {
+1600         tags->invalidate(blk);
+1601     } else {
+1602         tempBlock->invalidate();
+1603     }
+1604 }   
+
+```
+
+*gem5/src/mem/cache/tags/base_set_assoc.cc*
+```cpp
+ 88 void
+ 89 BaseSetAssoc::invalidate(CacheBlk *blk)
+ 90 {
+ 91     BaseTags::invalidate(blk);
+ 92 
+ 93     // Decrease the number of tags in use
+ 94     stats.tagsInUse--;
+ 95 
+ 96     // Invalidate replacement data
+ 97     replacementPolicy->invalidate(blk->replacementData);
+ 98 }
+```
+Because the invalidate function of the BaseTag class is virtual function,
+it should be implemented by its children class.
+I utilize the base_set_assoc tags for generating cache 
+in my system, so I will follow the implementation 
+of the BaseSetAssoc class. 
+Note that it invokes the invalidate function of the block first
+and then invalidate replacement data.
+
+
+*gem5/src/mem/cache_blk.hh*
+```cpp
+ 70 class CacheBlk : public TaggedEntry
+ 71 {
+ 72   public:
+......
+197     /**
+198      * Invalidate the block and clear all state.
+199      */
+200     virtual void invalidate() override
+201     {
+202         TaggedEntry::invalidate();
+203 
+204         clearPrefetched();
+205         clearCoherenceBits(AllBits);
+206 
+207         setTaskId(context_switch_task_id::Unknown);
+208         setWhenReady(MaxTick);
+209         setRefCount(0);
+210         setSrcRequestorId(Request::invldRequestorId);
+211         lockList.clear();
+212     }
+```
+
+Although the invalidate function of the CacheBlk is defined 
+as virtual function,
+the system utilize the CahceBlk class as it is 
+instead of adopting another class inheriting CacheBlk.
+Therefore, the invalidate function of the CacheBlk is called.
+Most importantly it inovkes the invalidate function 
+of its parent class TaggedEntry. 
+Also, it clears all the coherence bits and prefetched bit
+if they are set. 
+
+*gem5/src/mem/tags/tagged_entry*
+```cpp
+ 46 class TaggedEntry : public ReplaceableEntry
+ 47 {
+......
+102     /** Invalidate the block. Its contents are no longer valid. */
+103     virtual void invalidate()
+104     {
+105         _valid = false;
+106         setTag(MaxAddr);
+107         clearSecure();
+108     }
+```
+
+Finally, it sets the _valid member field 
+of the CacheBlk as false and clear secure flag.
+

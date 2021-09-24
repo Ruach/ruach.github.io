@@ -438,7 +438,7 @@ Therefore, it is a memSidePort.
 The name of the ports are slightly confusing 
 it is very similar of those cpuSide and memSide things.
 
-## Receiving packets from the caches
+
 ### Initializing CoherentXBar
 
 ```cpp
@@ -521,7 +521,7 @@ to the proper member fields, cpuSidePorts and memSidePorts.
 Instead of the SnoopRespLayer it generates SnnopRespPort 
 per receiving ports connected to the cache. 
 
-## recvTimingReq
+## recvTimingReq: receiving packets from the caches
 ```cpp
  88     class CoherentXBarResponsePort : public QueuedResponsePort
  89     {
@@ -538,6 +538,10 @@ it invokes the recvTimingReq function of the CoherentXBarResponsePort.
 This function just redirects the request to the 
 recvtTimingReq of the XBar.
 
+
+
+
+### recvTimingReq1:finding port and checking its availability
 ```cpp
  148 bool
  149 CoherentXBar::recvTimingReq(PacketPtr pkt, PortID cpu_side_port_id)
@@ -568,86 +572,6 @@ recvtTimingReq of the XBar.
  174             src_port->name(), pkt->print());
 ```
 
-### Snoop flags required to understand XBar
-```cpp
- 620     //@{
- 621     /// Snoop flags
- 622     /**
- 623      * Set the cacheResponding flag. This is used by the caches to
- 624      * signal another cache that they are responding to a request. A
- 625      * cache will only respond to snoops if it has the line in either
- 626      * Modified or Owned state. Note that on snoop hits we always pass
- 627      * the line as Modified and never Owned. In the case of an Owned
- 628      * line we proceed to invalidate all other copies.
- 629      *
- 630      * On a cache fill (see Cache::handleFill), we check hasSharers
- 631      * first, ignoring the cacheResponding flag if hasSharers is set.
- 632      * A line is consequently allocated as:
- 633      *
- 634      * hasSharers cacheResponding state
- 635      * true       false           Shared
- 636      * true       true            Shared
- 637      * false      false           Exclusive
- 638      * false      true            Modified
- 639      */
-```
-The cacheResponding flag means that 
-it has responsibility of updating current 
-block of the cache because it has 
-modified the block with write operation.
-Therefore, when this flag is not set,
-Also, it should be considered together with the hasSharers flag.
-When the hasSharers flag is set, 
-it measn that current block is shared with other processors.
-Therefore, the cacheResponding flag doesn't 
-mean anything when it has sharers. 
-
-
-```cpp
- 647     /**
- 648      * On fills, the hasSharers flag is used by the caches in
- 649      * combination with the cacheResponding flag, as clarified
- 650      * above. If the hasSharers flag is not set, the packet is passing
- 651      * writable. Thus, a response from a memory passes the line as
- 652      * writable by default.
- 653      *
- 654      * The hasSharers flag is also used by upstream caches to inform a
- 655      * downstream cache that they have the block (by calling
- 656      * setHasSharers on snoop request packets that hit in upstream
- 657      * cachs tags or MSHRs). If the snoop packet has sharers, a
- 658      * downstream cache is prevented from passing a dirty line upwards
- 659      * if it was not explicitly asked for a writable copy. See
- 660      * Cache::satisfyCpuSideRequest.
- 661      *
- 662      * The hasSharers flag is also used on writebacks, in
- 663      * combination with the WritbackClean or WritebackDirty commands,
- 664      * to allocate the block downstream either as:
- 665      *
- 666      * command        hasSharers state
- 667      * WritebackDirty false      Modified
- 668      * WritebackDirty true       Owned
- 669      * WritebackClean false      Exclusive
- 670      * WritebackClean true       Shared
- 671      */
-```
-
-
-```cpp
- 676     /**
- 677      * The express snoop flag is used for two purposes. Firstly, it is
- 678      * used to bypass flow control for normal (non-snoop) requests
- 679      * going downstream in the memory system. In cases where a cache
- 680      * is responding to a snoop from another cache (it had a dirty
- 681      * line), but the line is not writable (and there are possibly
- 682      * other copies), the express snoop flag is set by the downstream
- 683      * cache to invalidate all other copies in zero time. Secondly,
- 684      * the express snoop flag is also set to be able to distinguish
- 685      * snoop packets that came from a downstream cache, rather than
- 686      * snoop packets from neighbouring caches.
- 687      */
-```
-
-### finding port and checking its availability
 After checking the condition of the packet, 
 it first need to retrieve the port that the packet should be 
 delivered to. 
@@ -729,7 +653,7 @@ request layer associated with the found port number.
 210 }
 ```
 
-## Handling snoop request in the recvTimingReq 
+### recvTimingReq2: figuring out its destination and snoop requirement
 ```cpp
  176     // store size and command as they might be modified when
  177     // forwarding the packet
@@ -788,7 +712,7 @@ Most of the time the cache should not be bypassed
 and the packet command is not the WriteClean,
 the below condition should be executed. 
 
-
+### recvTimingReq3: handling snoop request 
 ```cpp
  201     if (snoop_caches) {
  202         assert(pkt->snoopDelay == 0);
@@ -934,7 +858,7 @@ This one mostly is the port initially received the
 cache snoop packet. 
 
 
-## Sink packet or forward packet to the next level 
+### recvTimingReq4: sink packet or forward packet to the next level 
 ```cpp
  252 
  253     // set up a sensible starting point
@@ -1033,6 +957,7 @@ cache snoop packet.
 
 ```
 
+### recvTimingReq5: 
  ```cpp
  305     if (snoopFilter && snoop_caches) {
  306         // Let the snoop filter know about the success of the send operation
@@ -1174,10 +1099,6 @@ cache snoop packet.
  442 
  443     return success;
  444 }
-
-
-
-
 ```
 
 ## Sending packets to the memory

@@ -1,3 +1,4 @@
+
 ### Basic coherency bits
 ```cpp
  65 /**
@@ -88,7 +89,7 @@ as described in the following code.
 ```
 
 
-###
+### CacheResponding flag and hasSharers
 ```cpp
 
  620     //@{
@@ -145,11 +146,47 @@ as described in the following code.
  671      */
  672     void setHasSharers()    { flags.set(HAS_SHARERS); }
  673     bool hasSharers() const { return flags.isSet(HAS_SHARERS); }
-
 ```
 
+### Express snoop flag
+```cpp
+ 676     /**
+ 677      * The express snoop flag is used for two purposes. Firstly, it is
+ 678      * used to bypass flow control for normal (non-snoop) requests
+ 679      * going downstream in the memory system. In cases where a cache
+ 680      * is responding to a snoop from another cache (it had a dirty
+ 681      * line), but the line is not writable (and there are possibly
+ 682      * other copies), the express snoop flag is set by the downstream
+ 683      * cache to invalidate all other copies in zero time. Secondly,
+ 684      * the express snoop flag is also set to be able to distinguish
+ 685      * snoop packets that came from a downstream cache, rather than
+ 686      * snoop packets from neighbouring caches.
+ 687      */
+```
+
+The cacheResponding flag means that 
+it has responsibility of updating current 
+block of the cache because it has 
+modified the block with write operation.
+Therefore, when this flag is not set,
+Also, it should be considered together with the hasSharers flag.
+When the hasSharers flag is set, 
+it measn that current block is shared with other processors.
+Therefore, the cacheResponding flag doesn't 
+mean anything when it has sharers. 
 
 ## Snoop 
+When the recvTimingReq process one packet 
+that requires to check 
+other caches connected through the XBar, 
+it invokes the recvTimingSnoopReq function of those cache units.
+This communication processes among multiple caches 
+must be required when the multiple cache can have 
+same data block at the same time but in different conditions. 
+This process is called snooping, and recvTimingSnoopReq of different components
+including cache and XBar properly handles the snoop request. 
+
+
 ```cpp
 2517 // Express snooping requests to memside port
 2518 void
@@ -233,7 +270,7 @@ it should memorize the sender's identity (mem_side_port_id)
 to the routeTo map, when the snoop request requires response.
 Therefore, when the response for the snoop request packet is 
 delivered to the XBar, 
-it can figure out which entity send the snoop request
+it can figure out which entity sent the snoop request
 so that the response packet can be delivered to that entity.
 
 ## Generic way to handle snoop request on the cache
@@ -553,7 +590,7 @@ it first checks two conditions: checking above and read access.
 \xxx{checking above should be handled}
 Also, when the snoop packet is generated 
 because of the read operation from other components,
-then it should invoke setHasSharers of the packet 
+then it should invoke setHasSharers of the packet (line 1126)
 to let the sender know that some caches has the 
 shared read only cache block. 
 
@@ -612,7 +649,7 @@ shared read only cache block.
 
 When there is no need for response, 
 it just deletes the snoop packet and returns.
-However, on the other hand,
+However, 
 when the current cache owns or modified the cache block
 requested by the snoop packet,
 it should respond. 
@@ -726,6 +763,7 @@ and the request packet's comment has Invalidate flag,
 it should invalidate the block in the responding cache. 
 
 
+
 ## recvTimingSnoopResp of the XBar: receiving response from the other cache
 When one cache sends the response packet 
 associated with the previous request sent from the 
@@ -733,6 +771,7 @@ other cache through the XBar,
 it first invokes the recvTimingSnoopResp function of the XBar
 as a result of snoop request.
 
+### recvTimingSnoopResp1: finding the port of the cache that sent the request packet
 ```cpp
  569 bool
  570 CoherentXBar::recvTimingSnoopResp(PacketPtr pkt, PortID cpu_side_port_id)
@@ -745,6 +784,23 @@ as a result of snoop request.
  577     assert(route_lookup != routeTo.end());
  578     const PortID dest_port_id = route_lookup->second;
  579     assert(dest_port_id != InvalidPortID);
+```
+You might remember that the recvTimingSnoopReq function 
+of the CoherentXBar saved the port id of the cache entity 
+that sent the request packet after executing the forwardTiming.
+Because the snoop response packet is not directly returned to the 
+XBar as a result of forwardTiming,
+it can memorize the cache entity who generated the request packet 
+at the end of the recvTimingSnoopReq.
+In detail, the snoop response packet is delivered to the XBar
+after few delays passed, which set at the recvTimingSnoopReq function
+of the **cache**,
+the recvTimingSnoopResp function of the CoherentXBar can 
+locate the cache entity that need to receive the response. 
+Remember that GEM5 is tick based emulator!
+
+### recvTimingSnoopResp2: checking originality of the snoop request 
+```
  580 
  581     // determine if the response is from a snoop request we
  582     // created as the result of a normal request (in which case it
@@ -752,6 +808,9 @@ as a result of snoop request.
  584     // someone else's snoop request
  585     const bool forwardAsSnoop = outstandingSnoop.find(pkt->req) ==
  586         outstandingSnoop.end();
+ ```
+
+
  587 
  588     // test if the crossbar should be considered occupied for the
  589     // current port, note that the check is bypassed if the response
@@ -866,3 +925,4 @@ as a result of snoop request.
 
 ```
 
+## recvTimingSnoopResp of the Cache: receiving response from the above cache

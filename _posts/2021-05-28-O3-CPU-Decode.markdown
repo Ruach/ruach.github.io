@@ -39,7 +39,7 @@
 ```
 The last job of the fetch stage is passing the fetched instructions
 to the next stage, decode stage. 
-One the above code, **toDecode** member field of the fetch 
+On the above code, **toDecode** member field of the fetch 
 is used as an storage located in between the fetch and decode stage. 
 
 ## FetchStruct: passing fetch stage's information to decode stage
@@ -108,13 +108,13 @@ processed by the previous stage to the next stage.
 For that purpose, GEM5 utilize the TimeBuffer and Wire classes. 
 
 ### TimeBuffer implementation and usage 
-TimeBuffer is implemented as a template class to pass 
-any information in between two different stages. 
-Also, it is designed to emulate actual behavior of registers.
-Therefore, at every clock tick, the TimeBuffer is advanced to contain
-different content of the registers at specific clock cycle. 
-For that purpose, it provides generic storage that can be utilized as a register
-and interface used to access that storage containing data  captured at specific cycle. 
+TimeBuffer is implemented as a template class 
+designed to pass any information 
+between two different stages. 
+Also, it emulates actual behavior of registers.
+Therefore, at every clock tick, 
+the TimeBuffer is advanced 
+and points to different content of the registers.
 
 ### Constructor and Desctructor of the TimeBuffer
 ```cpp
@@ -166,13 +166,16 @@ and interface used to access that storage containing data  captured at specific 
 166     }
 ```
 Because the TimeBuffer needs to allocate and deallocate new class object 
-at every clock cycle, it's constructor is designed to utilize the 
-preallocated memory called **data** member field. 
-With the help of **placement new**, its constructor can initialize 
+at every clock cycle, 
+it's constructor is designed to utilize 
+a preallocated memory called **data** member field. 
+With the help of **placement new**, 
+its constructor can initialize 
 new object at specific location, index vector. 
-As shown in its constructor, it populates T typed object size times 
-on the data array. After that it makes the index vector point to the 
-allocated objects. 
+As shown in its constructor, 
+it populates T typed object, 
+size times on the data array. 
+It makes the index vector point to the allocated objects. 
 At its desctructor, it deletes the data array and every objects
 pointed to by the index vector. 
 
@@ -202,8 +205,9 @@ pointed to by the index vector.
 ```
 The most important function of the TimeBuffer is the **advance**.
 This function is invoked at every clock cycle of the processor 
-to advance the TimeBuffer. Let's take a look at how the advance 
-function emulates next clock tick. 
+to advance the TimeBuffer. 
+Let's take a look at how the advance function 
+emulates next clock tick. 
 
 ```cpp
 178     void
@@ -221,16 +225,19 @@ function emulates next clock tick.
 190     }
 ```
 
-The base member field is initialized as zero at the construction and incremented 
-at every clock cycle because the advance function is invoked at every clock cycle. 
-Also, because it emulates circular storage, the base should be initialized as zero
+The base member field is initialized as zero at the construction 
+and incremented at every clock cycle 
+because the advance function is invoked at every clock cycle. 
+Also, because it emulates circular storage, 
+the base should be initialized as zero
 when it exceeds size (line 181-182). 
-And the future is the fixed constant passed by the configuration python script.
+And the **future** is the fixed constant 
+passed by the configuration python script.
 Therefore, after the first initialization with offset future, 
 at every clock cycle, it allocates new object typed T. 
-Before populating new object, it first invoke deconstructor (line 188) 
+Before populating new object, 
+it first invoke deconstructor (line 188) 
 and initiate new object with the placement new (line 189). 
-
 
 
 
@@ -275,19 +282,26 @@ and initiate new object with the placement new (line 189).
 239     }
 ```
 
-As shown in the above code, two different stages fetch and decode 
-invokes setFetchQueue function with the same TimeBuffer, fetchQueue.
-However, note that those two invocations are serviced from 
-different functions of each class. 
-As shown in the above code, both function invokes getWire but with 
-different argument, 0 and -fetchToDecodeDelay respectively. 
-The getWire function returns the wire object initialized with this and idx.
-Here this means the TimeBuffer itself and this will be assigned to the 
-buffer member field of the wire object. Also, idx will be assigned to the
-index member field of the wire object.
+As shown in the above code, 
+two different stages fetch and decode 
+invoke setFetchQueue function 
+with the same TimeBuffer, fetchQueue.
+However, 
+note that those two invocations are serviced 
+from different functions of each class. 
+As shown in the above code, 
+both function invokes getWire, 
+but with different argument, 
+0 and -fetchToDecodeDelay respectively. 
+The getWire function returns the wire object 
+initialized with this and idx.
+Here this means the TimeBuffer itself and this will be assigned 
+to the buffer member field of the wire object. 
+Also, idx will be assigned to 
+the index member field of the wire object.
 Because the index is a constant number and used to access the register 
 managed by the buffer, it will generate fetchToDecodeDelay clock timing delays 
-in between the fetch and decode stage.
+between the fetch and decode stage.
 Let's see how this timing delay can be imposed on the register access in detail.
 
 ### Wire overloads the member reference operator to access the TimeBuffer
@@ -427,8 +441,13 @@ from the same register located in between the fetch and decode stage.
 490     }
 491 }   
 ```
-The sortInsts extracts the instructions stored in the register (**fromFetch**) and save them
-in the local instruction buffer (**insts**). 
+
+The sortInsts extracts the instructions 
+stored in the register (**fromFetch**) and 
+save them in the local instruction buffer (**insts**). 
+Note that the register changes every tick, 
+so each stage should copy and paste the register data
+to its local memory to process. 
 
 ## checkSignalsAndUpdate
 ```cpp
@@ -462,7 +481,8 @@ in the local instruction buffer (**insts**).
 534         return block(tid);
 535     }
 ```
-Before executing the decode function, it should first check 
+Before executing the decode function, 
+it should first check 
 whether the other stages has sent a signal to stall. 
 
 ### readStallSignals 
@@ -502,8 +522,10 @@ it sets or unset an associated entry of the member field stalls.
 245     return ret_val;
 246 }
 ```
+
 When the decode stage has received the stall signal, 
-it returns true, which results in invoking block function and 
+it returns true, 
+which results in invoking block function and 
 returning is result. 
 
 ```cpp
@@ -537,11 +559,15 @@ returning is result.
 282     return false;
 283 }
 ```
-When the decode stage has instruction input from the fetch stage,
-it needs to be maintained in the skid buffer so that they can be 
-reprocessed when the decode stage is unblocked. 
-Also it needs to send signal to the fetch stage depending on the condition.
-\XXX{needs to be explained in what condition}.
+
+When the decode stage has instruction to be processed
+delivered from the fetch stage,
+it needs to be maintained in the skid buffer 
+so that they can be reprocessed 
+when the decode stage is unblocked.
+Note that different pipelines can still works 
+even though the decode pipeline is blocked,
+and the input can continuously arrive to the decode stage. 
 
 
 ### squash pipeline when the commit stage sent squash signal  
@@ -603,9 +629,11 @@ by checking the fromCommit wire.
 353     cpu->removeInstsUntil(squash_seq_num, tid);
 354 }
 ```
+
 Note that squash signal incurs complex operations compared to stalls.
-When the stall signal is received, the decode stage just waits until the 
-stall signal is removed by receiving the unblock signal. 
+When the stall signal is received, 
+the decode stage just waits until 
+the stall signal is removed, receiving the unblock signal. 
 However, when the stall signal is received, 
 it should clear out the pipeline and associated data structures. 
 
@@ -643,24 +671,27 @@ it should clear out the pipeline and associated data structures.
 561     return false;
 562 }
 ```
+
 After the decode stage is recovered from the stall or squashing. 
-it needs to execute proper operations to be fully recovered from those state 
-to the Running state. For the Blocked state, it will execute the 
-line 537-546 when the rename stage sends the unBlock signal. 
-In detail, readStallSignals will set the stalls of the rename as false, 
-and checkStall will not execute the block function.
-Therefore, the decodeStatus will remain as Blocked, and the above code will be executed. 
-The unblock function makes the decode stage to be changed as Running again. 
+it needs to change the block or stall state 
+to the Running state so that it can
+receive the instructions to decode from the fetch stage. 
+For the Blocked state, 
+it will execute the line 537-546 
 And when the squash signal is turned off from commit stage, 
 it will execute the rest of the code (548-557). 
 
-## decode 
-It would be confusing because we already finished instruction decoding 
-in the fetch stage. We already know which instructions are located in the 
-fetch buffer. Why we need another decode function?
-The decode stage does not do much, but it should check any PC-relative branches are correct.
-Most of the decode operations are actually done by the decodeInsts function. 
-
+## Why we need another decode even though we decoded?
+It would be confusing 
+because we already finished instruction decoding 
+in the fetch stage. 
+We already know which instructions are located 
+in the fetch buffer. 
+Why we need another decode function?
+The decode stage does not do much, but 
+it should check any PC-relative branches are correct.
+Most of the decode operations are actually done 
+by the decodeInsts function.
 
 600 template<class Impl>
 601 void
@@ -738,10 +769,19 @@ Most of the decode operations are actually done by the decodeInsts function.
 671 
 672     DPRINTF(Decode, "[tid:%i] Sending instruction to rename.\n",tid);
 ```
-When the current decode status is not Unblocking, then it should retrieve instructions
-from the insts buffer that has the instructions passed from the fetch stage (sortInsts).
-Also, only when the buffer contains some instructions, it continues decoding.
-If there is no available instructions in the buffer, it stops decoding. 
+
+Note that the decodeInsts can be invoked
+in two different state of the decode stage. 
+The Running and Unblocking. 
+Running status means that decode stage 
+continuously receive the packet from the fetch stage.
+However, the Unblocking stage means that 
+it was blocked and was recovering,
+which means the packets are still in the skidBuffer.
+Therefore, 
+it should decode instructions
+stacked in the skidBuffer
+while it has been blocked.
 
 
 ### forwarding decoded instructions to rename stage
@@ -756,8 +796,10 @@ If there is no available instructions in the buffer, it stops decoding.
 192     toRename = decodeQueue->getWire(0);
 193 }
 ```
-Similar to the toDecode wire in the fetch stage, decode stage 
-needs a wire to send the decoded instructions to another register 
+
+Similar to the toDecode wire in the fetch stage, 
+decode stage needs a wire 
+to send the decoded instructions to another register 
 connected with the rename stage. 
 For that purpose, it declares toRename wire. 
 
@@ -802,7 +844,9 @@ For that purpose, it declares toRename wire.
 711         ++decodeDecodedInsts;
 712         --insts_available;
 ```
-The while loop selects one instruction from the buffer and send it to the rename stage
+
+The while loop selects one instruction from the buffer 
+and sends it to the rename stage
 through the toRename wire. 
 
 ```cpp
@@ -846,6 +890,14 @@ through the toRename wire.
 757             }
 758         }
 759     } //end of the while loop
+```
+
+One thing to note is 
+it really decodes the instruction and check 
+whether the current instruction is really branch.
+If it was predicted as a branch,
+but turned out to be a non-branch instruction,
+then it should squash the current instruction. 
 
 
 

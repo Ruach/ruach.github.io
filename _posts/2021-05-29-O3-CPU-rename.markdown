@@ -347,10 +347,11 @@ to its resource pool and reassigned to other instructions.
 1293 }
 ```
 
-Regarding the stall, there could be lots of different reasons.
+There could be various reasons of the stall.
 It might be because of the stall signal 
 received from other stages
-or the internal issues of the rename stage stalls itself 
+or 
+the internal issues of the rename stage 
 due to lack of resources. 
 
 ## rename
@@ -413,17 +414,16 @@ due to lack of resources.
 ```
 
 When there is no stall or blocking, 
-now it can rename the instructions 
-decoded by the decode stage one by one.
-When the current renameStatus is Running or Idle, it will invoke 
-renameInsts function to rename the instructions 
+now it can rename the instructions.
+When the current renameStatus is Running or Idle, 
+it will invoke renameInsts function 
+to rename the instructions 
 Also, when the renameStatus is Unblocking,
-which means the rename stage is recovered from the Blocking status, 
-it should also invokes the renameInsts function. 
+which means that the rename stage is being recovered from the Blocking status, 
+it should also invoke the renameInsts function. 
 
 ### renameInsts: the main rename function 
-The most of the rename function is done by the renameInsts function. 
-Although it is pretty complicated, let's take a look at the details.
+The most of the rename function operations are done by the **renameInsts** function. 
 
 ```cpp
  547 template <class Impl>
@@ -451,13 +451,11 @@ Although it is pretty complicated, let's take a look at the details.
  ```
 
 First, it checks the current status of the rename stage. 
-If the current status is Unblock, it should fetches instructions from 
-the skidBuffer instead of the insts buffer. 
+If the current status is Unblock, 
+it should fetches instructions from the skidBuffer instead of the insts buffer. 
 Also, even though it is running or idle status, 
-it might not have available instructions because of stall, squash, or 
-waiting until the previous stage's processing to be finished. 
-Therefore, it first checks whether the instructions are available 
-at the current clock cycle. 
+it might not have available instructions because of stall, squash.
+Therefore, it first checks whether the instructions are ready to be renamed.
 
 ### Checking ROB and IQ space 
 ```cpp
@@ -505,15 +503,12 @@ at the current clock cycle.
  611     }
  ```
 
-It needs to consider ROB and instruction queue entries 
+It needs to check ROB and instruction queue entries are available
 before the renaming. 
 When there is no space, it should stall right a way.
 However, if those entries are partially available,
-part of the instructions accessible by the rename stage 
-should be processed first. 
-Because it still has some resources to process 
-parts of the instructions,
-it postpone stall later
+only the available parts of the instructions are processed 
+and postpone stall to later
 (blockThisCycle = true).
 
 ### Checking serialization
@@ -584,9 +579,10 @@ by the rename stage's main loop,
  665             }
  666         }
  ```
+
 Now we will take a look at the main loop of the rename stage.
 It traverse all instructions stored in the insts_to_rename. 
-Note that this can contain the Insts or the skidBuffer 
+Note that instructions can be retrieved from the Insts or the skidBuffer 
 depending on the status of the current rename stage. 
 Although we already checked 
 the availability of IQ and ROB,
@@ -598,7 +594,8 @@ one entry from the corresponding queue.
 If the LQ or SQ is full, then set the source as LQ or SQ 
 to let the rest of the decode stage to know that 
 the instruction cannot be issued to the next stage 
-due to the lack of LQ or SQ and break (For statistics). 
+due to the lack of LQ or SQ and break the loop and stall
+the rename stage(For statistics). 
 
 
 ### Consume one instruction and check register availability 
@@ -650,8 +647,7 @@ due to the lack of LQ or SQ and break (For statistics).
  712         }
  ```
 After it is guaranteed that the resources 
-such as ROB, IQ, LQ, SQ are enough
-to rename new instruction,
+such as ROB, IQ, LQ, SQ are suffice to rename new instruction,
 it consumes one instruction from the buffer (Line 668).
 However, if there are not enough physical registers 
 to rename the instruction's operands, 
@@ -676,9 +672,9 @@ then it should not be consumed.
 The renameMap contains all the hardware registers 
 accessible by the processor. 
 For example, 
-even though the ISA has only handful of registers, 
-in the backbone, 
-there are lots of registers to execute instructions. 
+even though the ISA exposes only handful of registers
+to the users, 
+there are lots of internal registers to execute instructions. 
 The O3 CPU utilize the **UnifiedRenameMap**. 
 Let's take a look at the details.
 
@@ -895,8 +891,8 @@ whether the current physical resources are available
 
 ## Handle serialization instruction 
 If there is enough resources to rename instructions,
-now it checks whether the current instruction should follow
-serialization or barrier constraint. 
+now it checks whether current instructions 
+should be serialized or protected by the memory barriers. 
 
 ```cpp
  714         // Handle serializeAfter/serializeBefore instructions.
@@ -951,16 +947,16 @@ we generated at the fetch stage
 was the object of the StaticInst. 
 Also, its flags are set 
 based on the implementation of the microops of different architectures. 
-Therefore, by checking the isSerializeAfter and isSerializeBefore 
-of the current static instruction,
+Therefore, 
 the rename stage determines 
-whether it should block the stage or moves to the next instruction. 
+whether it should block the stage or moves to the next instruction
+by checking the isSerializeAfter and isSerializeBefore 
+of the current static instruction,
 Note that the serializeBefore means that 
-the current instruction should be blocked, but 
-the serializeAfter means that 
-the next instruction after current instruction should be blocked. 
-Therefore, by invoking serializeAfter function, 
-it makes the next instruction have IsSerializeBefore flag. 
+the current instruction should be blocked.
+Therefore, it sets current instruction as serializeInst (Line 739)
+and status of the current rename stage as SerializeStall
+and break the loop. 
 
 ```cpp
 1431 template<class Impl>
@@ -977,14 +973,17 @@ it makes the next instruction have IsSerializeBefore flag.
 1442     inst_list.front()->setSerializeBefore();
 1443 }
 ```
-
-Note that there are two cases. When the current instruction is serializeBefore and the last one 
-in the queue, then it should block the next instruction until all the instructions to be executed. 
-However, because we don't know which instructions will be passed to the rename stage, 
-it just sets the serializeOnNextInst as true to make the rename stage make the 
-first instruction processed by the rename stage at the next cycle to be blocked.
-If the buffer still has following instruction, then it just set the next instruction as 
-serializeBefore.
+However, when the instruction has serializeAfter flag,
+the next instruction after the current instruction should be blocked
+not the current one. 
+In this case we should consider two cases of the rename stage. 
+When it has no instructions to be renamed after the current one,
+we cannot set the next instruction to be serialized.
+Therefore, just let the rename stage be aware of that
+the next instruction should be serialized (Line 1437).
+If there is another instruction in the queue, 
+it directly set the flag of that instruction
+by invoking setSerializeBefore function (1442).
 
 ```cpp
  627     // Handle serializing the next instruction if necessary.
@@ -997,12 +996,153 @@ serializeBefore.
  634         }
  635     }
 ```
-As shown in the above code (Line 632-633), 
-when the next renameInsts function is executed at the next clock cycle, 
-it checks whether the serializeOnNextInst has been set, 
+
+As shown in the above code (Line 632-633),
+at the next clock cycle,
+when the renameInsts function is executed,
+it checks whether the serializeOnNextInst has been set.
 which means that the last instruction was serializeAfter instruction 
-at the previous clock cycle. In that case it sets the current instruction
+at the previous clock cycle. 
+In that case it sets the current instruction
 to be renamed as serializeBefore to make serialization. 
+
+### Wait until all issued instructions are resolved
+Remember that the tick function of the rename stage 
+always check the signal before invoking the rename function.
+This **checkSignalsAndUpdate** function 
+checks whether the rename stage can be continued.
+
+```cpp
+1333 DefaultRename<Impl>::checkSignalsAndUpdate(ThreadID tid)
+1334 {
+1335     // Check if there's a squash signal, squash if there is
+1336     // Check stall signals, block if necessary.
+1337     // If status was blocked
+1338     //     check if stall conditions have passed
+1339     //         if so then go to unblocking
+1340     // If status was Squashing
+1341     //     check if squashing is not high.  Switch to running this cycle.
+1342     // If status was serialize stall
+1343     //     check if ROB is empty and no insts are in flight to the ROB
+1344 
+1345     readFreeEntries(tid);
+1346     readStallSignals(tid);
+1347 
+1348     if (fromCommit->commitInfo[tid].squash) {
+1349         DPRINTF(Rename, "[tid:%i] Squashing instructions due to squash from "
+1350                 "commit.\n", tid);
+1351 
+1352         squash(fromCommit->commitInfo[tid].doneSeqNum, tid);
+1353 
+1354         return true;
+1355     }
+1356 
+1357     if (checkStall(tid)) {
+1358         return block(tid);
+1359     }
+```
+
+One of the important function of checkSignalsAndUpdate is 
+**checkStall** function
+that checks whether the current rename stage is ready to be free from the stall.
+If the rename stage should be stalled more, 
+then it returns false and continue to block 
+the rename stage at current clock cycle (Line 1358). 
+However, 
+if it turns out that 
+previous stall doesn't block the rename stage further,
+it tries to recover from the stall based on their previous stall reasons. 
+
+```cpp
+1265 DefaultRename<Impl>::checkStall(ThreadID tid)
+1266 {   
+1267     bool ret_val = false;
+1268     
+1269     if (stalls[tid].iew) {
+1270         DPRINTF(Rename,"[tid:%i] Stall from IEW stage detected.\n", tid);
+1271         ret_val = true;
+1272     } else if (calcFreeROBEntries(tid) <= 0) {
+1273         DPRINTF(Rename,"[tid:%i] Stall: ROB has 0 free entries.\n", tid);
+1274         ret_val = true;
+1275     } else if (calcFreeIQEntries(tid) <= 0) {
+1276         DPRINTF(Rename,"[tid:%i] Stall: IQ has 0 free entries.\n", tid);
+1277         ret_val = true;
+1278     } else if (calcFreeLQEntries(tid) <= 0 && calcFreeSQEntries(tid) <= 0) {
+1279         DPRINTF(Rename,"[tid:%i] Stall: LSQ has 0 free entries.\n", tid);
+1280         ret_val = true;
+1281     } else if (renameMap[tid]->numFreeEntries() <= 0) {
+1282         DPRINTF(Rename,"[tid:%i] Stall: RenameMap has 0 free entries.\n", tid);
+1283         ret_val = true;
+1284     } else if (renameStatus[tid] == SerializeStall &&
+1285                (!emptyROB[tid] || instsInProgress[tid])) {
+1286         DPRINTF(Rename,"[tid:%i] Stall: Serialize stall and ROB is not "
+1287                 "empty.\n",
+1288                 tid);
+1289         ret_val = true;
+1290     }
+1291     
+1292     return ret_val;
+1293 }
+```
+For example,
+when the current renameStatus is SerializeStall,
+the rename stage should not be executed again 
+until all previous instruction in the pipeline 
+will be dispatched to the execution units. 
+Therefore, it invokes instsInProgress[tid]
+to check whether current hardware thread 
+still have some remaining instructions to process. 
+When the all previous instructions are resolved,
+it will return false and checkStall will return false.
+If the checkStall returns false and doesn't block the rename stage anymore,
+it will try to recover from the stall 
+based on their previous stall reasons.
+
+```cpp
+1395     if (renameStatus[tid] == SerializeStall) {
+1396         // Stall ends once the ROB is free.
+1397         DPRINTF(Rename, "[tid:%i] Done with serialize stall, switching to "
+1398                 "unblocking.\n", tid);
+1399         
+1400         DynInstPtr serial_inst = serializeInst[tid];
+1401         
+1402         renameStatus[tid] = Unblocking;
+1403         
+1404         unblock(tid);
+1405         
+1406         DPRINTF(Rename, "[tid:%i] Processing instruction [%lli] with "
+1407                 "PC %s.\n", tid, serial_inst->seqNum, serial_inst->pcState());
+1408         
+1409         // Put instruction into queue here.
+1410         serial_inst->clearSerializeBefore();
+1411         
+1412         if (!skidBuffer[tid].empty()) {
+1413             skidBuffer[tid].push_front(serial_inst);
+1414         } else {
+1415             insts[tid].push_front(serial_inst);
+1416         }
+1417         
+1418         DPRINTF(Rename, "[tid:%i] Instruction must be processed by rename."
+1419                 " Adding to front of list.\n", tid);
+1420         
+1421         serializeInst[tid] = NULL;
+1422         
+1423         return true;
+1424     }
+```
+
+For example, 
+if the previous reason of stall was SerializeStall,
+the Line 1395-1424 will be executed.
+Note that the serialized instruction could not been executed 
+until all previous instructions had been dispatched by the IEW stage.
+Therefore, 
+the serializing instruction should be reinserted 
+into the instruction buffer of the rename stage (Line 1412-1416).
+Also, it cleans up the serializeInst field of the rename stage (line 1421).
+Next time when the rename stage is recovered from the unblocking stage,
+it will process the serializing instruction that have stalled the rename stage.
+
 
 ### X86 in GEM5 provides macro setting serialization 
 ```cpp
@@ -1028,9 +1168,10 @@ to be renamed as serializeBefore to make serialization.
 166                 "function_return" : self.function_return
 167             }
 ```
-For macroop definition, when .serialize_before or .serialize_after keyword is found 
-in the definition, the GEM5 parser invokes the self.serializeBefore and self.serializeAfter 
-function respectively to set the serialize_before and serialize_after memeber field as true.
+For macroop definition, 
+when .serialize_before or .serialize_after keyword is found in their definition,
+the GEM5 parser invokes the self.serializeBefore and self.serializeAfter function respectively 
+to set the serialize_before and serialize_after memeber field as true.
 
 ```cpp
 205         def getDefinition(self, env):
@@ -1062,13 +1203,14 @@ function respectively to set the serialize_before and serialize_after memeber fi
 231                         flags.append("IsReturn")
 232                         flags.append("IsUncondControl")
 ```
-When the macroop definition is automatically generated, it checks those two flags and 
-set IsSerializeBefore to the first microop and IsSerializeAfter to the last microop 
-consisting of the macroop. 
+When the macroop definition is automatically generated, 
+it checks those two flags and set IsSerializeBefore to the first microop 
+and IsSerializeAfter to the last microop 
+consisting of the macroop.
 
 ## Rename registers and pass the renamed instruction to the next stage
-After handling serialization instruction, it should rename 
-registers of the instruction. 
+After handling serialization instruction, 
+it should rename registers of the instruction. 
 ```cpp
  755         renameSrcRegs(inst, inst->threadNumber);
  756 
@@ -1166,9 +1308,14 @@ registers of the instruction.
 1128     }
 1129 }
 ```
-The main operation of the renameSrcRegs are lookingup the register map 
-if the architecture register used by the current instruction's source 
-has been renamed to the another physical register. 
+The main operation of the renameSrcRegs is to look up register map 
+and find out if the architecture registers used as the current instruction's source 
+have been renamed to the another physical registers. 
+If it has been renamed to other physical registers,
+it should consider those registers instead of the 
+architectural registers in the rest of the rename stages. 
+This mapping will be stored in the instruction
+through the renameSrcReg function (Line 1108).
 
 ### lookup renameMap to find physical register if it has been renamed 
 ```cpp
@@ -1230,26 +1377,35 @@ has been renamed to the another physical register.
 299         }
 300     }
 ```
-If it has been renamed before, the **lookup** function returns 
-actual physical register to which the architecture register has been mapped.
-The map used in the rename stage is UnifiedRenameMap and contains 
-multiple SimpleRenameMap with the various register type.
+If it has been renamed already, 
+the **lookup** function returns actual physical register 
+to which the architecture register has been mapped.
+The map used in the rename stage is UnifiedRenameMap and 
+contains multiple SimpleRenameMap with the various register type.
 Therefore, it first invokes the lookup function of the UnifiedRenameMap,
 and further invokes the lookup function of the SimpleRenameMap 
 depending on the register type that we are trying to rename. 
 
 ### check scoreboard
-After the lookup, it checks the scoreboard if the target register is ready to be read. 
-Because O3 is out-of-order processor, and renaming register is utilized 
-to eliminate register dependency such as write after read, scoreboard let the processor
-know when the register is ready to be accessed. 
-Particularly, the getReg interface of the scoreboard 
-can be utilized to check specific register is currently available.
-If it returns true, the source register is available to be read, so 
-it sets the instruction marks the source register is ready (markSrcRegReady).
-However, if the getReg returns false, it means that the source register is not available 
-at this cycle, so it should not set the flag and make the instruction to wait 
-in the next issue stage until the register is ready. 
+After the lookup, it checks the scoreboard 
+if the target registers are available to be read.
+Note that the renamed register is passed to the scoreboard, getReg.
+O3 is out-of-order processor and renames the registers
+to eliminate register dependency such as write after read.
+The scoreboard let the processor know 
+when the register is ready to be accessed. 
+Particularly, the getReg interface of the scoreboard can check 
+whether specific phyiscal register is currently available.
+If it returns true, 
+it means that the asked register is ready to be used. 
+It invokes the markSrcRegReady function (Line 1118)
+to mark that operand of instruction is ready to be used. 
+Also, it sets the instruction to be issued 
+when all operands of that instructions are ready.
+However, if the getReg returns false, 
+it means that one source register is not available at that cycle, so 
+it should not set the flag and make the instruction to wait 
+until the register is ready. 
 The scoreboard and its interfaces will be described in the [below section]().
 
 ### renameDestRegs 
@@ -1308,9 +1464,21 @@ The scoreboard and its interfaces will be described in the [below section]().
 1182     }
 1183 }
 ```
-Basically, the renameDestRegs function is similar to the renameSrcRegs in such a way that 
-it renames the registers. However, renaming destination register incurs some changes 
-on the register map and the scoreboard. 
+Basically, the renameDestRegs function is similar to the renameSrcRegs 
+However, renaming destination register can change 
+register map and the scoreboard
+of the destination register. 
+For the source registers,
+it should check the scoreboard
+because it might have dependencies on the previous instructions.
+However, 
+because the destination register does not have dependencies on
+previous instructions, 
+it can map current destination register to any physical register 
+if the resources are available. 
+Therefore, instead of invoking lookup 
+as we did for the source register,
+it invokes rename function.
 
 ### rename: renames specific register to the other
 ```cpp
@@ -1354,8 +1522,21 @@ on the register map and the scoreboard.
 258         }
 259     }
 ```
-Instead of invoking lookup function of the register map, it invokes the rename function.
 
+Because rename stage has access on various physical registers, 
+it should ask proper physical register map 
+to rename the architecture register to its physical register. 
+Note that the return value, RenameInfo,
+is a pair indicating both the new and previous.
+```cpp
+    /**
+     * Pair of a physical register and a physical register.  Used to
+     * return the physical register that a logical register has been
+     * renamed to, and the previous physical register that the same
+     * logical register was previously mapped to.
+     */
+    typedef std::pair<PhysRegIdPtr, PhysRegIdPtr> RenameInfo;
+```
 
 ```cpp
  73 SimpleRenameMap::RenameInfo
@@ -1393,12 +1574,17 @@ Instead of invoking lookup function of the register map, it invokes the rename f
 105     return RenameInfo(renamed_reg, prev_reg);
 106 }
 ```
+The prev_reg indicates the previous physical register 
+mapped to the current architecture register.
+Also, it maps any available physical register to the current architecture register (Line 93)
+and update its mapping (Line 94).
 
 ### Make the renamed register as not ready
-it invokes unsetReg.
-
-
-
+It invokes unsetReg to make the scoreboard mark 
+the physical register previously mapped to 
+currently remapped destination architecture register
+as not ready.
+\TODO{What is the purpose of it?}
 
 ### Populating history buffer entry per destination register rename 
 After the renaming is done (line 1161-1163),
@@ -1431,10 +1617,10 @@ it generates history entry for providing \TODO{is it for precise exception?? wha
 326     std::list<RenameHistory> historyBuffer[Impl::MaxThreads];
 ```
 
+### End of the main loop
 After renaming destination and source registers, 
 it pushes the renamed instruction to the toIEW register. 
 
-### End of the main loop
 ```cpp
  781     instsInProgress[tid] += renamed_insts;
  782     renameRenamedInsts += renamed_insts;
@@ -1456,7 +1642,7 @@ it pushes the renamed instruction to the toIEW register.
  798     }
  799 }
 ```
-
+Now we are good to go to IEW stage!
 
 ## scoreboard
 ### scoreboard interface
@@ -1569,9 +1755,14 @@ of the specific register maintained by the scoreboard.
  219     iew.setScoreboard(&scoreboard);
 ```
 
-At the real hardware implementation, the scoreboard should be accessible by the 
-multiple stages at the same time. However, because it is software emulation,
-GEM5 doesn't provide port-wise emulation to service different modules at the same time.
-Note that GEM5 executes in single thread and cannot be executed in multi-threads. 
-Anyway, the scoreboard is accessed by two different stages in the O3CPU: rename and iew.
+When it comes to real hardware implementation, 
+the scoreboard should be accessible by the multiple stages 
+at the same time. 
+However, because it is software emulation,
+GEM5 doesn't provide port-wise emulation 
+to service different modules at the same time.
+Note that GEM5 executes in single thread 
+and cannot be executed in multi-threads. 
+Anyway, the scoreboard is accessed by two different stages in the O3CPU: 
+rename and iew.
 

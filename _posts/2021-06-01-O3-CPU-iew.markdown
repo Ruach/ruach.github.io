@@ -18,31 +18,27 @@ IEW::tick()->IEW::executeInsts()
 IEW::tick()->IEW::writebackInsts()
 ```
 
-I already explained details of the rename stage. 
-It renames registers the renamed instruction is pushed to the IEW stage. 
-It also checks that the IQ/LSQ is available to hold the new instruction.
 In this posting, I will explain dispatch, schedule, execute, and write back in details.
 The commit stage will be studied in the other posting. 
-The tick function of the iew stage is the main body of execution 
-as other stages. Therefore, I will explain each part of the iew stage 
+The tick function of the iew stage is the main body of execution as other stages. 
+Therefore, I will explain each part of the iew stage 
 following the tick implementation. 
-
- It handles the dispatching of instructions to the LSQ/IQ 
- as part of the issue stage, and has the IQ try to issue instructions each cycle. 
- The execute latency is actually tied into the issue latency 
- to allow the IQ to be able to do back-to-back scheduling 
- without having to speculatively schedule instructions. 
- %
- This happens by having the IQ have access to the functional units, and 
- the IQ gets the execution latencies from the FUs when it issues instructions. 
- Instructions reach the execute stage on the last cycle of their execution, 
- which is when the IQ knows to wake up any dependent instructions, 
- allowing back to back scheduling. The execute portion of IEW separates 
- memory instructions from non-memory instructions, either telling the LSQ
- to execute the instruction, or executing the instruction directly.
- %
- The writeback portion of IEW completes the instructions by waking up 
- any dependents, and marking the register ready on the scoreboard.
+The dispatch function tries to dispatch 
+renamed instructions to the LSQ/IQ 
+(Note that already the rename stage checked 
+availability of the LSQ and IQ)
+and actually issues instructions every cycle. 
+The execute latency is actually tied to the issue latency 
+to allow the IQ to be able to do back-to-back scheduling 
+without having to speculatively schedule instructions. 
+The IEW separates 
+memory instructions from non-memory instructions.
+(issuing the instruction to different queues, LSQ or IQ) 
+The writeback portion of IEW completes the instructions,
+wakes up any dependents, and marks the register as ready on the scoreboard.
+With those information,
+IQ can tell which instructions 
+can be woke up and to be issued. 
 
 ## Dispatch 
 ```cpp
@@ -76,9 +72,12 @@ following the tick implementation.
 1529         dispatch(tid);
 1530     }
 ```
-As shown in the tick function, after checking signal such as block and squash, 
-the first job done by the IEW is the dispatching renamed instructions. 
-The main goal of the dispatch is inserting the renamed instruction into the IQ and LSQ.
+As shown in the tick function, 
+after checking signal such as block and squash, 
+the first job done by the IEW is the dispatching the renamed instructions. 
+The main goal of the dispatch is 
+inserting the renamed instruction into the IQ and LSQ
+based on the instruction's type. 
 
 ### Dispatch implementation
 ```cpp
@@ -131,9 +130,11 @@ The main goal of the dispatch is inserting the renamed instruction into the IQ a
  957 }
 ```
 The dispatch function is just a wrapper function of the dispatchInsts. 
-Based on the current status of the dispatch, associated operations 
-should be executed in addition to the main dispatch function, dispatchInsts.
-Because the dispatchInsts is fairly complex, I will explain part by part. 
+Based on the current status of the dispatch stage, 
+associated operations should be executed 
+in addition to the main dispatch function, dispatchInsts.
+Because the dispatchInsts is fairly complex, 
+I will explain one by one. 
 
 ### Checking availability of resources to dispatch instruction
 ```cpp
@@ -234,11 +235,14 @@ Because the dispatchInsts is fairly complex, I will explain part by part.
 1053             break;
 1054         }
 ```
-First it checks whether the current instruction has been already squashed. 
-If yes, then ignore the current instruction and skip to the next ones. 
-If the instructions is not squashed, then it checks the availability of resource 
-required for issuing the instruction. Regardless of the instruction type, 
-it requires one entry from the instruction queue. Also, if it is the memory related 
+First, it checks whether the current instruction has been already squashed. 
+If yes, then ignore the current instruction and jump to the next ones. 
+If the instructions is not squashed, 
+it checks the availability of resource 
+required for issuing the instruction. 
+Regardless of the instruction type, 
+it requires one entry from the instruction queue.
+Also, if it is the memory related 
 instruction, it require one entry from the load queue or store queue 
 based on whether it is load or store instruction. 
 
@@ -322,13 +326,16 @@ based on whether it is load or store instruction.
 1131             add_to_iq = true;
 1132         }
 ```
-Although it is not clear until we understand the internal of the instQueue and ldstQueue,
+
+Although it is not clear 
+until we understand the internal of the instQueue and ldstQueue,
 but the above code pushes the instructions based on the instruction type.
-For example, for the load operation, it pushes the instruction
+For example, for the load operation, 
+it pushes the instruction
 to the ldstQueue with insertLoad function. 
-For the write operation, it is inserted to the same queue with the insertStore function.
-And because the memory instructions should be processed differently, 
-it is passed to the instruction queue with the insertBarrier instruction.
+For the write operation, 
+it is inserted to the same queue 
+through the insertStore function.
 For the normal instructions they will be just enqueued to the instQueue. 
 
 ### Issuing instruction
@@ -366,12 +373,13 @@ For the normal instructions they will be just enqueued to the instQueue.
 1164         ppDispatch->notify(inst);
 1165     }
 ```
-After special instructions are handled by inserting them to the corresponding queue 
-with the associated method provided by the queues, some of them should also be inserted to the 
-instruction queue. Based on the instruction type, add_to_iq flag is set.
+After each instructions are handled 
+by inserting them to the corresponding queues 
+with the associated method provided by the queues, 
+some of them should also be inserted to the instruction queue. 
+Note that add_to_iq flag is set
+based on the instruction type, 
 When this flag is set, the instruction should be added to the instQueue (line 1151-1153). 
-However, for the nonspeculative instruction, they are not managed by the instQueue as 
-normal instructions. For the details, we will see insertNonSpec function soon.
 
 ### End of the dispatching
 ```cpp
@@ -390,8 +398,8 @@ normal instructions. For the details, we will see insertNonSpec function soon.
 1179     dis_num_inst = 0;
 1180 }
 ```
-After processing all the renamed instruction, it should check whether 
-it still has some instructions in the queue. 
+After dispatching all renamed instructions, 
+it should check whether it still has some instructions in the queue. 
 When the instruction cannot be processed further because of throttling,
 it should block and handle rest of the instructions at the next cycle. 
 
@@ -399,10 +407,8 @@ it should block and handle rest of the instructions at the next cycle.
 Before moving on to the next stage, I'd like to cover some part of the IQ and LSQ.
 
 ### Instruction queue has several lists to keep issued instructions 
-Mainly the job of the queue is managing instructions and provides some interfaces
-to process those instructions. Therefore, to understand the queue, 
-we need to understand which lists the instruction queue manages 
-to keep the instructions. 
+Mainly the job of the queue is managing instructions 
+and providing some interfaces to process the enqueued instructions. 
 
 *gem5/src/cpu/o3/inst_queue.hh*
 ```cpp
@@ -431,11 +437,9 @@ to keep the instructions.
 ```
 
 ### Insert new entries to the instruction queue
-Because instruction queue has data structure managing the issued instructions,
-it should provide proper interface to interact with the 
-issue queue particularly lists of the instruction queue. 
-The insert function is the essential example of those interface because 
-it inserts new entries to the instruction list managed by the instruction queue. 
+The insert function is the essential example of the interface.
+It inserts new entries to the instruction list 
+managed by the instruction queue. 
 
 ```cpp
  578 template <class Impl>
@@ -484,18 +488,22 @@ it inserts new entries to the instruction list managed by the instruction queue.
  621     assert(freeEntries == (numEntries - countInsts()));
  622 }
 ```
-Inserting the instruction to the list is done by simple push_back operation of the list.
-However, it invokes two important functions: addToProducers and addToDependents.
-These two functions generates producer and consumer dependency among instructions 
-for registers. When one instruction waits until the specific register's value become ready (consumer),
-it should be tracked by some hardware component. Also, when the data becomes ready 
-as a result of execution of one instruction (producer), it should be forwarded to the 
-consumers waiting for the value. For that purpose, GEM5 utilize the DependencyGraph. 
-This will be explained in the other posting in detail. 
+Inserting the instruction to the list is done 
+by simple push_back operation of the list.
+However, it invokes two important functions: 
+addToProducers and addToDependents.
+These two functions generates producer and consumer dependency 
+among instructions's operands, registers. 
+When one instruction waits until the specific register's value become ready (consumer),
+it should be tracked by some hardware component. 
+Also, when the data becomes ready 
+as a result of execution of one instruction (producer), 
+it should be forwarded to the consumers waiting for the value. 
+For that purpose, GEM5 utilize the DependencyGraph. 
 After producing dependency for the unavailable registers, 
-if the instruction reference memory while its execution,
+if the instruction references memory while its execution,
 it should be specially handled by the memory dependency unit. 
-This details will also be explained together with the DependencyGraph later.
+The details will be explained together with the DependencyGraph later.
 
 ```cpp
 1450 template <class Impl>
@@ -539,13 +547,14 @@ This details will also be explained together with the DependencyGraph later.
 1488 }
 ```
 At the end of the insert function, it adds instruction 
-to the **readyInsts** buffer if all the registers are available (line 1476).
-If the instruction is not ready, which means 
-the source registers are not available at this moment of insertion, 
+to the **readyInsts** buffer 
+if all the registers are available (line 1476).
+If the instruction is not ready, 
+which means the source registers are not available, 
 the instruction should not be inqueued to the readyInsts buffer.
-The instructions waiting for the source register will become ready 
-will be added to the readyInsts buffer when other dependent instructions complete. 
-
+The instructions waiting for the source register to become available 
+will be added to the readyInsts buffer 
+when other dependent instructions complete. 
 
 ## Execute
 To understand what should be done after dispatching the instructions,

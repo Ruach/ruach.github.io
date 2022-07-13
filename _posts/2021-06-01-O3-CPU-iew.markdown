@@ -74,7 +74,7 @@ can be woke up and to be issued.
 ```
 As shown in the tick function, 
 after checking signal such as block and squash, 
-the first job done by the IEW is the dispatching the renamed instructions. 
+the first job done by the IEW is dispatching the renamed instructions. 
 The main goal of the dispatch is 
 inserting the renamed instruction into the IQ and LSQ
 based on the instruction's type. 
@@ -129,6 +129,7 @@ based on the instruction's type.
  956     }
  957 }
 ```
+
 The dispatch function is just a wrapper function of the dispatchInsts. 
 Based on the current status of the dispatch stage, 
 associated operations should be executed 

@@ -16,7 +16,6 @@
 
 
 # Build settings
-remote_theme: "mmistakes/so-simple-theme"
 
 locale: en-US
 title: Jaehyuk

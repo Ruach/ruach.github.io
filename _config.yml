@@ -60,7 +60,8 @@ google_analytics:
 #     light  - Use the light color scheme
 #     dark   - Use the dark color scheme
 #
-theme_mode: # [light|dark]
+#theme_mode: light|dark]
+theme_mode: light
 
 
 # the avatar on sidebar, support local or CORS resources

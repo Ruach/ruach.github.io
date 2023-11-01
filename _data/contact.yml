@@ -6,11 +6,11 @@
 
 - type: linkedin
   icon: 'fab fa-linkedin'   # icons powered by <https://fontawesome.com/>
-  url:  ''                  # Fill with your Linkedin homepage
+  url: 'https://www.linkedin.com/in/jaehyuk-lee-29b33b121/'
 
 - type: github
   icon: "fab fa-github"
 
 - type: stack-overflow
   icon: 'fab fa-stack-overflow'
-  url:  ''                  # Fill with your stackoverflow homepage
+  url:  'https://stackoverflow.com/users/4460514/ruach?tab=profile'

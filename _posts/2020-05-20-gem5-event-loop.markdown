@@ -1,144 +1,216 @@
 ---
 layout: post
-titile: "Macroop to Microops"
-categories: [GEM5, Microops]
+titile: "Main Simulation Loop in GEM5"
+categories: [GEM5]
 ---
+
+I covered how GEM5 configures the hardware parameters through the python script.
+Also, in [this posting]() I explained details how python can instantiate the 
+CPP classes that actually simulate hardware components. Similar to this, actual
+simulation loop is implemented in CPP, but the simulation is started from the 
+python script.
+
+```python
+m5.instantiate()
+exit_event = m5.simulate()
+```
+
+After instantiating the platform, it invokes 'simulate' function from m5 module
+to initiate simulation. Since actual simulation will be handled by the CPP, 
+Let's see how this python code will transfer execution control to the CPP 
+implementation.
+
+### Overview of simulation loop
+```python
+def simulate(*args, **kwargs):
+    global need_startup
+        
+    if need_startup:
+        root = objects.Root.getInstance()
+        for obj in root.descendants(): obj.startup()
+        need_startup = False
+        
+        # Python exit handlers happen in reverse order.
+        # We want to dump stats last.
+        atexit.register(stats.dump)
+    
+        # register our C++ exit callback function with Python
+        atexit.register(_m5.core.doExitCleanup)
+    
+        # Reset to put the stats in a consistent state.
+        stats.reset()
+        
+    if _drain_manager.isDrained():
+        _drain_manager.resume()
+            
+    # We flush stdout and stderr before and after the simulation to ensure the
+    # output arrive in order.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    sim_out = _m5.event.simulate(*args, **kwargs)
+    sys.stdout.flush()
+    sys.stderr.flush()
+```
+
+The simulate function invokes startup function from all SimObjects instantiated
+by the python script, if it needs startup. After some initialization, it invokes
+CPP simulate function through '_m5.event' module. Remind that some CPP functions
+related with simulation are exported to python through pybind in the very first
+part of GEM5 execution. This is time to say good bye to python! From now on, 99%
+of simulation code will be CPP! Be prepared to jumping into real hardware 
+simulation logic!
+
 ```cpp
 //gem5/src/sim/simulate.cc
 
- 82 GlobalSimLoopExitEvent *
- 83 simulate(Tick num_cycles)
- 84 {
- 85     // The first time simulate() is called from the Python code, we need to
- 86     // create a thread for each of event queues referenced by the
- 87     // instantiated sim objects.
- 88     static bool threads_initialized = false;
- 89     static std::vector<std::thread *> threads;
- 90 
- 91     if (!threads_initialized) {
- 92         threadBarrier = new Barrier(numMainEventQueues);
- 93 
- 94         // the main thread (the one we're currently running on)
- 95         // handles queue 0, so we only need to allocate new threads
- 96         // for queues 1..N-1.  We'll call these the "subordinate" threads.
- 97         for (uint32_t i = 1; i < numMainEventQueues; i++) {
- 98             threads.push_back(new std::thread(thread_loop, mainEventQueue[i]));
- 99         }
-100 
-101         threads_initialized = true;
-102         simulate_limit_event =
-103             new GlobalSimLoopExitEvent(mainEventQueue[0]->getCurTick(),
-104                                        "simulate() limit reached", 0);
-105     }
-106 
-107     inform("Entering event queue @ %d.  Starting simulation...\n", curTick());
-108 
-109     if (num_cycles < MaxTick - curTick())
-110         num_cycles = curTick() + num_cycles;
-111     else // counter would roll over or be set to MaxTick anyhow
-112         num_cycles = MaxTick;
-113 
-114     simulate_limit_event->reschedule(num_cycles);
-115 
-116     GlobalSyncEvent *quantum_event = NULL;
-117     if (numMainEventQueues > 1) {
-118         if (simQuantum == 0) {
-119             fatal("Quantum for multi-eventq simulation not specified");
-120         }
-121 
-122         quantum_event = new GlobalSyncEvent(curTick() + simQuantum, simQuantum,
-123                             EventBase::Progress_Event_Pri, 0);
-124 
-125         inParallelMode = true;
-126     }
-127 
-128     // all subordinate (created) threads should be waiting on the
-129     // barrier; the arrival of the main thread here will satisfy the
-130     // barrier, and all threads will enter doSimLoop in parallel
-131     threadBarrier->wait();
-132     Event *local_event = doSimLoop(mainEventQueue[0]);
-133     assert(local_event != NULL);
-134 
-135     inParallelMode = false;
-136 
-137     // locate the global exit event and return it to Python
-138     BaseGlobalEvent *global_event = local_event->globalEvent();
-139     assert(global_event != NULL);
-140 
-141     GlobalSimLoopExitEvent *global_exit_event =
-142         dynamic_cast<GlobalSimLoopExitEvent *>(global_event);
-143     assert(global_exit_event != NULL);
-144 
-145     //! Delete the simulation quantum event.
-146     if (quantum_event != NULL) {
-147         quantum_event->deschedule();
-148         delete quantum_event;
-149     }
-150 
-151     return global_exit_event;
-152 }
+GlobalSimLoopExitEvent *
+simulate(Tick num_cycles)
+{
+    // The first time simulate() is called from the Python code, we need to
+    // create a thread for each of event queues referenced by the
+    // instantiated sim objects.
+    static bool threads_initialized = false;
+    static std::vector<std::thread *> threads;
+
+    if (!threads_initialized) {
+        threadBarrier = new Barrier(numMainEventQueues);
+
+        // the main thread (the one we're currently running on)
+        // handles queue 0, so we only need to allocate new threads
+        // for queues 1..N-1.  We'll call these the "subordinate" threads.
+        for (uint32_t i = 1; i < numMainEventQueues; i++) {
+            threads.push_back(new std::thread(thread_loop, mainEventQueue[i]));
+        }
+
+        threads_initialized = true;
+        simulate_limit_event =
+            new GlobalSimLoopExitEvent(mainEventQueue[0]->getCurTick(),
+                                       "simulate() limit reached", 0);
+    }
+
+    inform("Entering event queue @ %d.  Starting simulation...\n", curTick());
+
+    if (num_cycles < MaxTick - curTick())
+        num_cycles = curTick() + num_cycles;
+    else // counter would roll over or be set to MaxTick anyhow
+        num_cycles = MaxTick;
+
+    simulate_limit_event->reschedule(num_cycles);
+
+    GlobalSyncEvent *quantum_event = NULL;
+    if (numMainEventQueues > 1) {
+        if (simQuantum == 0) {
+            fatal("Quantum for multi-eventq simulation not specified");
+        }
+
+        quantum_event = new GlobalSyncEvent(curTick() + simQuantum, simQuantum,
+                            EventBase::Progress_Event_Pri, 0);
+
+        inParallelMode = true;
+    }
+
+    // all subordinate (created) threads should be waiting on the
+    // barrier; the arrival of the main thread here will satisfy the
+    // barrier, and all threads will enter doSimLoop in parallel
+    threadBarrier->wait();
+    Event *local_event = doSimLoop(mainEventQueue[0]);
+    assert(local_event != NULL);
+
+    inParallelMode = false;
+
+    // locate the global exit event and return it to Python
+    BaseGlobalEvent *global_event = local_event->globalEvent();
+    assert(global_event != NULL);
+
+    GlobalSimLoopExitEvent *global_exit_event =
+        dynamic_cast<GlobalSimLoopExitEvent *>(global_event);
+    assert(global_exit_event != NULL);
+
+    //! Delete the simulation quantum event.
+    if (quantum_event != NULL) {
+        quantum_event->deschedule();
+        delete quantum_event;
+    }
+
+    return global_exit_event;
+}
 ```
 
+After going through some initialization related with threads, it invokes the 
+main simulation loop 'doSimLoop'.
 
 ```cpp
 //gem5/src/sim/simulate.cc
-179 Event *
-180 doSimLoop(EventQueue *eventq)
-181 {
-182     // set the per thread current eventq pointer
-183     curEventQueue(eventq);
-184     eventq->handleAsyncInsertions();
-185 
-186     while (1) {
-187         // there should always be at least one event (the SimLoopExitEvent
-188         // we just scheduled) in the queue
-189         assert(!eventq->empty());
-190         assert(curTick() <= eventq->nextTick() &&
-191                "event scheduled in the past");
-192 
-193         if (async_event && testAndClearAsyncEvent()) {
-194             // Take the event queue lock in case any of the service
-195             // routines want to schedule new events.
-196             std::lock_guard<EventQueue> lock(*eventq);
-197             if (async_statdump || async_statreset) {
-198                 Stats::schedStatEvent(async_statdump, async_statreset);
-199                 async_statdump = false;
-200                 async_statreset = false;
-201             }
-202 
-203             if (async_io) {
-204                 async_io = false;
-205                 pollQueue.service();
-206             }
-207 
-208             if (async_exit) {
-209                 async_exit = false;
-210                 exitSimLoop("user interrupt received");
-211             }
-212 
-213             if (async_exception) {
-214                 async_exception = false;
-215                 return NULL;
-216             }
-217         }
-218 
-219         Event *exit_event = eventq->serviceOne();
-220         if (exit_event != NULL) {
-221             return exit_event;
-222         }
-223     }
-224 
-225     // not reached... only exit is return on SimLoopExitEvent
-226 }
+
+Event *
+doSimLoop(EventQueue *eventq)
+{
+    // set the per thread current eventq pointer
+    curEventQueue(eventq);
+    eventq->handleAsyncInsertions();
+
+    while (1) {
+        // there should always be at least one event (the SimLoopExitEvent
+        // we just scheduled) in the queue
+        assert(!eventq->empty());
+        assert(curTick() <= eventq->nextTick() &&
+               "event scheduled in the past");
+
+        if (async_event && testAndClearAsyncEvent()) {
+            // Take the event queue lock in case any of the service
+            // routines want to schedule new events.
+            std::lock_guard<EventQueue> lock(*eventq);
+            if (async_statdump || async_statreset) {
+                Stats::schedStatEvent(async_statdump, async_statreset);
+                async_statdump = false;
+                async_statreset = false;
+            }
+
+            if (async_io) {
+                async_io = false;
+                pollQueue.service();
+            }
+
+            if (async_exit) {
+                async_exit = false;
+                exitSimLoop("user interrupt received");
+            }
+
+            if (async_exception) {
+                async_exception = false;
+                return NULL;
+            }
+        }
+
+        Event *exit_event = eventq->serviceOne();
+        if (exit_event != NULL) {
+            return exit_event;
+        }
+    }
+
+    // not reached... only exit is return on SimLoopExitEvent
+}
 ```
 
-The central operational sequence in GEM5 is the "doSimLoop." This loop persists
+The central simulation sequence in GEM5 is the "doSimLoop." This loop persists
 until it encounters an "exit_event" that signals the end of the simulation. In 
 the event of program termination due to an unhandled fault, GEM5 schedules the 
-"exit_event," prompting the "doSimLoop" to conclude. The most important 
-function of this loop is the **serviceOne** of the EventQueue. 
+"exit_event," prompting the "doSimLoop" to conclude. Most of the cases, it will
+not face the exit_event and process events through the **serviceOne** function 
+of the EventQueue.
 
-### serviceOne: handle scheduled event
+### EventQueue: managing all Events
+EventQueue manages several functions to manage generated Events, such as 
+inserting and deleting the Event object from the queue. The main simulation loop
+utilize this Queue to simulate hardware events. 
+
+>EventQueue class is defined as friend class of Event class so it can access 
+private and protected members of the Event objects managed by the queue. 
+
+#### serviceOne: handle scheduled event
+Before deviling into the details of event, to grab the idea about how GEM5 
+utilize this event for simulation, it would be helpful to go over below function.
+
 ```cpp
 203 Event *
 204 EventQueue::serviceOne()
@@ -181,245 +253,238 @@ function of this loop is the **serviceOne** of the EventQueue.
 241 }
 ```
 
-The "serviceOne" function is responsible for processing events. If an event is 
-not squashed, it proceeds to execute the task associated with that event by 
-invoking the event's **process** function. To gain a deeper understanding of the 
-underlying details, let's explore what an **Event** is and how the GEM5 emulation 
-generates and handles these Events.
+The "serviceOne" function is responsible for processing events scheduled by 
+simulated hardware components. Unless an event is marked as squashed, it proceeds
+to execute the task associated with that event by invoking the event's 
+**process** function. The process function describe the hardware logic that needs
+to be simulated. 
 
-### Event: the basic unit of execution on GEM5 emulation
+#### Other operations of EventQueue
+The most important method of the EventQueue is **serviceOne** function. Because
+it actually executes the hardware simulation logic. 
 
 ```cpp
-189 class Event : public EventBase, public Serializable
-190 {
-191     friend class EventQueue;
-192 
-193   private:
-194     // The event queue is now a linked list of linked lists.  The
-195     // 'nextBin' pointer is to find the bin, where a bin is defined as
-196     // when+priority.  All events in the same bin will be stored in a
-197     // second linked list (a stack) maintained by the 'nextInBin'
-198     // pointer.  The list will be accessed in LIFO order.  The end
-199     // result is that the insert/removal in 'nextBin' is
-200     // linear/constant, and the lookup/removal in 'nextInBin' is
-201     // constant/constant.  Hopefully this is a significant improvement
-202     // over the current fully linear insertion.
-203     Event *nextBin;
-204     Event *nextInBin;
-205 
-206     static Event *insertBefore(Event *event, Event *curr);
-207     static Event *removeItem(Event *event, Event *last);
-208 
-209     Tick _when;         //!< timestamp when event should be processed
-210     Priority _priority; //!< event priority
-211     Flags flags;
-212 
-213 #ifndef NDEBUG
-214     /// Global counter to generate unique IDs for Event instances
-215     static Counter instanceCounter;
-216 
-217     /// This event's unique ID.  We can also use pointer values for
-218     /// this but they're not consistent across runs making debugging
-219     /// more difficult.  Thus we use a global counter value when
-220     /// debugging.
-221     Counter instance;
-222 
-223     /// queue to which this event belongs (though it may or may not be
-224     /// scheduled on this queue yet)
-225     EventQueue *queue;
-226 #endif
-227 
-228 #ifdef EVENTQ_DEBUG
-229     Tick whenCreated;   //!< time created
-230     Tick whenScheduled; //!< time scheduled
-231 #endif
-232 
-233     void
-234     setWhen(Tick when, EventQueue *q)
-235     {
-236         _when = when;
-237 #ifndef NDEBUG
-238         queue = q;
-239 #endif
-240 #ifdef EVENTQ_DEBUG
-241         whenScheduled = curTick();
-242 #endif
-243     }
-244 
-245     bool
-246     initialized() const
-247     {
-248         return (flags & InitMask) == Initialized;
-249     }
-250 
-251   protected:
-252     /// Accessor for flags.
-253     Flags
-254     getFlags() const
-255     {
-256         return flags & PublicRead;
-257     }
-258 
-259     bool
-260     isFlagSet(Flags _flags) const
-261     {
-262         assert(_flags.noneSet(~PublicRead));
-263         return flags.isSet(_flags);
-264     }
-265 
-266     /// Accessor for flags.
-267     void
-268     setFlags(Flags _flags)
-269     {
-270         assert(_flags.noneSet(~PublicWrite));
-271         flags.set(_flags);
-272     }
-273 
-274     void
-275     clearFlags(Flags _flags)
-276     {
-277         assert(_flags.noneSet(~PublicWrite));
-278         flags.clear(_flags);
-279     }
-280 
-281     void
-282     clearFlags()
-283     {
-284         flags.clear(PublicWrite);
-285     }
-286 
-287     // This function isn't really useful if TRACING_ON is not defined
-288     virtual void trace(const char *action);     //!< trace event activity
-289 
-290   protected: /* Memory management */
-291     /**
-292      * @{
-293      * Memory management hooks for events that have the Managed flag set
-294      *
-295      * Events can use automatic memory management by setting the
-296      * Managed flag. The default implementation automatically deletes
-297      * events once they have been removed from the event queue. This
-298      * typically happens when events are descheduled or have been
-299      * triggered and not rescheduled.
-300      *
-301      * The methods below may be overridden by events that need custom
-302      * memory management. For example, events exported to Python need
-303      * to impement reference counting to ensure that the Python
-304      * implementation of the event is kept alive while it lives in the
-305      * event queue.
-306      *
-307      * @note Memory managers are responsible for implementing
-308      * reference counting (by overriding both acquireImpl() and
-309      * releaseImpl()) or checking if an event is no longer scheduled
-310      * in releaseImpl() before deallocating it.
-311      */
-312 
-313     /**
-314      * Managed event scheduled and being held in the event queue.
-315      */
-316     void acquire()
-317     {
-318         if (flags.isSet(Event::Managed))
-319             acquireImpl();
-320     }
-321 
-322     /**
-323      * Managed event removed from the event queue.
-324      */
-325     void release() {
-326         if (flags.isSet(Event::Managed))
-327             releaseImpl();
-328     }
-329 
-330     virtual void acquireImpl() {}
-331 
-332     virtual void releaseImpl() {
-333         if (!scheduled())
-334             delete this;
-335     }
-336 
-337     /** @} */
-338 
-339   public:
-340 
-341     /*
-342      * Event constructor
-343      * @param queue that the event gets scheduled on
-344      */
-345     Event(Priority p = Default_Pri, Flags f = 0)
-346         : nextBin(nullptr), nextInBin(nullptr), _when(0), _priority(p),
-347           flags(Initialized | f)
-348     {
-349         assert(f.noneSet(~PublicWrite));
-350 #ifndef NDEBUG
-351         instance = ++instanceCounter;
-352         queue = NULL;
-353 #endif
-354 #ifdef EVENTQ_DEBUG
-355         whenCreated = curTick();
-356         whenScheduled = 0;
-357 #endif
-358     }
-359 
-360     virtual ~Event();
-365     /// describing the event class.
-366     virtual const char *description() const;
-367 
-368     /// Dump the current event data
-369     void dump() const;
-370 
-371   public:
-372     /*
-373      * This member function is invoked when the event is processed
-374      * (occurs).  There is no default implementation; each subclass
-375      * must provide its own implementation.  The event is not
-376      * automatically deleted after it is processed (to allow for
-377      * statically allocated event objects).
-378      *
-379      * If the AutoDestroy flag is set, the object is deleted once it
-380      * is processed.
-381      */
-382     virtual void process() = 0;
-383 
-384     /// Determine if the current event is scheduled
-385     bool scheduled() const { return flags.isSet(Scheduled); }
-386 
-387     /// Squash the current event
-388     void squash() { flags.set(Squashed); }
-389 
-390     /// Check whether the event is squashed
-391     bool squashed() const { return flags.isSet(Squashed); }
-392 
-393     /// See if this is a SimExitEvent (without resorting to RTTI)
-394     bool isExitEvent() const { return flags.isSet(IsExitEvent); }
-395 
-396     /// Check whether this event will auto-delete
-397     bool isManaged() const { return flags.isSet(Managed); }
-398     bool isAutoDelete() const { return isManaged(); }
-399 
-400     /// Get the time that the event is scheduled
-401     Tick when() const { return _when; }
-402 
-403     /// Get the event priority
-404     Priority priority() const { return _priority; }
-405 
-406     //! If this is part of a GlobalEvent, return the pointer to the
-407     //! Global Event.  By default, there is no GlobalEvent, so return
-408     //! NULL.  (Overridden in GlobalEvent::BarrierEvent.)
-409     virtual BaseGlobalEvent *globalEvent() { return NULL; }
-410 
-411     void serialize(CheckpointOut &cp) const override;
-412     void unserialize(CheckpointIn &cp) override;
-413 };
+ 41 inline void
+ 42 EventQueue::schedule(Event *event, Tick when, bool global)
+ 43 {
+ 44     assert(when >= getCurTick());
+ 45     assert(!event->scheduled());
+ 46     assert(event->initialized());
+ 47 
+ 48     event->setWhen(when, this);
+ 49 
+ 50     // The check below is to make sure of two things
+ 51     // a. a thread schedules local events on other queues through the asyncq
+ 52     // b. a thread schedules global events on the asyncq, whether or not
+ 53     //    this event belongs to this eventq. This is required to maintain
+ 54     //    a total order amongst the global events. See global_event.{cc,hh}
+ 55     //    for more explanation.
+ 56     if (inParallelMode && (this != curEventQueue() || global)) {
+ 57         asyncInsert(event);
+ 58     } else {
+ 59         insert(event);
+ 60     }
+ 61     event->flags.set(Event::Scheduled);
+ 62     event->acquire();
+ 63 
+ 64     if (DTRACE(Event))
+ 65         event->trace("scheduled");
+ 66 }
 ```
+
+To add a new event to the queue, rather than using the queue's insert function 
+directly, it is required to use the 'schedule' function. The 'schedule' function
+is responsible for setting critical fields like '_when' and the event's flags 
+(e.g., Event::Scheduled) during the insertion process. Additionally, it triggers
+the 'insert' function to effectively place the new item into the queue.
+
+```cpp
+117 void
+118 EventQueue::insert(Event *event)
+119 {
+120     // Deal with the head case
+121     if (!head || *event <= *head) {
+122         head = Event::insertBefore(event, head);
+123         return;
+124     }
+125 
+126     // Figure out either which 'in bin' list we are on, or where a new list
+127     // needs to be inserted
+128     Event *prev = head;
+129     Event *curr = head->nextBin;
+130     while (curr && *curr < *event) {
+131         prev = curr;
+132         curr = curr->nextBin;
+133     }
+134 
+135     // Note: this operation may render all nextBin pointers on the
+136     // prev 'in bin' list stale (except for the top one)
+137     prev->nextBin = Event::insertBefore(event, curr);
+138 }
+```
+
+An interesting aspect to observe in the 'insert' function is how it arranges the
+insertion of a new item in a specific order. Given that the EventQueue manages
+various events with distinct priorities scheduled at varying times, the sequence
+in which Events are organized within the queue plays a vital role in emulating 
+events in cycle-accurate manner. To define the order, it needs a metric to 
+compare two Event objects. 
+
+```cpp
+415 inline bool
+416 operator<(const Event &l, const Event &r)
+417 {
+418     return l.when() < r.when() ||
+419         (l.when() == r.when() && l.priority() < r.priority());
+420 }
+421 
+422 inline bool
+423 operator>(const Event &l, const Event &r)
+424 {
+425     return l.when() > r.when() ||
+426         (l.when() == r.when() && l.priority() > r.priority());
+427 }
+428 
+429 inline bool
+430 operator<=(const Event &l, const Event &r)
+431 {
+432     return l.when() < r.when() ||
+433         (l.when() == r.when() && l.priority() <= r.priority());
+434 }
+435 inline bool
+436 operator>=(const Event &l, const Event &r)
+437 {
+438     return l.when() > r.when() ||
+439         (l.when() == r.when() && l.priority() >= r.priority());
+440 }
+441 
+442 inline bool
+443 operator==(const Event &l, const Event &r)
+444 {
+445     return l.when() == r.when() && l.priority() == r.priority();
+446 }
+447 
+448 inline bool
+449 operator!=(const Event &l, const Event &r)
+450 {
+451     return l.when() != r.when() || l.priority() != r.priority();
+452 }
+```
+As depicted in the code above, operator overloading offers a mechanism for 
+comparing Event objects. This comparison involves assessing the timing of two 
+distinct events, indicating when these events are scheduled to occur. Additionally,
+it evaluates the priority of events in cases where two events are scheduled to 
+be executed during the same cycle.
+
+
+### Event: the basic unit of execution on GEM5 simulation 
+As a cycle-level simulator, GEM5 simulates hardware logic for each cycle. To
+enable the execution of specific logic at precise points in the cycle, it should
+be able to know which hardware component needs to be simulated at which cycle. 
+To this end, GEM5 asks each hardware component to generate event that describes
+which event should be simulated at which specific cycle. The generated events 
+are managed by the EventQueue where the main simulation loop fetches the event 
+from and execute simulation logic.
+
+#### Event class  
 The Event class defines fundamental operations necessary for the execution of 
-GEM5 events, crucial for simulating architecture. When an event object is chosen 
-from the queue at a specific cycle, the main execution loop calls the **process**
-member function of that class. It's important to highlight that the process 
-function is declared as virtual, allowing child classes inheriting from the 
-Event class to supply the necessary operations to simulate specific events. 
-Additionally, the Event class features a member field named **_when**, which 
-specifies the precise clock cycle at which the event should be executed
+GEM5 events, crucial for simulating architecture. Each hardware component can 
+communicate with simulation loop through the Event.
+
+```cpp
+class Event : public EventBase, public Serializable
+{
+    friend class EventQueue;
+
+  private:
+    // The event queue is now a linked list of linked lists.  The
+    // 'nextBin' pointer is to find the bin, where a bin is defined as
+    // when+priority.  All events in the same bin will be stored in a
+    // second linked list (a stack) maintained by the 'nextInBin'
+    // pointer.  The list will be accessed in LIFO order.  The end
+    // result is that the insert/removal in 'nextBin' is
+    // linear/constant, and the lookup/removal in 'nextInBin' is
+    // constant/constant.  Hopefully this is a significant improvement
+    // over the current fully linear insertion.
+    Event *nextBin;
+    Event *nextInBin;
+
+    static Event *insertBefore(Event *event, Event *curr);
+    static Event *removeItem(Event *event, Event *last);
+
+    Tick _when;         //!< timestamp when event should be processed
+    Priority _priority; //!< event priority
+    Flags flags;
+    .....
+
+  public:
+
+    /*
+     * Event constructor
+     * @param queue that the event gets scheduled on
+     */
+    Event(Priority p = Default_Pri, Flags f = 0)
+        : nextBin(nullptr), nextInBin(nullptr), _when(0), _priority(p),
+          flags(Initialized | f)
+    {
+        assert(f.noneSet(~PublicWrite));
+#ifndef NDEBUG
+        instance = ++instanceCounter;
+        queue = NULL;
+#endif
+#ifdef EVENTQ_DEBUG
+        whenCreated = curTick();
+        whenScheduled = 0;
+#endif
+    }
+
+    virtual ~Event();
+    /// describing the event class.
+    virtual const char *description() const;
+
+    /// Dump the current event data
+    void dump() const;
+
+  public:
+    virtual void process() = 0;
+
+    /// Determine if the current event is scheduled
+    bool scheduled() const { return flags.isSet(Scheduled); }
+
+    /// Squash the current event
+    void squash() { flags.set(Squashed); }
+
+    /// Check whether the event is squashed
+    bool squashed() const { return flags.isSet(Squashed); }
+
+    /// See if this is a SimExitEvent (without resorting to RTTI)
+    bool isExitEvent() const { return flags.isSet(IsExitEvent); }
+
+    /// Check whether this event will auto-delete
+    bool isManaged() const { return flags.isSet(Managed); }
+    bool isAutoDelete() const { return isManaged(); }
+
+    /// Get the time that the event is scheduled
+    Tick when() const { return _when; }
+
+    /// Get the event priority
+    Priority priority() const { return _priority; }
+
+    //! If this is part of a GlobalEvent, return the pointer to the
+    //! Global Event.  By default, there is no GlobalEvent, so return
+    //! NULL.  (Overridden in GlobalEvent::BarrierEvent.)
+    virtual BaseGlobalEvent *globalEvent() { return NULL; }
+
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
+};
+```
+When an event object is chosen from the queue, the main execution loop calls the
+**process** member function of that class. It's important to highlight that the 
+process function is declared as virtual, allowing child classes inheriting from 
+the Event class to supply the necessary operations to simulate specific events. 
+Additionally, the Event class has a member field named **_when**, which 
+specifies the precise clock cycle at which the event should be simulated. 
 
 ```cpp
  93 class EventBase
@@ -511,16 +576,18 @@ specifies the precise clock cycle at which the event should be executed
 180 };
 ```
 
-The EventBase class is the foundational class for setting event priorities in
-GEM5. Since GEM5 emulates an entire architecture, diverse scenarios may require
-executing specific events before others. As GEM5 comprehensively simulates each
-system tick, multiple events can occur simultaneously in the same cycle. In such
-cases, the order of event processing depends on the event type and is influenced
-by the priority assigned to each event.
+The EventBase class can be utilized for setting event priorities in GEM5. 
+As GEM5 comprehensively simulates each system tick, multiple events can occur 
+simultaneously in the same cycle. In such cases, the order of event processing 
+depends on the event type and is influencedby the priority assigned to each event.
 
-#### EventFunctionWrapper: helper for registering event
-Primarily, the Event class can be employed in GEM5 in two distinct manners. The 
-first approach is creating a new class that inherits from the Event class and 
+#### How hardware component generates event?
+I explained that through the event each hardware component can communicate with
+main simulation loop, especially providing the logic and time (clock cycle) 
+specifying when the simulation should be processed. Then how each hardware 
+component generates the event? 
+Primarily, the Event class can be employed in two distinct manners. The first 
+approach is creating a new class that inherits from the Event class and 
 implementing the process method. This approach is particularly valuable when the
 Event function needs additional arguments to run the **process**. However, for 
 simpler functions that don't mandate the creation of an additional class, GEM5
@@ -558,460 +625,312 @@ provides the pre-defined class, EventFunctionWrapper.
 As depicted above, when a callback function is passed to the constructor of the
 EventFunctionWrapper, it will be executed when the event is chosen by the 
 emulation loop. It's essential to note that the process function in this class 
-simply invokes the provided callback. This clarifies the purpose of the Event 
-class. To understand how GEM5 manages these Events and selects the appropriate
-one for execution at a specific cycle, we need to examine the EventQueue.
+simply invokes the provided callback. 
 
-### EventQueue: managing all Event items
-```cpp
-492 class EventQueue
-493 {
-494   private:
-495     std::string objName;
-496     Event *head;
-497     Tick _curTick;
-498 
-499     //! Mutex to protect async queue.
-500     std::mutex async_queue_mutex;
-501 
-502     //! List of events added by other threads to this event queue.
-503     std::list<Event*> async_queue;
-504 
-505     /**
-506      * Lock protecting event handling.
-507      *
-508      * This lock is always taken when servicing events. It is assumed
-509      * that the thread scheduling new events (not asynchronous events
-510      * though) have taken this lock. This is normally done by
-511      * serviceOne() since new events are typically scheduled as a
-512      * response to an earlier event.
-513      *
-514      * This lock is intended to be used to temporarily steal an event
-515      * queue to support inter-thread communication when some
-516      * deterministic timing can be sacrificed for speed. For example,
-517      * the KVM CPU can use this support to access devices running in a
-518      * different thread.
-519      *
-520      * @see EventQueue::ScopedMigration.
-521      * @see EventQueue::ScopedRelease
-522      * @see EventQueue::lock()
-523      * @see EventQueue::unlock()
-524      */
-525     std::mutex service_mutex;
-526 
-527     //! Insert / remove event from the queue. Should only be called
-528     //! by thread operating this queue.
-529     void insert(Event *event);
-530     void remove(Event *event);
-531 
-532     //! Function for adding events to the async queue. The added events
-533     //! are added to main event queue later. Threads, other than the
-534     //! owning thread, should call this function instead of insert().
-535     void asyncInsert(Event *event);
-536 
-537     EventQueue(const EventQueue &);
-538 
-539   public:
-540     /**
-541      * Temporarily migrate execution to a different event queue.
-542      *
-543      * An instance of this class temporarily migrates execution to a
-544      * different event queue by releasing the current queue, locking
-545      * the new queue, and updating curEventQueue(). This can, for
-546      * example, be useful when performing IO across thread event
-547      * queues when timing is not crucial (e.g., during fast
-548      * forwarding).
-549      *
-550      * ScopedMigration does nothing if both eqs are the same
-551      */
-552     class ScopedMigration
-553     {
-554       public:
-555         ScopedMigration(EventQueue *_new_eq, bool _doMigrate = true)
-556             :new_eq(*_new_eq), old_eq(*curEventQueue()),
-557              doMigrate((&new_eq != &old_eq)&&_doMigrate)
-558         {
-559             if (doMigrate){
-560                 old_eq.unlock();
-561                 new_eq.lock();
-562                 curEventQueue(&new_eq);
-563             }
-564         }
-565 
-566         ~ScopedMigration()
-567         {
-568             if (doMigrate){
-569                 new_eq.unlock();
-570                 old_eq.lock();
-571                 curEventQueue(&old_eq);
-572             }
-573         }
-574 
-575       private:
-576         EventQueue &new_eq;
-577         EventQueue &old_eq;
-578         bool doMigrate;
-579     };
-580 
-581     /**
-582      * Temporarily release the event queue service lock.
-583      *
-584      * There are cases where it is desirable to temporarily release
-585      * the event queue lock to prevent deadlocks. For example, when
-586      * waiting on the global barrier, we need to release the lock to
-587      * prevent deadlocks from happening when another thread tries to
-588      * temporarily take over the event queue waiting on the barrier.
-589      */
-590     class ScopedRelease
-591     {
-592       public:
-593         ScopedRelease(EventQueue *_eq)
-594             :  eq(*_eq)
-595         {
-596             eq.unlock();
-597         }
-598 
-599         ~ScopedRelease()
-600         {
-601             eq.lock();
-602         }
-603 
-604       private:
-605         EventQueue &eq;
-606     };
-607 
-608     EventQueue(const std::string &n);
-609 
-610     virtual const std::string name() const { return objName; }
-611     void name(const std::string &st) { objName = st; }
-612 
-613     //! Schedule the given event on this queue. Safe to call from any
-614     //! thread.
-615     void schedule(Event *event, Tick when, bool global = false);
-616 
-617     //! Deschedule the specified event. Should be called only from the
-618     //! owning thread.
-619     void deschedule(Event *event);
-620 
-621     //! Reschedule the specified event. Should be called only from
-622     //! the owning thread.
-623     void reschedule(Event *event, Tick when, bool always = false);
-624 
-625     Tick nextTick() const { return head->when(); }
-626     void setCurTick(Tick newVal) { _curTick = newVal; }
-627     Tick getCurTick() const { return _curTick; }
-628     Event *getHead() const { return head; }
-629 
-630     Event *serviceOne();
-631 
-632     // process all events up to the given timestamp.  we inline a
-633     // quick test to see if there are any events to process; if so,
-634     // call the internal out-of-line version to process them all.
-635     void
-636     serviceEvents(Tick when)
-637     {
-638         while (!empty()) {
-639             if (nextTick() > when)
-640                 break;
-641 
-642             /**
-643              * @todo this assert is a good bug catcher.  I need to
-644              * make it true again.
-645              */
-646             //assert(head->when() >= when && "event scheduled in the past");
-647             serviceOne();
-648         }
-649 
-650         setCurTick(when);
-651     }
-652 
-653     // return true if no events are queued
-654     bool empty() const { return head == NULL; }
-655 
-656     void dump() const;
-657 
-658     bool debugVerify() const;
-659 
-660     //! Function for moving events from the async_queue to the main queue.
-661     void handleAsyncInsertions();
-662 
-663     /**
-664      *  Function to signal that the event loop should be woken up because
-665      *  an event has been scheduled by an agent outside the gem5 event
-666      *  loop(s) whose event insertion may not have been noticed by gem5.
-667      *  This function isn't needed by the usual gem5 event loop but may
-668      *  be necessary in derived EventQueues which host gem5 onto other
-669      *  schedulers.
-670      *
-671      *  @param when Time of a delayed wakeup (if known). This parameter
-672      *  can be used by an implementation to schedule a wakeup in the
-673      *  future if it is sure it will remain active until then.
-674      *  Or it can be ignored and the event queue can be woken up now.
-675      */
-676     virtual void wakeup(Tick when = (Tick)-1) { }
-677 
-678     /**
-679      *  function for replacing the head of the event queue, so that a
-680      *  different set of events can run without disturbing events that have
-681      *  already been scheduled. Already scheduled events can be processed
-682      *  by replacing the original head back.
-683      *  USING THIS FUNCTION CAN BE DANGEROUS TO THE HEALTH OF THE SIMULATOR.
-684      *  NOT RECOMMENDED FOR USE.
-685      */
-686     Event* replaceHead(Event* s);
-687 
-688     /**@{*/
-689     /**
-690      * Provide an interface for locking/unlocking the event queue.
-691      *
-692      * @warn Do NOT use these methods directly unless you really know
-693      * what you are doing. Incorrect use can easily lead to simulator
-694      * deadlocks.
-695      *
-696      * @see EventQueue::ScopedMigration.
-697      * @see EventQueue::ScopedRelease
-698      * @see EventQueue
-699      */
-700     void lock() { service_mutex.lock(); }
-701     void unlock() { service_mutex.unlock(); }
-702     /**@}*/
-703 
-704     /**
-705      * Reschedule an event after a checkpoint.
-706      *
-707      * Since events don't know which event queue they belong to,
-708      * parent objects need to reschedule events themselves. This
-709      * method conditionally schedules an event that has the Scheduled
-710      * flag set. It should be called by parent objects after
-711      * unserializing an object.
-712      *
-713      * @warn Only use this method after unserializing an Event.
-714      */
-715     void checkpointReschedule(Event *event);
-716 
-717     virtual ~EventQueue()
-718     {
-719         while (!empty())
-720             deschedule(getHead());
-721     }
-722 };
-```
-EventQueue provides basic functions to manage the event queue such as inserting
-and deleting the Event object from the queue. However, the most important method
-of the EventQueue is **serviceOne** function.
 
-#### EventQueue::schedule : insert new Event to EventQueue
-```cpp
- 41 inline void
- 42 EventQueue::schedule(Event *event, Tick when, bool global)
- 43 {
- 44     assert(when >= getCurTick());
- 45     assert(!event->scheduled());
- 46     assert(event->initialized());
- 47 
- 48     event->setWhen(when, this);
- 49 
- 50     // The check below is to make sure of two things
- 51     // a. a thread schedules local events on other queues through the asyncq
- 52     // b. a thread schedules global events on the asyncq, whether or not
- 53     //    this event belongs to this eventq. This is required to maintain
- 54     //    a total order amongst the global events. See global_event.{cc,hh}
- 55     //    for more explanation.
- 56     if (inParallelMode && (this != curEventQueue() || global)) {
- 57         asyncInsert(event);
- 58     } else {
- 59         insert(event);
- 60     }
- 61     event->flags.set(Event::Scheduled);
- 62     event->acquire();
- 63 
- 64     if (DTRACE(Event))
- 65         event->trace("scheduled");
- 66 }
-```
-To add a new event to the queue, rather than using the queue's insert function 
-directly, it is required to use the 'schedule' function. The 'schedule' function
-is responsible for setting critical fields like '_when' and the event's flags 
-(e.g., Event::Scheduled) during the insertion process. Additionally, it triggers
-the 'insert' function to effectively place the new item into the queue
+#### How to schedule generated event?
+We've seen that the generated event can be inserted to the queue through the 
+schedule function of the queue. Then it would be reasonable to think that each
+CPP classes simulating hardware component should have the access to the queue 
+to schedule the event. However, you won't locate a mention of the queue in the 
+class; instead, you'll discover that it simply calls the schedule() function.
+Embarrassingly, there is no definition for schedule function in the class! Yes 
+it is inherited from another class! 
 
-```cpp
-117 void
-118 EventQueue::insert(Event *event)
-119 {
-120     // Deal with the head case
-121     if (!head || *event <= *head) {
-122         head = Event::insertBefore(event, head);
-123         return;
-124     }
-125 
-126     // Figure out either which 'in bin' list we are on, or where a new list
-127     // needs to be inserted
-128     Event *prev = head;
-129     Event *curr = head->nextBin;
-130     while (curr && *curr < *event) {
-131         prev = curr;
-132         curr = curr->nextBin;
-133     }
-134 
-135     // Note: this operation may render all nextBin pointers on the
-136     // prev 'in bin' list stale (except for the top one)
-137     prev->nextBin = Event::insertBefore(event, curr);
-138 }
-```
-An interesting aspect to observe in the 'insert' function is how it arranges the
-insertion of a new item in a specific order. Given that the EventQueue manages
-various events with distinct priorities scheduled at varying times, the sequence
-in which Events are organized within the queue plays a vital role in emulating 
-events at each tick. To define the order, it needs a metric to compare two Event
-objects. 
-
-```cpp
-415 inline bool
-416 operator<(const Event &l, const Event &r)
-417 {
-418     return l.when() < r.when() ||
-419         (l.when() == r.when() && l.priority() < r.priority());
-420 }
-421 
-422 inline bool
-423 operator>(const Event &l, const Event &r)
-424 {
-425     return l.when() > r.when() ||
-426         (l.when() == r.when() && l.priority() > r.priority());
-427 }
-428 
-429 inline bool
-430 operator<=(const Event &l, const Event &r)
-431 {
-432     return l.when() < r.when() ||
-433         (l.when() == r.when() && l.priority() <= r.priority());
-434 }
-435 inline bool
-436 operator>=(const Event &l, const Event &r)
-437 {
-438     return l.when() > r.when() ||
-439         (l.when() == r.when() && l.priority() >= r.priority());
-440 }
-441 
-442 inline bool
-443 operator==(const Event &l, const Event &r)
-444 {
-445     return l.when() == r.when() && l.priority() == r.priority();
-446 }
-447 
-448 inline bool
-449 operator!=(const Event &l, const Event &r)
-450 {
-451     return l.when() != r.when() || l.priority() != r.priority();
-452 }
-```
-As depicted in the code above, operator overloading offers a mechanism for 
-comparing distinct Event objects. This comparison involves assessing the timing
-of two distinct events, indicating when these events are scheduled to occur. 
-Additionally, it evaluates the priority of events in cases where two events are 
-scheduled to be executed during the same cycle.
-
-### EventManager: make the SimObject as schedulable object
-We can find that some GEM5 code just invokes the shcedule() function 
-even though that class doesn't have the schedule as its direct member.
-Therefore, we can reasonably guess that its parent class can have the schedule
-function.
-
-```cpp
- 567     if (!tickEvent.scheduled()) {
- 568         if (_status == SwitchedOut) {
- 569             DPRINTF(O3CPU, "Switched out!\n");
- 570             // increment stat
- 571             lastRunningCycle = curCycle();
- 572         } else if (!activityRec.active() || _status == Idle) {
- 573             DPRINTF(O3CPU, "Idle!\n");
- 574             lastRunningCycle = curCycle();
- 575             timesIdled++;
- 576         } else {
- 577             schedule(tickEvent, clockEdge(Cycles(1)));
- 578             DPRINTF(O3CPU, "Scheduling next tick!\n");
- 579         }
- 580     }
-```
-For example, tick member function of the FullO3CPU class, invokes 
-schedule function to register tickEvent. However, when we take a look at 
-the class hierarchies from FullO3CPU to BaseCPU which is the base class for all 
-CPUs, I couldn't find the schedule function. Therefore, I checked the SimObject 
-class inherited by most of the GEM5 classes. 
-
+Similar to that all python classes representing hardware components are 
+inherited from SimObject python class, all hardware component classes in CPP 
+should be a child of SimObject
 
 ```cpp
 class SimObject : public EventManager, public Serializable, public Drainable,
                   public Stats::Group
 ```
-Although, I couldn't find the schedule member function in the SimObject,
-I can get the clue about the schedule function from the EventManager 
-inherited by the SimObject. Because schedule function register the Event 
-to the EventQueue, it should be Event related with class that manages Event. 
+
+However, still you won't find the schedule member function in the SimObject 
+class. Based on its declaration, we can understand that it inherits several 
+other classses. Because schedule function register the Event to the EventQueue,
+it should be Event related with class that manages Event, EventManager. 
 
 ```cpp
-726 class EventManager
-727 { 
-728   protected:
-729     /** A pointer to this object's event queue */
-730     EventQueue *eventq;
-731   
-732   public:
-733     EventManager(EventManager &em) : eventq(em.eventq) {}
-734     EventManager(EventManager *em) : eventq(em->eventq) {}
-735     EventManager(EventQueue *eq) : eventq(eq) {}
-736     
-737     EventQueue * 
-738     eventQueue() const
-739     {   
-740         return eventq;
-741     }
-742     
-743     void
-744     schedule(Event &event, Tick when)
-745     {   
-746         eventq->schedule(&event, when);
-747     }
-748     
-749     void
-750     deschedule(Event &event)
-751     {   
-752         eventq->deschedule(&event);
-753     }
-754     
-755     void
-756     reschedule(Event &event, Tick when, bool always = false)
-757     {   
-758         eventq->reschedule(&event, when, always);
-759     }
-760     
-761     void
-762     schedule(Event *event, Tick when)
-763     {   
-764         eventq->schedule(event, when);
-765     }
-766     
-767     void
-768     deschedule(Event *event)
-769     {   
-770         eventq->deschedule(event);
-771     }
-772     
-773     void
-774     reschedule(Event *event, Tick when, bool always = false)
-775     {   
-776         eventq->reschedule(event, when, always);
-777     }
-778     
-779     void wakeupEventQueue(Tick when = (Tick)-1)
-780     {   
-781         eventq->wakeup(when);
-782     }
-783     
-784     void setCurTick(Tick newVal) { eventq->setCurTick(newVal); }
-785 };
+class EventManager
+{ 
+  protected:
+    /** A pointer to this object's event queue */
+    EventQueue *eventq;
+  
+  public:
+    EventManager(EventManager &em) : eventq(em.eventq) {}
+    EventManager(EventManager *em) : eventq(em->eventq) {}
+    EventManager(EventQueue *eq) : eventq(eq) {}
+    
+    EventQueue * 
+    eventQueue() const
+    {   
+        return eventq;
+    }
+    
+    void
+    schedule(Event &event, Tick when)
+    {   
+        eventq->schedule(&event, when);
+    }
+    
+    void
+    deschedule(Event &event)
+    {   
+        eventq->deschedule(&event);
+    }
+    
+    void
+    reschedule(Event &event, Tick when, bool always = false)
+    {   
+        eventq->reschedule(&event, when, always);
+    }
+    ......
+    void setCurTick(Tick newVal) { eventq->setCurTick(newVal); }
+};
 ```
-Yes! EventManager defines the schedule function, and it enqueues an Event object
-to the EventQueue managed by the EventManager. 
 
+Yes! EventManager defines the schedule function, and it schedules an Event object
+to the EventQueue managed by the EventManager. Wait! Because it is a wrapper 
+class of EventQueue to help any classes inheriting SimObject utilize the queue
+(e.g., scheduling event) it should have access to the EventQueue. When you look
+at the constructor of the EventManager, it needs a pointer to EventQueue! When
+the pointer is passed to the constructor, it will be set as member field eventq,
+and member functions of EventManager will utilize this EventQueue. 
+
+
+```cpp
+SimObject::SimObject(const Params *p)
+    : EventManager(getEventQueue(p->eventq_index)),
+      Stats::Group(nullptr),
+      _params(p)
+{
+#ifdef DEBUG
+    doDebugBreak = false;
+#endif
+    simObjectList.push_back(this);
+    probeManager = new ProbeManager(this);
+}
+```
+
+As shown in constructor of SimObject, it initializes the EventManager with 
+return value from getEventQueue function, which is the EventQueue pointer.  
+
+#### Generating EventQueue
+As GEM5 can have multiple mainEventQueue, EventQueue objects should be generated 
+at runtime as much as it needs. The new EventQueue generation and its retrieval 
+can be handled both by the 'getEventQueue' function
+
+```cpp
+EventQueue *
+getEventQueue(uint32_t index)
+{
+    while (numMainEventQueues <= index) {
+        numMainEventQueues++;
+        mainEventQueue.push_back(
+            new EventQueue(csprintf("MainEventQueue-%d", index)));
+    }
+
+    return mainEventQueue[index];
+}
+```
+If existing number of mainEventQueue is smaller than the index, it generates 
+new EventQueue. If not it will just return the indexed EventQueue. Okay everything
+looks good except one thing. Who set the eventq_index value? You might already 
+noticed that it is from Param which is used to reference automatically generated
+CPP struct from the python class. Based on this, you can know that this parameter
+is set by python beforehand. 
+
+
+```python
+class SimObject(object):
+    # Specify metaclass.  Any class inheriting from SimObject will
+    # get this metaclass.
+    type = 'SimObject'
+    abstract = True
+
+    cxx_header = "sim/sim_object.hh"
+    cxx_extra_bases = [ "Drainable", "Serializable", "Stats::Group" ]
+    eventq_index = Param.UInt32(Parent.eventq_index, "Event Queue Index")
+
+class Root(SimObject):
+	.....
+    # By default, root sim object and hence all other sim objects schedule
+    # event on the eventq with index 0.
+    eventq_index = 0
+```
+
+By default, it is set as zero and make all SimObjects utilize the first eventq
+unless it is specified. 
+
+```cpp
+    Event *local_event = doSimLoop(mainEventQueue[0]);
+```
+
+Also, when you look at the invocation of doSimLoop, mainEventQueue[0] is passed 
+as its paramter, which makes the simulation loop and all SimObjects presenting
+hardware components can communicate through the mainEventQueue[0]. 
+
+### Event scheduling action!
+Now all CPP classes inheriting SimObject can utilize schedule function to 
+schedule any events to the queue so that GEM5 simulation loop (doSimLoop) can 
+fetches the event and simulate hardware logic at designated clock cycle. Let's 
+take a look at the FullO3CPU class simulating O3 CPU pipeline as an example !
+
+
+```cpp
+template <class Impl>
+class FullO3CPU : public BaseO3CPU
+{ 
+    ......
+    EventFunctionWrapper tickEvent;
+    ......
+}
+
+template <class Impl>
+FullO3CPU<Impl>::FullO3CPU(DerivO3CPUParams *params)
+    : BaseO3CPU(params),
+      itb(params->itb),
+      dtb(params->dtb),
+      tickEvent([this]{ tick(); }, "FullO3CPU tick",
+      ......
+```
+
+The constructor of the FullO3CPU class creates an instance of the tickEvent, 
+which is an EventFunctionWrapper with lambda function calling tick function. 
+This implies that when the tickEvent is scheduled and retrieved from the 
+EventQueue, it will execute the tick() function. 
+
+
+#### Tick! Tick! Tick!
+```cpp
+template <class Impl>
+void
+FullO3CPU<Impl>::tick()
+{   
+    DPRINTF(O3CPU, "\n\nFullO3CPU: Ticking main, FullO3CPU.\n");
+    assert(!switchedOut());
+    assert(drainState() != DrainState::Drained);
+    
+    ++numCycles;
+    updateCycleCounters(BaseCPU::CPU_STATE_ON);
+
+    
+    //Tick each of the stages
+    fetch.tick();
+    
+    decode.tick();
+    
+    rename.tick();
+    
+    iew.tick();
+    
+    commit.tick();
+    
+    // Now advance the time buffers
+    timeBuffer.advance();
+    
+    fetchQueue.advance();
+    decodeQueue.advance();
+    renameQueue.advance();
+    iewQueue.advance();
+    
+    activityRec.advance();
+    
+    if (removeInstsThisCycle) {
+        cleanUpRemovedInsts();
+    }
+
+    if (!tickEvent.scheduled()) {
+        if (_status == SwitchedOut) {
+            DPRINTF(O3CPU, "Switched out!\n");
+            // increment stat
+            lastRunningCycle = curCycle();
+        } else if (!activityRec.active() || _status == Idle) {
+            DPRINTF(O3CPU, "Idle!\n");
+            lastRunningCycle = curCycle();
+            timesIdled++;
+        } else {
+            schedule(tickEvent, clockEdge(Cycles(1)));
+            DPRINTF(O3CPU, "Scheduling next tick!\n");
+        }
+    }
+
+    if (!FullSystem)
+        updateThreadPriority();
+
+    tryDrain();
+}
+```
+
+I will not cover the details of the tick function of O3 in this posting, but it 
+simulate pipeline stage of O3 processor such as fetch, decode, rename, iew, and 
+commit in the tick function. When the Event is fetched from the EventQueue 
+in the serviceOne function, the Scheduled flag of the Event will be unset.
+Since the tick function should be invoked at every clock cycle (to push the 
+pipe line), another event should be rescheduled to be occurred at next clock 
+cycle. Therefore, the tick function simulating the O3CPU will be invoked at 
+every clock cycle and simulate the entire processor pipeline!
+
+
+#### Initial activation
+To start the CPU, initial tick event should be scheduled. I will not cover the 
+details here, but if you are interested in it pleas take carefully look at the 
+below functions !
+```cpp
+template <class Impl>
+void
+O3ThreadContext<Impl>::activate()
+{
+    DPRINTF(O3CPU, "Calling activate on Thread Context %d\n",
+            threadId());
+
+    if (thread->status() == ThreadContext::Active)
+        return;
+
+    thread->lastActivate = curTick();
+    thread->setStatus(ThreadContext::Active);
+
+    // status() == Suspended
+    cpu->activateContext(thread->threadId());
+}
+```
+
+```cpp
+template <class Impl>
+void
+FullO3CPU<Impl>::activateContext(ThreadID tid) 
+{
+    assert(!switchedOut());
+
+    // Needs to set each stage to running as well.
+    activateThread(tid);
+
+    // We don't want to wake the CPU if it is drained. In that case,
+    // we just want to flag the thread as active and schedule the tick
+    // event from drainResume() instead.
+    if (drainState() == DrainState::Drained)
+        return;
+
+    // If we are time 0 or if the last activation time is in the past,
+    // schedule the next tick and wake up the fetch unit
+    if (lastActivatedCycle == 0 || lastActivatedCycle < curTick()) {
+        scheduleTickEvent(Cycles(0));
+    ......
+```
+
+```cpp
+template <class Impl>
+class FullO3CPU : public BaseO3CPU
+{ 
+    ......
+    void scheduleTickEvent(Cycles delay)
+    {
+        if (tickEvent.squashed())
+            reschedule(tickEvent, clockEdge(delay));
+        else if (!tickEvent.scheduled())
+            schedule(tickEvent, clockEdge(delay));
+    }
+
+```

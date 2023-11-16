@@ -3,48 +3,52 @@ layout: post
 titile: "GEM5 micro-load operation to actual memory access"
 categories: GEM5, Microops
 ---
-In the previous postings, 
-I have explained how the CPP classes for macroop and microop can be 
-automatically generated with the help of several GEM5's tool 
-such as python based parser and string based template substitution.
-Also,
-as an example, 
-I explained how a class definition and its constructor
-of the micro-load instructions are generated. 
-Furthermore, I showed several definitions that implements
-actual semantic of micro-load operations such as execute definition.
 
-The instructions are designed to change internal state of the system.
-Specifically, be executing some instructions, it can introduce 
-particular state change to register, memory, or internal states 
-represented as architecture. 
-Because GEM5 is an architecture-level emulator, 
-as a result of execution of one microop, 
-it should change specific data structure representing some part of the architecture.
-For that purpose, GEM5 provides **ExecContext** class which emulates
-entire underlying architecture. 
-Also, the **execute** method and other definitions of the microops 
-are designed to changes the ExecContext as a result of execution. 
-In other words, those definitions emulate the semantics of the instruction. 
-Therefore,
-we will see how the execution of microop can change the underlying architecture state.
-Also, to understand how the GEM5 execute microop,
-we will briefly take a look at the pipeline of the simple processor. 
+In my previous post, I discussed the automatic generation of C++ classes for 
+macroops and microops using various GEM5 tools, including a Python-based parser 
+and string-based template substitution. I also provided an example, explaining 
+how a class definition and its constructor for micro-load instructions are 
+generated. Additionally, I presented several definitions that implement the 
+actual semantics of micro-load operations, including the execute function.
+
+The instructions are designed to change internal state of the system. More 
+specifically, by executing certain instructions, they can induce specific 
+changes in registers, memory, or internal states that are represented as 
+architectural elements.
+Given that GEM5 operates as an architecture-level emulator, the execution of a 
+single micro-op should result in the alteration of a particular data structure 
+representing a segment of the architecture. To achieve this, GEM5 provides the
+"ExecContext" class, which emulates the entire underlying architecture. 
+Additionally, the "execute" method and other definitions of the micro-operations
+are designed to modify the "ExecContext" as a consequence of their execution. 
+In essence, these definitions emulate the semantics of the instructions.
+We will explore how the execution of a micro-op can modify the underlying 
+architectural state through updating "ExecContext. To comprehend how GEM5 
+executes micro-operations, we will briefly examine the pipeline of a simple 
+processor.
 
 ## CPU pipeline of the simple processor: fetch-decode-execute
-To understand how the GEM5 emulates the entire architecture, 
-one of the important question is *When and how the GEM5 execute the next instruction?*
-In other words, we have to answer the question,  
-who makes use of those automatically generated functions of microop?
-Each CPU model have different architecture, and 
-it makes huge difference in executing those instructions in the pipeline. 
-Therefore, we are going to look at the TimingSimple cpu model
-which is simplest but basic CPU model supported by the GEM5. 
-Because the simple cpu model is one cycle CPU model,
-it doesn't have multiple pipeline stages and execute one instruction at one cycle. 
-Although it has no pipeline stages,
-entire execution process can be presented as 
-three separate functions.
+To understand how GEM5 emulates the entire architecture, one crucial question to
+address is: **When and how does GEM5 execute the next instruction?** In other 
+words, we must understand who utilizes the automatically generated micro-op 
+class and its functions.
+Each CPU model features a distinct pipeline architecture, and this difference 
+significantly influences the execution of instructions within the pipeline. To 
+shed light on this, we will examine the TimingSimple CPU model, which is the 
+most basic CPU pipeline model supported by GEM5.
+
+Here are the key characteristics of the SimpleTiming processor model in GEM5:
+
+- **Single-Cycle Execution**: It operates on a single-cycle execution model, 
+- where each instruction is executed in one clock cycle.
+
+- **Minimal Microarchitecture**: It lacks the complexity of multiple pipeline 
+- stages, making it relatively simple and easy to understand.
+
+- **Idealized Timing**: The SimpleTiming model does not account for detailed 
+- timing, such as pipeline hazards or stalls, and assumes that instructions 
+- progress through the pipeline without delays.
+
 
 ### Processor invokes fetch at every clock tick 
 To understand how the TimingSimple processor process the events,
@@ -130,12 +134,18 @@ from the memory (or cache).
  692     }
  693 }
 ```
+
+
+
+
+
+
+
 ### decode
 Processor can decode the memory blocks as instruction
 after the memory has been fetched from the cache or memory.
 Because timing simple CPU assume memory access takes more than single cycle,
-it wants to be notified
-when the requested memory block has been brought to the processor.
+it needs to be notified when the requested memory block has been brought to the processor.
 
 ```cpp
  874 void

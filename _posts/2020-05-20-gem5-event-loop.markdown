@@ -1,15 +1,11 @@
 ---
 layout: post
 titile: "Macroop to Microops"
-categories: GEM5, Microops
+categories: [GEM5, Microops]
 ---
-*gem5/src/sim/simulate.cc*
 ```cpp
- 77 /** Simulate for num_cycles additional cycles.  If num_cycles is -1
- 78  * (the default), do not limit simulation; some other event must
- 79  * terminate the loop.  Exported to Python.
- 80  * @return The SimLoopExitEvent that caused the loop to exit.
- 81  */
+//gem5/src/sim/simulate.cc
+
  82 GlobalSimLoopExitEvent *
  83 simulate(Tick num_cycles)
  84 {
@@ -84,13 +80,8 @@ categories: GEM5, Microops
 ```
 
 
-*gem5/src/sim/simulate.cc*
 ```cpp
-174 /**
-175  * The main per-thread simulation loop. This loop is executed by all
-176  * simulation threads (the main thread and the subordinate threads) in
-177  * parallel.
-178  */
+//gem5/src/sim/simulate.cc
 179 Event *
 180 doSimLoop(EventQueue *eventq)
 181 {
@@ -141,14 +132,13 @@ categories: GEM5, Microops
 226 }
 ```
 
-The main execution loop of the GEM5 is the **doSimLoop**.
-This loop continues until it finds the exit_event which exits the simulation.
-When the program exits of unhandling fault is generated, 
-GEM5 schedules the exit_event, and the doSimLoop exits the loop. 
-The most important function of this loop is the **serviceOne** of the EventQueue. 
+The central operational sequence in GEM5 is the "doSimLoop." This loop persists
+until it encounters an "exit_event" that signals the end of the simulation. In 
+the event of program termination due to an unhandled fault, GEM5 schedules the 
+"exit_event," prompting the "doSimLoop" to conclude. The most important 
+function of this loop is the **serviceOne** of the EventQueue. 
 
-### serviceOne: process event
-
+### serviceOne: handle scheduled event
 ```cpp
 203 Event *
 204 EventQueue::serviceOne()
@@ -189,127 +179,17 @@ The most important function of this loop is the **serviceOne** of the EventQueue
 239 
 240     return NULL;
 241 }
-
 ```
 
-The serviceOne function executes the emulation logic that should be done at current cycle. 
-When the event is not squashed, the allocated job for that event should be executed 
-by invoking the process function of the event. This job should be passed to the Event object
-when the event had been scheduled. To understand underlying details, let's take a look at 
-what is the Event and how the emulation process of the GEM5 generates the Event.
+The "serviceOne" function is responsible for processing events. If an event is 
+not squashed, it proceeds to execute the task associated with that event by 
+invoking the event's **process** function. To gain a deeper understanding of the 
+underlying details, let's explore what an **Event** is and how the GEM5 emulation 
+generates and handles these Events.
 
 ### Event: the basic unit of execution on GEM5 emulation
-```cpp
- 88 /**
- 89  * Common base class for Event and GlobalEvent, so they can share flag
- 90  * and priority definitions and accessor functions.  This class should
- 91  * not be used directly.
- 92  */
- 93 class EventBase
- 94 {
- 95   protected:
- 96     typedef unsigned short FlagsType;
- 97     typedef ::Flags<FlagsType> Flags;
- 98 
- 99     static const FlagsType PublicRead    = 0x003f; // public readable flags
-100     static const FlagsType PublicWrite   = 0x001d; // public writable flags
-101     static const FlagsType Squashed      = 0x0001; // has been squashed
-102     static const FlagsType Scheduled     = 0x0002; // has been scheduled
-103     static const FlagsType Managed       = 0x0004; // Use life cycle manager
-104     static const FlagsType AutoDelete    = Managed; // delete after dispatch
-105     /**
-106      * This used to be AutoSerialize. This value can't be reused
-107      * without changing the checkpoint version since the flag field
-108      * gets serialized.
-109      */
-110     static const FlagsType Reserved0     = 0x0008;
-111     static const FlagsType IsExitEvent   = 0x0010; // special exit event
-112     static const FlagsType IsMainQueue   = 0x0020; // on main event queue
-113     static const FlagsType Initialized   = 0x7a40; // somewhat random bits
-114     static const FlagsType InitMask      = 0xffc0; // mask for init bits
-115 
-116   public:
-117     typedef int8_t Priority;
-118 
-119     /// Event priorities, to provide tie-breakers for events scheduled
-120     /// at the same cycle.  Most events are scheduled at the default
-121     /// priority; these values are used to control events that need to
-122     /// be ordered within a cycle.
-123 
-124     /// Minimum priority
-125     static const Priority Minimum_Pri =          SCHAR_MIN;
-126 
-127     /// If we enable tracing on a particular cycle, do that as the
-128     /// very first thing so we don't miss any of the events on
-129     /// that cycle (even if we enter the debugger).
-130     static const Priority Debug_Enable_Pri =          -101;
-131 
-132     /// Breakpoints should happen before anything else (except
-133     /// enabling trace output), so we don't miss any action when
-134     /// debugging.
-135     static const Priority Debug_Break_Pri =           -100;
-137     /// CPU switches schedule the new CPU's tick event for the
-138     /// same cycle (after unscheduling the old CPU's tick event).
-139     /// The switch needs to come before any tick events to make
-140     /// sure we don't tick both CPUs in the same cycle.
-141     static const Priority CPU_Switch_Pri =             -31;
-142 
-143     /// For some reason "delayed" inter-cluster writebacks are
-144     /// scheduled before regular writebacks (which have default
-145     /// priority).  Steve?
-146     static const Priority Delayed_Writeback_Pri =       -1;
-147 
-148     /// Default is zero for historical reasons.
-149     static const Priority Default_Pri =                  0;
-150 
-151     /// DVFS update event leads to stats dump therefore given a lower priority
-152     /// to ensure all relevant states have been updated
-153     static const Priority DVFS_Update_Pri =             31;
-154 
-155     /// Serailization needs to occur before tick events also, so
-156     /// that a serialize/unserialize is identical to an on-line
-157     /// CPU switch.
-158     static const Priority Serialize_Pri =               32;
-159 
-160     /// CPU ticks must come after other associated CPU events
-161     /// (such as writebacks).
-162     static const Priority CPU_Tick_Pri =                50;
-163 
-164     /// If we want to exit a thread in a CPU, it comes after CPU_Tick_Pri
-165     static const Priority CPU_Exit_Pri =                64;
-166 
-167     /// Statistics events (dump, reset, etc.) come after
-168     /// everything else, but before exit.
-169     static const Priority Stat_Event_Pri =              90;
-170 
-171     /// Progress events come at the end.
-172     static const Priority Progress_Event_Pri =          95;
-173 
-174     /// If we want to exit on this cycle, it's the very last thing
-175     /// we do.
-176     static const Priority Sim_Exit_Pri =               100;
-177 
-178     /// Maximum priority
-179     static const Priority Maximum_Pri =          SCHAR_MAX;
-180 };
-```
-
-The EventBase class is a root class that defines priorities among the events. 
-Because GEM5 emulates entire architecture, there could be various conditions 
-that specific event should be executed before the others. 
-In other words, while the GEM5 emulates each tick of the entire system, 
-multiple events could possibly happen at the same cycle. 
-In that case, based on the event type, particular event should be processed first,
-and this priority can be determined based on the priority of the Event. 
 
 ```cpp
-182 /*
-183  * An item on an event queue.  The action caused by a given
-184  * event is specified by deriving a subclass and overriding the
-185  * process() member function.
-186  *
-187  * Caution, the order of members is chosen to maximize data packing.
-188  */
 189 class Event : public EventBase, public Serializable
 190 {
 191     friend class EventQueue;
@@ -532,22 +412,119 @@ and this priority can be determined based on the priority of the Event.
 412     void unserialize(CheckpointIn &cp) override;
 413 };
 ```
-As described in the comment, the Event class objects are used as an item 
-on an event queue. Also, by providing specific implementation for the process
-member function in a class inheriting the Event class, the execution loop 
-can run the designated logic at particular cycle. 
-For that purpose, it also provides member field called _when which specifies 
-when the event should be executed in clock cycle. 
+The Event class defines fundamental operations necessary for the execution of 
+GEM5 events, crucial for simulating architecture. When an event object is chosen 
+from the queue at a specific cycle, the main execution loop calls the **process**
+member function of that class. It's important to highlight that the process 
+function is declared as virtual, allowing child classes inheriting from the 
+Event class to supply the necessary operations to simulate specific events. 
+Additionally, the Event class features a member field named **_when**, which 
+specifies the precise clock cycle at which the event should be executed
 
+```cpp
+ 93 class EventBase
+ 94 {
+ 95   protected:
+ 96     typedef unsigned short FlagsType;
+ 97     typedef ::Flags<FlagsType> Flags;
+ 98 
+ 99     static const FlagsType PublicRead    = 0x003f; // public readable flags
+100     static const FlagsType PublicWrite   = 0x001d; // public writable flags
+101     static const FlagsType Squashed      = 0x0001; // has been squashed
+102     static const FlagsType Scheduled     = 0x0002; // has been scheduled
+103     static const FlagsType Managed       = 0x0004; // Use life cycle manager
+104     static const FlagsType AutoDelete    = Managed; // delete after dispatch
+105     /**
+106      * This used to be AutoSerialize. This value can't be reused
+107      * without changing the checkpoint version since the flag field
+108      * gets serialized.
+109      */
+110     static const FlagsType Reserved0     = 0x0008;
+111     static const FlagsType IsExitEvent   = 0x0010; // special exit event
+112     static const FlagsType IsMainQueue   = 0x0020; // on main event queue
+113     static const FlagsType Initialized   = 0x7a40; // somewhat random bits
+114     static const FlagsType InitMask      = 0xffc0; // mask for init bits
+115 
+116   public:
+117     typedef int8_t Priority;
+118 
+119     /// Event priorities, to provide tie-breakers for events scheduled
+120     /// at the same cycle.  Most events are scheduled at the default
+121     /// priority; these values are used to control events that need to
+122     /// be ordered within a cycle.
+123 
+124     /// Minimum priority
+125     static const Priority Minimum_Pri =          SCHAR_MIN;
+126 
+127     /// If we enable tracing on a particular cycle, do that as the
+128     /// very first thing so we don't miss any of the events on
+129     /// that cycle (even if we enter the debugger).
+130     static const Priority Debug_Enable_Pri =          -101;
+131 
+132     /// Breakpoints should happen before anything else (except
+133     /// enabling trace output), so we don't miss any action when
+134     /// debugging.
+135     static const Priority Debug_Break_Pri =           -100;
+137     /// CPU switches schedule the new CPU's tick event for the
+138     /// same cycle (after unscheduling the old CPU's tick event).
+139     /// The switch needs to come before any tick events to make
+140     /// sure we don't tick both CPUs in the same cycle.
+141     static const Priority CPU_Switch_Pri =             -31;
+142 
+143     /// For some reason "delayed" inter-cluster writebacks are
+144     /// scheduled before regular writebacks (which have default
+145     /// priority).  Steve?
+146     static const Priority Delayed_Writeback_Pri =       -1;
+147 
+148     /// Default is zero for historical reasons.
+149     static const Priority Default_Pri =                  0;
+150 
+151     /// DVFS update event leads to stats dump therefore given a lower priority
+152     /// to ensure all relevant states have been updated
+153     static const Priority DVFS_Update_Pri =             31;
+154 
+155     /// Serailization needs to occur before tick events also, so
+156     /// that a serialize/unserialize is identical to an on-line
+157     /// CPU switch.
+158     static const Priority Serialize_Pri =               32;
+159 
+160     /// CPU ticks must come after other associated CPU events
+161     /// (such as writebacks).
+162     static const Priority CPU_Tick_Pri =                50;
+163 
+164     /// If we want to exit a thread in a CPU, it comes after CPU_Tick_Pri
+165     static const Priority CPU_Exit_Pri =                64;
+166 
+167     /// Statistics events (dump, reset, etc.) come after
+168     /// everything else, but before exit.
+169     static const Priority Stat_Event_Pri =              90;
+170 
+171     /// Progress events come at the end.
+172     static const Priority Progress_Event_Pri =          95;
+173 
+174     /// If we want to exit on this cycle, it's the very last thing
+175     /// we do.
+176     static const Priority Sim_Exit_Pri =               100;
+177 
+178     /// Maximum priority
+179     static const Priority Maximum_Pri =          SCHAR_MAX;
+180 };
+```
 
-### EventFunctionWrapper: helper for registering callback event
-There are two main usages for the Event class. First one is defining another class 
-inheriting Event class and implement the process class and others.
-Usually this method is used when the Event function needs to deliver some 
-arguments to the logic executed by the process. 
-However, when the function to be executed by the process is simple, 
-it doesn't need to define another class and just pass the function using the 
-predefined class EventFunctionWrapper. 
+The EventBase class is the foundational class for setting event priorities in
+GEM5. Since GEM5 emulates an entire architecture, diverse scenarios may require
+executing specific events before others. As GEM5 comprehensively simulates each
+system tick, multiple events can occur simultaneously in the same cycle. In such
+cases, the order of event processing depends on the event type and is influenced
+by the priority assigned to each event.
+
+#### EventFunctionWrapper: helper for registering event
+Primarily, the Event class can be employed in GEM5 in two distinct manners. The 
+first approach is creating a new class that inherits from the Event class and 
+implementing the process method. This approach is particularly valuable when the
+Event function needs additional arguments to run the **process**. However, for 
+simpler functions that don't mandate the creation of an additional class, GEM5
+provides the pre-defined class, EventFunctionWrapper.
 
 ```cpp
 819 class EventFunctionWrapper : public Event
@@ -578,55 +555,15 @@ predefined class EventFunctionWrapper.
 844     const char *description() const { return "EventFunctionWrapped"; }
 845 };
 ```
-
-As shown in the above, when the function callback is passed to the constructor 
-of the EventFunctionWrapper, it will be invoked later when the event is selected
-by the emulation loop. Note that process function of the class just invokes the callback
-passed from the constructor. Now we understand the purpose of the Event class.
-However, to understand how the GEM5 manages those Events and select proper one to be executed 
-at specific cycle, we need to take a look at the EventQueue. 
+As depicted above, when a callback function is passed to the constructor of the
+EventFunctionWrapper, it will be executed when the event is chosen by the 
+emulation loop. It's essential to note that the process function in this class 
+simply invokes the provided callback. This clarifies the purpose of the Event 
+class. To understand how GEM5 manages these Events and selects the appropriate
+one for execution at a specific cycle, we need to examine the EventQueue.
 
 ### EventQueue: managing all Event items
-
 ```cpp
-454 /**
-455  * Queue of events sorted in time order
-456  *
-457  * Events are scheduled (inserted into the event queue) using the
-458  * schedule() method. This method either inserts a <i>synchronous</i>
-459  * or <i>asynchronous</i> event.
-460  *
-461  * Synchronous events are scheduled using schedule() method with the
-462  * argument 'global' set to false (default). This should only be done
-463  * from a thread holding the event queue lock
-464  * (EventQueue::service_mutex). The lock is always held when an event
-465  * handler is called, it can therefore always insert events into its
-466  * own event queue unless it voluntarily releases the lock.
-467  *
-468  * Events can be scheduled across thread (and event queue borders) by
-469  * either scheduling asynchronous events or taking the target event
-470  * queue's lock. However, the lock should <i>never</i> be taken
-471  * directly since this is likely to cause deadlocks. Instead, code
-472  * that needs to schedule events in other event queues should
-473  * temporarily release its own queue and lock the new queue. This
-474  * prevents deadlocks since a single thread never owns more than one
-475  * event queue lock. This functionality is provided by the
-476  * ScopedMigration helper class. Note that temporarily migrating
-477  * between event queues can make the simulation non-deterministic, it
-478  * should therefore be limited to cases where that can be tolerated
-479  * (e.g., handling asynchronous IO or fast-forwarding in KVM).
-480  *
-481  * Asynchronous events can also be scheduled using the normal
-482  * schedule() method with the 'global' parameter set to true. Unlike
-483  * the previous queue migration strategy, this strategy is fully
-484  * deterministic. This causes the event to be inserted in a separate
-485  * queue of asynchronous events (async_queue), which is merged main
-486  * event queue at the end of each simulation quantum (by calling the
-487  * handleAsyncInsertions() method). Note that this implies that such
-488  * events must happen at least one simulation quantum into the future,
-489  * otherwise they risk being scheduled in the past by
-490  * handleAsyncInsertions().
-491  */
 492 class EventQueue
 493 {
 494   private:
@@ -859,57 +796,11 @@ at specific cycle, we need to take a look at the EventQueue.
 721     }
 722 };
 ```
-EventQueue provides basic functions to manage the event queue such as 
-inserting and deleting the event object from the queue. 
-However, the most important method provided by the EventQueue is 
-**serviceOne** function.
+EventQueue provides basic functions to manage the event queue such as inserting
+and deleting the Event object from the queue. However, the most important method
+of the EventQueue is **serviceOne** function.
 
-```cpp
-203 Event *
-204 EventQueue::serviceOne()
-205 {
-206     std::lock_guard<EventQueue> lock(*this);
-207     Event *event = head;
-208     Event *next = head->nextInBin;
-209     event->flags.clear(Event::Scheduled);
-210 
-211     if (next) {
-212         // update the next bin pointer since it could be stale
-213         next->nextBin = head->nextBin;
-214 
-215         // pop the stack
-216         head = next;
-217     } else {
-218         // this was the only element on the 'in bin' list, so get rid of
-219         // the 'in bin' list and point to the next bin list
-220         head = head->nextBin;
-221     }
-222 
-223     // handle action
-224     if (!event->squashed()) {
-225         // forward current cycle to the time when this event occurs.
-226         setCurTick(event->when());
-227 
-228         event->process();
-229         if (event->isExitEvent()) {
-230             assert(!event->flags.isSet(Event::Managed) ||
-231                    !event->flags.isSet(Event::IsMainQueue)); // would be silly
-232             return event;
-233         }
-234     } else {
-235         event->flags.clear(Event::Squashed);
-236     }
-237 
-238     event->release();
-239 
-240     return NULL;
-241 }
-```
-The most important operation of the serviceOne function is invoking process function of the Event
-selected from the EventQueue. As shown in the 224-233 lines, it first set the current tick 
-as the tick specified the event and invokes process function of the selected Event. 
-
-### EventQueue::schedule : insert new Event to the queue 
+#### EventQueue::schedule : insert new Event to EventQueue
 ```cpp
  41 inline void
  42 EventQueue::schedule(Event *event, Tick when, bool global)
@@ -938,12 +829,11 @@ as the tick specified the event and invokes process function of the selected Eve
  65         event->trace("scheduled");
  66 }
 ```
-To insert a new event to the queue, instead of utilizing the insert function 
-provided by the queue directly,
-schedule function should be invoked instead. 
-The schedule function sets other important fields such as _when and flags of the event 
-(Event::Scheduled) as a result of insertion. 
-Also, it invokes insert function to actually insert the new item to the queue. 
+To add a new event to the queue, rather than using the queue's insert function 
+directly, it is required to use the 'schedule' function. The 'schedule' function
+is responsible for setting critical fields like '_when' and the event's flags 
+(e.g., Event::Scheduled) during the insertion process. Additionally, it triggers
+the 'insert' function to effectively place the new item into the queue
 
 ```cpp
 117 void
@@ -969,13 +859,12 @@ Also, it invokes insert function to actually insert the new item to the queue.
 137     prev->nextBin = Event::insertBefore(event, curr);
 138 }
 ```
-One interesting thing to note of the insert is 
-how this function inserts new item in a particular order. 
-Because the EventQueue manages various events having different priorities 
-scheduled at different time, the order of Events enumerated in the queue critically 
-affects the functionality of the queue. 
-As shown in the line 126-133, it compares curr and event Event object.
-However, note that these two objects are Event object!
+An interesting aspect to observe in the 'insert' function is how it arranges the
+insertion of a new item in a specific order. Given that the EventQueue manages
+various events with distinct priorities scheduled at varying times, the sequence
+in which Events are organized within the queue plays a vital role in emulating 
+events at each tick. To define the order, it needs a metric to compare two Event
+objects. 
 
 ```cpp
 415 inline bool
@@ -1017,16 +906,17 @@ However, note that these two objects are Event object!
 451     return l.when() != r.when() || l.priority() != r.priority();
 452 }
 ```
-As shown in the above code, operator overriding provides a way to 
-compare two different Event objects. It compares the time of two different events 
-which indicate when those events should be scheduled. 
-Also, it compares the priority of two events when two events are scheduled to be invoked 
-at same cycle. 
+As depicted in the code above, operator overloading offers a mechanism for 
+comparing distinct Event objects. This comparison involves assessing the timing
+of two distinct events, indicating when these events are scheduled to occur. 
+Additionally, it evaluates the priority of events in cases where two events are 
+scheduled to be executed during the same cycle.
 
 ### EventManager: make the SimObject as schedulable object
 We can find that some GEM5 code just invokes the shcedule() function 
 even though that class doesn't have the schedule as its direct member.
-Therefore, we can reasonably guess that its parent class can have the schedule function.
+Therefore, we can reasonably guess that its parent class can have the schedule
+function.
 
 ```cpp
  567     if (!tickEvent.scheduled()) {
@@ -1046,9 +936,9 @@ Therefore, we can reasonably guess that its parent class can have the schedule f
 ```
 For example, tick member function of the FullO3CPU class, invokes 
 schedule function to register tickEvent. However, when we take a look at 
-the class hierarchies from FullO3CPU to BaseCPU which is the base class for all CPUs,
-I couldn't find the schedule function. Therefore, I checked the SimObject class 
-inherited by most of the GEM5 classes. 
+the class hierarchies from FullO3CPU to BaseCPU which is the base class for all 
+CPUs, I couldn't find the schedule function. Therefore, I checked the SimObject 
+class inherited by most of the GEM5 classes. 
 
 
 ```cpp

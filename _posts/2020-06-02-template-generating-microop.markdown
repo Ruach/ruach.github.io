@@ -1,51 +1,26 @@
 ---
 layout: post
 titile: "GEM5 Template to replace code-literal"
-categories: GEM5, Microops
+categories: [GEM5, Microops]
 ---
-# Generating microop CPP Classes automatically
-We took a look at essential part of the parser required for
-parsing the macroop and their corresponding microops in the previous posting. 
-Remember that we could generate CPP classes for macroop utilizing 
-template and python classes defined for the macroop.
-Also, the microop python classes and its getAllocator functions are used
-to generate CPP statements that instantiate associated microop CPP classes
-by invoking their constructors. 
-
-In this posting, we continuously utilize the parser and its 
-grammar defined for understanding Domain Specific Language (DSL) of GEM5,
-but we will specifically focus on microop python class to microop CPP Class transitions. 
+# Automatic CPP Class Generation for Macroop and Microop
+In this post, we will continue to make use of the parser and the grammar defined 
+to understand the Domain Specific Language (DSL) of GEM5. Because DSL is not a 
+general language like CPP compiled by g++, it should be translated into another 
+language which can be compiled, or its compiler should be provided. Therefore, 
+GEM5 utilizes Python Lex-Yacc (PLY) to parse '*.isa' files defining Instruction 
+Set Architecture (ISA) and translate them into CPP classes. This ISA includes 
+macroop and microops of X86 architecture. Therefore, to understand how GEM5 
+defines ISA, and how they are automatically translated into CPP classes, you 
+should understand how PLY works. It is highly recommended to read 
+[this link][1].
 
 ## Continues on Parser required for parsing macroop and microop
-Before we will take a deeper look at the microop,
-we will cover some details of parser and GEM5 DSL 
-to understand automatic CPP statement generations. 
+I will skip lexer part of the GEM5 isa parser and cover some details of GEM5 
+DSL and its parser implementation. 
 
-*gem5/src/arch/isa_parser.py*
 ```python
-1896     #####################################################################
-1897     #
-1898     #                                Parser
-1899     #
-1900     # Every function whose name starts with 'p_' defines a grammar
-1901     # rule.  The rule is encoded in the function's doc string, while
-1902     # the function body provides the action taken when the rule is
-1903     # matched.  The argument to each function is a list of the values
-1904     # of the rule's symbols: t[0] for the LHS, and t[1..n] for the
-1905     # symbols on the RHS.  For tokens, the value is copied from the
-1906     # t.value attribute provided by the lexer.  For non-terminals, the
-1907     # value is assigned by the producing rule; i.e., the job of the
-1908     # grammar rule function is to set the value for the non-terminal
-1909     # on the LHS (by assigning to t[0]).
-1910     #####################################################################
-1911 
-1912     # The LHS of the first grammar rule is used as the start symbol
-1913     # (in this case, 'specification').  Note that this rule enforces
-1914     # that there will be exactly one namespace declaration, with 0 or
-1915     # more global defs/decls before and after it.  The defs & decls
-1916     # before the namespace decl will be outside the namespace; those
-1917     # after will be inside.  The decoder function is always inside the
-1918     # namespace.
+*gem5/src/arch/isa_parser.py*
 1919     def p_specification(self, t):
 1920         'specification : opt_defs_and_outputs top_level_decode_block'
 1921 
@@ -90,25 +65,102 @@ to understand automatic CPP statement generations.
 1960                          | global_let
 1961                          | split'''
 ```
-Following the documentation, we can understand that 
-GEM5 DSA defining one microarchitecture's ISA consists of 
-two main parts: *opt_defs_and_outputs and top_level_decode_block*.
-Because we have interest in def blocks and others (e.g., let block)
-instead of decode blocks,
-let's take a look at how the opt_defs_and_outputs block will be parsed further
-following the grammar rules. 
 
-### Populating Template object instance per def template 
-Whenever the *def template* style of definition is encountered during the parsing,
-it will matches the below grammar rule and populate Template objects
+To parse the isa files, it requires grammar defined for GEM5 DSL. The top rule 
+is the **specification**. It means that content in the all isa files can be 
+interpreted as specification which can comprise of *opt_defs_and_outputs* and 
+*top_level_decode_block*. In this posting we will mainly take a look at 
+'opt_defs_and_outputs' in detail because it will be further parsed down into 
+macroop and microop blocks. 
 
+## let block and def template 
+When you open the isa files in src/arch/x86/isa/microops/ directory, you will 
+notice that it has two different types of statements defining the microop: let 
+block and def template. Let's take a look at the grammar rule for let block. 
+
+### let \{\{ ... \}\};
+```python
+    def p_global_let(self, t):
+        'global_let : LET CODELIT SEMI'
+        self.updateExportContext()
+        self.exportContext["header_output"] = ''
+        self.exportContext["decoder_output"] = ''
+        self.exportContext["exec_output"] = ''
+        self.exportContext["decode_block"] = ''
+        self.exportContext["split"] = self.make_split()
+        split_setup = '''
+def wrap(func):
+    def split(sec):
+        globals()[sec + '_output'] += func(sec)
+    return split
+split = wrap(split)
+del wrap
+'''                      
+        # This tricky setup (immediately above) allows us to just write
+        # (e.g.) "split('exec')" in the Python code and the split #ifdef's
+        # will automatically be added to the exec_output variable. The inner
+        # Python execution environment doesn't know about the split points,
+        # so we carefully inject and wrap a closure that can retrieve the
+        # next split's #define from the parser and add it to the current
+        # emission-in-progress.
+        try:
+            exec(split_setup+fixPythonIndentation(t[2]), self.exportContext)
+        except Exception as exc:
+            traceback.print_exc(file=sys.stdout)
+            if debug:
+                raise
+            error(t.lineno(1), 'In global let block: %s' % exc)
+        GenCode(self,
+                header_output=self.exportContext["header_output"],
+                decoder_output=self.exportContext["decoder_output"],
+                exec_output=self.exportContext["exec_output"],
+                decode_block=self.exportContext["decode_block"]).emit()
+```
+
+If the parser encounters tokens consisting of let {{ }} block, then it invokes 
+p_global_let function. Note that it defines a python string defining the grammar
+for let block. The most important part of parsing let block is invoking GenCode
+function to generate CPP files required for defining the macroop and microop 
+classes.
+
+```python
+class GenCode(object):
+    # Constructor.
+    def __init__(self, parser,
+                 header_output = '', decoder_output = '', exec_output = '',
+                 decode_block = '', has_decode_default = False):
+        self.parser = parser
+        self.header_output = header_output
+        self.decoder_output = decoder_output
+        self.exec_output = exec_output
+        self.decode_block = decode_block
+        self.has_decode_default = has_decode_default
+
+    # Write these code chunks out to the filesystem.  They will be properly
+    # interwoven by the write_top_level_files().
+    def emit(self):
+        if self.header_output:
+            self.parser.get_file('header').write(self.header_output)
+        if self.decoder_output:
+            self.parser.get_file('decoder').write(self.decoder_output)
+        if self.exec_output:
+            self.parser.get_file('exec').write(self.exec_output)
+        if self.decode_block:
+            self.parser.get_file('decode_block').write(self.decode_block)
+```
+
+### def template ID {...};
+One important *def_or_output*
+When parser encounters block def template,
+```python
 *gem5/src/arch/isa_parser.py*
-```python 
-2127     def p_def_template(self, t):
-2128         'def_template : DEF TEMPLATE ID CODELIT SEMI'
-2129         if t[3] in self.templateMap:
-2130             print("warning: template %s already defined" % t[3])
-2131         self.templateMap[t[3]] = Template(self, t[4])
+
+    def p_def_template(self, t):
+        'def_template : DEF TEMPLATE ID CODELIT SEMI'
+        if t[3] in self.templateMap:
+            print("warning: template %s already defined" % t[3])
+        self.templateMap[t[3]] = Template(self, t[4])
+
 ```
 
 As shown in the grammar rule, 
@@ -285,6 +337,7 @@ various instructions having similar semantics.
 
 *gem5/src/arch/x86/isa/microops/ldstop.isa*
 ```python
+{% raw %}
 434 let {{
 435 
 436     # Make these empty strings so that concatenating onto
@@ -368,6 +421,7 @@ various instructions having similar semantics.
 514                                'Data = Mem & mask(dataSize * 8);',
 515                       '(StoreCheck << FlagShift) | Request::LOCKED_RMW',
 516                       nonSpec=True)
+{% endraw %}
 ```
 
 As shown on the line 505-516, 
@@ -536,6 +590,7 @@ Let's take a look at IntRegOperand class which inherits the
 base Operand class.
 
 ```python
+{% raw %}
  528 class IntRegOperand(Operand):
  529     reg_class = 'IntRegClass'
  530 
@@ -563,6 +618,7 @@ base Operand class.
  552                          (self.write_predicate, c_dest)
  553 
  554         return c_src + c_dest
+{% endraw %}
 ```
 The IntRegOperand class represents Integer type operand, 
 thus it overrides isReg and isIntReg definition.
@@ -714,6 +770,7 @@ you can easily find that they are code snippets also.
 Let's take a look at InstObjParams python class. 
 
 *gem5/src/arch/isa_parser.py*
+{% raw %}
 ```python
 1413 class InstObjParams(object):
 1414     def __init__(self, parser, mnem, class_name, base_class = '',
@@ -801,6 +858,7 @@ Let's take a look at InstObjParams python class.
 1496         else:
 1497             self.fp_enable_check = ''
 ```
+{% endraw %}
 The main purpose of InstObjParams is defining a particular dictionary. 
 This dictionary stores all the passed information including class name and 
 code snippets, which will be used later in subst definition of template object
@@ -988,6 +1046,7 @@ to contain all required information for mapping keyword to Operand object.
 The answer is on the parsing!
 
 *gem5/src/arch/x86/isa/operands.isa*
+{% raw %}
 ```python
  91 def operands {{
  92         'SrcReg1':       foldInt('src1', 'foldOBit', 1),
@@ -1016,6 +1075,7 @@ The answer is on the parsing!
 115         'Rsi':           intReg('(INTREG_RSI)', 18),
 116         'Rdi':           intReg('(INTREG_RDI)', 19),
 ...
+{% endraw %}
 
 ```
 As shown in the above operands definition, **def operands**,
@@ -1027,6 +1087,7 @@ Also, this is not a correct function definition semantics in python.
 Yeah parser needs to parse this python like block!
 
 *gem5/src/arch/isa_parser.py*
+{% raw %}
 ```python
 2066     # Define the mapping from operand names to operand classes and
 2067     # other traits.  Stored in operandNameMap.
@@ -1043,6 +1104,8 @@ Yeah parser needs to parse this python like block!
 2078             error(t.lineno(1), 'In def operands: %s' % exc)
 2079         self.buildOperandNameMap(user_dict, t.lexer.lineno)
 ```
+{% endraw %}
+
 The def operand block is parsed by the isa_parser
 as other isa definition.
 As shown on the above grammar rule,
@@ -1094,6 +1157,7 @@ Also, note that other fields such as op_xx are generated in the finalize definit
 
 
 
+{% raw %}
 ```python 
  524 src_reg_constructor = '\n\t_srcRegIdx[_numSrcRegs++] = RegId(%s, %s);'
  525 dst_reg_constructor = '\n\t_destRegIdx[_numDestRegs++] = RegId(%s, %s);'
@@ -1146,6 +1210,7 @@ Also, note that other fields such as op_xx are generated in the finalize definit
  597
  598         return wb
 ```
+{% endraw %}
 
 As shown in the above code,
 the makeWrite definition of the IntRegOperand class also utilize string substitutions. 
@@ -1181,6 +1246,8 @@ because they have similarities because of the characteristics of the load operat
 First of all, the MicroLdStOpDeclare template is used to generate 
 CPP class declaration. 
 
+{% raw %}
+```python
 def template MicroLdStOpDeclare {{
     class %(class_name)s : public %(base_class)s
     {
@@ -1198,12 +1265,15 @@ def template MicroLdStOpDeclare {{
         Fault completeAcc(PacketPtr, ExecContext *, Trace::InstRecord *) const;
     };
 }};
+```
+{% endraw %}
 
 Based on the InstObjParams passed to the defineMicroLoadOp, 
 microop specific strings will finish the uncompleted parts of the template.
 Note that the generated class also have the constructor 
 which we were looking for. 
 
+{% raw %}
 ```python
 271 def template MicroLdStOpConstructor {{
 272     %(class_name)s::%(class_name)s(
@@ -1222,6 +1292,7 @@ which we were looking for.
 285     }
 286 }};
 ```
+{% endraw %}
 
 The constructor's implementation itself can be also generated 
 with the help of another Template substitution, MicroLdStOpConstructor.
@@ -1335,3 +1406,4 @@ As shown in the Line 19133-19138,
 the CPP statements translated from Data keyword of the code-snippet 
 are implemented as a result of replacing op_wb. 
 
+[1]: https://www.dabeaz.com/ply/ply.html

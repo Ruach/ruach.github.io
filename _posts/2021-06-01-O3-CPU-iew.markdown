@@ -1,3 +1,10 @@
+---
+layout: post
+titile: "Issue, Execute, Writeback (IEW) Stage"
+categories: [GEM5, Pipeline, O3]
+---
+
+
 # IEW: Issue/Execute/Writeback
 >GEM5 handles both execute and writeback when the execute() 
 >function is called on an instruction. Therefore, GEM5 combines 

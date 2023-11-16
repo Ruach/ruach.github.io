@@ -1,3 +1,10 @@
+---
+layout: post
+titile: "Decode Stage (O3)"
+categories: [GEM5, Pipeline, O3]
+---
+
+
 # Sending fetched instructions to decode stage
 *gem5/src/cpu/o3/fetch_impl.hh*
 ```cpp

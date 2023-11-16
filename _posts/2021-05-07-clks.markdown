@@ -1,0 +1,1458 @@
+---
+layout: post
+titile: "Clock and its usages in Linux kernel with apple dwc3 usb controller"
+categories: linux, embedded-linux
+---
+
+##Dwc3 probing 
+```c
+static int dwc3_apple_m1_probe(struct platform_device *pdev)
+{       
+        struct dwc3_apple       *da; 
+        struct device           *dev = &pdev->dev;
+        struct device_node      *np = dev->of_node;
+        
+        int                     ret;
+        
+        da = devm_kzalloc(dev, sizeof(*da), GFP_KERNEL);
+        if (!da)
+                return -ENOMEM;
+        
+        platform_set_drvdata(pdev, da);
+        da->dev = dev;
+        
+        da->atcphy = of_iomap(np, 0);
+        da->usbcore = of_iomap(np, 1);
+        if (!da->atcphy || !da->usbcore) {
+                pr_err("%pOFn: %s: failed to map MMIO ranges.", np, __func__);
+                return -EINVAL;
+        }
+        
+        ret = clk_bulk_get_all(da->dev, &da->clks);
+        if (ret < 0) {
+                pr_err("%pOFn: %s: clk_bulk_get_all failed.", np, __func__);
+                return ret;
+        }
+        
+        da->num_clocks = ret;
+        ret = clk_bulk_prepare_enable(da->num_clocks, da->clks);
+        if (ret) {
+                pr_err("%pOFn: %s: clk_bulk_prepare_enable failed.", np, __func__);
+                return ret;
+        }
+        
+        ret = dwc3_apple_m1_start(da);
+        if(ret) {
+                pr_err("%pOFn: %s: failed to prepare hardware: %d.", np, __func__, ret);
+                return ret;
+        }
+        
+        ret = of_platform_populate(np, NULL, NULL, dev);
+        if (ret)
+                goto err_clk_put;
+        
+        pm_runtime_set_active(dev);
+        pm_runtime_enable(dev);
+        pm_runtime_get_sync(dev);
+        
+        return 0;
+
+err_clk_put:
+        clk_bulk_disable_unprepare(da->num_clocks, da->clks);
+        clk_bulk_put_all(da->num_clocks, da->clks);
+        
+        return ret;
+}
+```
+TODO: more...
+
+##Adding clock to the system in Linux Kernel with Device Tree
+```
+    refclk24mhz: refclk24mhz {
+        compatible = "fixed-clock";
+        #clock-cells = <0>;
+        clock-frequency = <24000000>;
+        clock-output-names = "refclk24mhz";
+    };
+        atc0_common: atc0_common@23b700420 {
+            compatible = "apple,pmgr-clk-gate";
+            #clock-cells = <0>;
+            reg = <0x2 0x3b700420 0x0 0x8>;
+            clocks = <&refclk24mhz>;
+            clock-output-names = "atc0_common";
+        };
+
+        atc0_usb_aon: atc0_usb_aon@23d280088 {
+            compatible = "apple,pmgr-clk-gate";
+            #clock-cells = <0>;
+            reg = <0x2 0x3d280088 0x0 0x8>;
+            clocks = <&atc0_common>;
+            clock-output-names = "atc0_usb_aon";
+        };
+
+        atc0_usb: atc0_usb@23d280098 {
+            compatible = "apple,pmgr-clk-gate";
+            #clock-cells = <0>;
+            reg = <0x2 0x3d280098 0x0 0x8>;
+            clocks = <&atc0_usb_aon>;
+            clock-output-names = "atc0_usb";
+        };
+```
+When we take a look at the atc0_usb clock device,
+we can find that it has another clock phandle as 
+its clocks property.
+When we go all the way up to the root clock device node,
+we can see that 24mhz fixed clock device is the
+root device of multiple atc0 related clocks. 
+
+Because fixed-clock is not in the interest of this posting,
+we will take a look at how the device driver 
+associated with apple clock device 
+handles those clock nodes in the device tree. 
+
+
+```c
+static int clk_apple_pmgr_driver_probe(struct platform_device *pdev)
+{
+        struct device_node *node = pdev->dev.of_node;
+        const char **parent_names = NULL;
+        unsigned num_parents, type;
+        struct clk *clk;
+        void __iomem *bases[MAX_BASES] = { NULL };
+        int i, n, err;
+        unsigned seqn[4] = { 0 }, *seq[4] = { NULL };
+        static const char * const seqname[4] = { "pre-down", "pre-up", "post-down", "post-up" };
+        struct clk_apple_pmgr *clk_apple_pmgr;
+        struct clk_init_data init = {};
+        struct clk_hw *hw;
+
+        num_parents = of_clk_get_parent_count(node);
+        if(num_parents) {
+                parent_names = devm_kcalloc(&pdev->dev, num_parents, sizeof(char *), GFP_KERNEL);
+                if(!parent_names)
+                        return -ENOMEM;
+                of_clk_parent_fill(node, parent_names, num_parents);
+        }
+
+        n = of_property_count_elems_of_size(node, "reg", sizeof(uint32_t) * (of_n_addr_cells(node) + of_n_size_cells(node)));
+        if(n < 0) {
+                pr_err("%pOFn: %s: not enough MMIO ranges.\n", node, __func__);
+                return -EINVAL;
+        }
+        if(n > MAX_BASES) {
+                pr_err("%pOFn: %s: too many MMIO ranges.\n", node, __func__);
+                return -EINVAL;
+        }
+
+        for(i=0; i<n; i++) {
+                bases[i] = of_iomap(node, i);
+                if(!bases[i]) {
+                        pr_err("%pOFn: %s: unable to map MMIO range %d.\n", node, __func__, i);
+                        return -EINVAL;
+                }
+        }
+
+        for(i=0; i<4; i++) {
+                n = of_property_count_elems_of_size(node, seqname[i], sizeof(uint32_t));
+                if(n > 0) {
+                        seq[i] = devm_kcalloc(&pdev->dev, n, sizeof(unsigned), GFP_KERNEL);
+                        if(!seq[i])
+                                return -ENOMEM;
+                        seqn[i] = of_property_read_variable_u32_array(node, seqname[i], seq[i], 0, n) / 4;
+                }
+        }
+```
+The first part of the probe function retrieves the reg values of the clock.
+of_property_count_elems_of_size function searches device tree nodes
+and returns how many reg property has values on its list.
+After the number has been figured out,
+it maps the value of reg properties to the kernel memory
+using the of_iomap function.
+Because reg property contains the physical addresses 
+that maps the device,
+of_iomap function traverse the reg property list 
+and maps the addresses. 
+All the mapped virtual addresses are stored in the bases array. 
+
+In addition to the reg property,
+there can be clk related properties specified in the seqname array.
+When those properties exist and has some values,
+it should also be parsed and its string value should be translated to unsigned 32bit integer values
+(of_property_read_variable_u32_array).
+
+```c
+struct clk_apple_pmgr {
+        struct clk_hw hw;
+        unsigned type;
+        const char *name;
+        void __iomem *bases[MAX_BASES];
+        const unsigned *seq[4];
+        unsigned seqn[4];
+        u32 freq_target;
+};
+  
+        type = 0;
+        if(of_device_is_compatible(node, "apple,pmgr-clk-gate"))
+                type = PMGR_GATE;
+
+        clk_apple_pmgr = devm_kzalloc(&pdev->dev, sizeof(*clk_apple_pmgr), GFP_KERNEL);
+        if(!clk_apple_pmgr)
+                return -ENOMEM;
+
+        clk_apple_pmgr->type = type;
+        for(i=0; i<MAX_BASES; i++)
+                clk_apple_pmgr->bases[i] = bases[i];
+        for(i=0; i<4; i++) {
+                clk_apple_pmgr->seq[i] = seq[i];
+                clk_apple_pmgr->seqn[i] = seqn[i];
+        }
+        clk_apple_pmgr->name = node->name;
+
+        init.name = node->name;
+        init.parent_names = parent_names;
+        init.num_parents = num_parents;
+
+```
+The next part is not that interesting, just allocating instance of clk_apple_pmgr
+and assigns values read from the device tree 
+to the allocated object. 
+
+
+```c
+        switch(type) {
+        case PMGR_GATE:
+                err = clk_prepare_apple_pmgr_gate(clk_apple_pmgr, &init, &pdev->dev, node, parent_names, num_parents, bases);
+                break;
+        default:
+                pr_err("%pOFn: %s: unsupported device type\n", node, __func__);
+                return -EINVAL;
+        }
+        if(err)
+                return err;
+
+        clk_apple_pmgr->hw.init = &init;
+
+        hw = &clk_apple_pmgr->hw;
+        err = devm_clk_hw_register(&pdev->dev, hw);
+        if(err)
+                return err;
+
+        clk = hw->clk;
+        return of_clk_add_provider(node, of_clk_src_simple_get, clk);
+}
+```
+The last part is the most important part, initializing the clock and registering to the linux kernel.
+First, take a look at how the clock can be initiliazed.
+
+```c
+/**
+ * struct clk_init_data - holds init data that's common to all clocks and is
+ * shared between the clock provider and the common clock framework.
+ *
+ * @name: clock name
+ * @ops: operations this clock supports
+ * @parent_names: array of string names for all possible parents
+ * @parent_data: array of parent data for all possible parents (when some
+ *               parents are external to the clk controller)
+ * @parent_hws: array of pointers to all possible parents (when all parents
+ *              are internal to the clk controller)
+ * @num_parents: number of possible parents
+ * @flags: framework-level hints and quirks
+ */
+struct clk_init_data {
+        const char              *name;
+        const struct clk_ops    *ops;
+        /* Only one of the following three should be assigned */
+        const char              * const *parent_names;
+        const struct clk_parent_data    *parent_data;
+        const struct clk_hw             **parent_hws;
+        u8                      num_parents;
+        unsigned long           flags;
+};
+
+static int clk_prepare_apple_pmgr_gate(struct clk_apple_pmgr *clk_apple_pmgr, struct clk_init_data *init, struct device *dev, struct device_node *node, const char * const *parent_names, u8 num_parents, void __iomem **bases)
+{
+        init->ops = &clk_apple_pmgr_gate_ops;
+        init->flags = CLK_SET_RATE_PARENT;
+        return 0;
+}
+```
+
+Actually, initilization function doesn't do much for pmgr_gate clock.
+for gate type clock, it must implement at least three functions
+speicified in the clk_apple_pmgr_gate_ops.
+It just assigns the clock operations to the init structure 
+and set flags. 
+And the filled-out init structure object is assigned to the clk_hw structure's 
+memeber field init. 
+
+Now we are going to check the most important clock api, clk_hw_register generating clock 
+and of_clk_add_provider registering generated clock to the linux system.
+First take a look at how the clk_hw_register function can populate the clock and register it to clock tree.
+
+```c
+/**     
+ * devm_clk_hw_register - resource managed clk_hw_register()
+ * @dev: device that is registering this clock
+ * @hw: link to hardware-specific clock data
+ *      
+ * Managed clk_hw_register(). Clocks registered by this function are
+ * automatically clk_hw_unregister()ed on driver detach. See clk_hw_register()
+ * for more information.
+ */     
+int devm_clk_hw_register(struct device *dev, struct clk_hw *hw)
+{       
+        struct clk_hw **hwp;
+        int ret;
+                
+        hwp = devres_alloc(devm_clk_hw_unregister_cb, sizeof(*hwp), GFP_KERNEL);
+        if (!hwp)
+                return -ENOMEM;
+        
+        ret = clk_hw_register(dev, hw);
+        if (!ret) {
+                *hwp = hw;
+                devres_add(dev, hwp);
+        } else {
+                devres_free(hwp);
+        }
+        
+        return ret;
+}
+EXPORT_SYMBOL_GPL(devm_clk_hw_register);
+
+/**
+ * clk_hw_register - register a clk_hw and return an error code
+ * @dev: device that is registering this clock
+ * @hw: link to hardware-specific clock data
+ *
+ * clk_hw_register is the primary interface for populating the clock tree with
+ * new clock nodes. It returns an integer equal to zero indicating success or
+ * less than zero indicating failure. Drivers must test for an error code after
+ * calling clk_hw_register().
+ */
+int clk_hw_register(struct device *dev, struct clk_hw *hw)
+{
+        return PTR_ERR_OR_ZERO(__clk_register(dev, dev_or_parent_of_node(dev),
+                               hw));
+}
+
+static struct clk *
+__clk_register(struct device *dev, struct device_node *np, struct clk_hw *hw)
+{
+        int ret;
+        struct clk_core *core;
+        const struct clk_init_data *init = hw->init;
+
+        /*
+         * The init data is not supposed to be used outside of registration path.
+         * Set it to NULL so that provider drivers can't use it either and so that
+         * we catch use of hw->init early on in the core.
+         */
+        hw->init = NULL;
+
+        core = kzalloc(sizeof(*core), GFP_KERNEL);
+        if (!core) {
+                ret = -ENOMEM;
+                goto fail_out;
+        }
+
+        core->name = kstrdup_const(init->name, GFP_KERNEL);
+        if (!core->name) {
+                ret = -ENOMEM;
+                goto fail_name;
+        }
+
+        if (WARN_ON(!init->ops)) {
+                ret = -EINVAL;
+                goto fail_ops;
+        }
+        core->ops = init->ops;
+
+        if (dev && pm_runtime_enabled(dev))
+                core->rpm_enabled = true;
+        core->dev = dev;
+        core->of_node = np;
+        if (dev && dev->driver)
+                core->owner = dev->driver->owner;
+        core->hw = hw;
+        core->flags = init->flags;
+        core->num_parents = init->num_parents;
+        core->min_rate = 0;
+        core->max_rate = ULONG_MAX;
+        hw->core = core;
+
+        ret = clk_core_populate_parent_map(core, init);
+        if (ret)
+                goto fail_parents;
+
+        INIT_HLIST_HEAD(&core->clks);
+```
+As you can see in the above function,
+the init structure we set in the clk_hw object 
+is used to fill out the new core structure object.
+After finishing assigning information to core object, 
+it should be assigned to the clk_hw object.
+
+
+
+```c
+
+        /*
+         * Don't call clk_hw_create_clk() here because that would pin the
+         * provider module to itself and prevent it from ever being removed.
+         */
+        hw->clk = alloc_clk(core, NULL, NULL);
+        if (IS_ERR(hw->clk)) {
+                ret = PTR_ERR(hw->clk);
+                goto fail_create_clk;
+        }
+
+        clk_core_link_consumer(hw->core, hw->clk);
+
+        ret = __clk_core_init(core);
+        if (!ret)
+                return hw->clk;
+
+        clk_prepare_lock();
+        clk_core_unlink_consumer(hw->clk);
+        clk_prepare_unlock();
+
+        free_clk(hw->clk);
+        hw->clk = NULL;
+
+fail_create_clk:
+        clk_core_free_parent_map(core);
+fail_parents:
+fail_ops:
+        kfree_const(core->name);
+fail_name:
+        kfree(core);
+fail_out:
+        return ERR_PTR(ret);
+}
+```
+Now fianlly, this function allocates a clock object using alloc_clk function.
+By passing the core structure, it will assign the object to the generated clk object.
+At the time of clk object has been allocated,
+clk object, core object, and clk_hw objects will have a pointers 
+connecting each other.
+Also __clk_core_inti function checks
+whether the core operations has been properly set, and 
+if they are set correctly, they initialize the left fields
+such as frequency using the provided operations. 
+
+
+###Adding generated clock as provider 
+After generating all required fields for clock structure such as core and clk_hw,
+we need to register the generated clock to the system. 
+Let's revisit how the of_clk_add_provider is invoked 
+in the probe function of apple-pmgr device driver
+and check out how this function finish clock registration properly. 
+
+
+```c
+/**
+
+        clk = hw->clk;
+        return of_clk_add_provider(node, of_clk_src_simple_get, clk);
+
+ * of_clk_add_provider() - Register a clock provider for a node
+ * @np: Device node pointer associated with clock provider
+ * @clk_src_get: callback for decoding clock
+ * @data: context pointer for @clk_src_get callback.
+ *
+ * This function is *deprecated*. Use of_clk_add_hw_provider() instead.
+ */
+int of_clk_add_provider(struct device_node *np,
+                        struct clk *(*clk_src_get)(struct of_phandle_args *clkspec,
+                                                   void *data),
+                        void *data)
+{
+        struct of_clk_provider *cp;
+        int ret;
+
+        cp = kzalloc(sizeof(*cp), GFP_KERNEL);
+        if (!cp)
+                return -ENOMEM;
+
+        cp->node = of_node_get(np);
+        cp->data = data;
+        cp->get = clk_src_get;
+
+        mutex_lock(&of_clk_mutex);
+        list_add(&cp->link, &of_clk_providers);
+        mutex_unlock(&of_clk_mutex);
+        pr_debug("Added clock from %pOF\n", np);
+
+        clk_core_reparent_orphans();
+
+        ret = of_clk_set_defaults(np, true);
+        if (ret < 0)
+                of_clk_del_provider(np);
+
+        return ret;
+}
+EXPORT_SYMBOL_GPL(of_clk_add_provider);
+```
+Note that we passed clk object to the of_clk_add_provider function as its data argument.
+This data is actual clock object we created through previous steps. 
+And also, it requires clk_src_get function which will be invoked later 
+to retireve the registered clock object by the consumer. 
+Actually registering our clock object to system is 
+just assigning the of_clk_provider structure that embraces
+not only the clock object we created, but also the method to retrieve the clock object 
+to the global list called of_clk_providers.
+Later this list will be searched to find out the clock object
+whenever the other device node requiring the pre-configured clocks. 
+
+
+##Utilizing registered clock resource in other devices
+
+
+**driver/clk/clk-bulk.c**
+
+```c
+int __must_check clk_bulk_get_all(struct device *dev,
+                                  struct clk_bulk_data **clks)
+{
+        struct device_node *np = dev_of_node(dev);
+
+        if (!np)
+                return 0;
+
+        return of_clk_bulk_get_all(np, clks);
+}
+EXPORT_SYMBOL(clk_bulk_get_all);
+
+static int __must_check of_clk_bulk_get_all(struct device_node *np,
+                                            struct clk_bulk_data **clks)
+{
+        struct clk_bulk_data *clk_bulk;
+        int num_clks;
+        int ret;
+
+        num_clks = of_clk_get_parent_count(np);
+        if (!num_clks)
+                return 0;
+
+        clk_bulk = kmalloc_array(num_clks, sizeof(*clk_bulk), GFP_KERNEL);
+        if (!clk_bulk)
+                return -ENOMEM;
+
+        ret = of_clk_bulk_get(np, num_clks, clk_bulk);
+        if (ret) {
+                kfree(clk_bulk);
+                return ret;
+        }
+
+        *clks = clk_bulk;
+
+        return num_clks;
+}
+
+static int __must_check of_clk_bulk_get(struct device_node *np, int num_clks,
+                                        struct clk_bulk_data *clks)
+{
+        int ret;
+        int i;
+
+        for (i = 0; i < num_clks; i++) {
+                clks[i].id = NULL;
+                clks[i].clk = NULL;
+        }
+
+        for (i = 0; i < num_clks; i++) {
+                of_property_read_string_index(np, "clock-names", i, &clks[i].id);
+                clks[i].clk = of_clk_get(np, i);
+                if (IS_ERR(clks[i].clk)) {
+                        ret = PTR_ERR(clks[i].clk);
+                        pr_err("%pOF: Failed to get clk index: %d ret: %d\n",
+                               np, i, ret);
+                        clks[i].clk = NULL;
+                        goto err;
+                }
+        }
+
+        return 0;
+
+err:
+        clk_bulk_put(i, clks);
+
+        return ret;
+}
+
+```
+
+The most important part of the above function is of_clk_get which retrieves the clk structure
+associated with current device. 
+Remember that the clk structure should be registered 
+before the device make use of it. 
+
+```c
+struct clk *of_clk_get(struct device_node *np, int index)
+{
+        return __of_clk_get(np, index, np->full_name, NULL);
+}       
+EXPORT_SYMBOL(of_clk_get);
+
+static struct clk *__of_clk_get(struct device_node *np,
+                                int index, const char *dev_id,
+                                const char *con_id)
+{
+        struct clk_hw *hw = of_clk_get_hw(np, index, con_id);
+                                            
+        return clk_hw_create_clk(NULL, hw, dev_id, con_id);
+}       
+        
+```
+
+To retrieve the clk structure,
+it first needs to have an access to the clk_hw structure 
+which is embedded in the clk structure that we want.
+
+```c
+struct clk_hw *of_clk_get_hw(struct device_node *np, int index,
+                             const char *con_id)
+{               
+        int ret;
+        struct clk_hw *hw;
+        struct of_phandle_args clkspec;
+                        
+        ret = of_parse_clkspec(np, index, con_id, &clkspec);
+        if (ret)        
+                return ERR_PTR(ret);
+                
+        hw = of_clk_get_hw_from_clkspec(&clkspec);
+        of_node_put(clkspec.np);
+        
+        return hw;
+}
+```
+
+###Locating the clock node
+The below sequences of function tries to locate the 
+clock property of your device node first.
+Because clock property contains one or more clocks 
+as the format for phandles, 
+first we need to find a phandle associated with the clock device
+that we want to retrieve. 
+To do that, we can pass either index or con_id 
+used to find the phandle that we want to retrieve. 
+After the phandle is found,
+because phandle is also a device node for the clock,
+we can retrieve the associated device node of that clock source.
+This clock resource is going to be stored in the clkspec.
+
+```c
+/**
+ * of_parse_clkspec() - Parse a DT clock specifier for a given device node
+ * @np: device node to parse clock specifier from
+ * @index: index of phandle to parse clock out of. If index < 0, @name is used
+ * @name: clock name to find and parse. If name is NULL, the index is used
+ * @out_args: Result of parsing the clock specifier
+ *
+ * Parses a device node's "clocks" and "clock-names" properties to find the
+ * phandle and cells for the index or name that is desired. The resulting clock
+ * specifier is placed into @out_args, or an errno is returned when there's a
+ * parsing error. The @index argument is ignored if @name is non-NULL.
+ *
+ * Example:
+ *
+ * phandle1: clock-controller@1 {
+ *      #clock-cells = <2>;
+ * }
+ *
+ * phandle2: clock-controller@2 {
+ *      #clock-cells = <1>;
+ * }
+ *
+ * clock-consumer@3 {
+ *      clocks = <&phandle1 1 2 &phandle2 3>;
+ *      clock-names = "name1", "name2";
+ * }
+ *
+ * To get a device_node for `clock-controller@2' node you may call this
+ * function a few different ways:
+ *
+ *   of_parse_clkspec(clock-consumer@3, -1, "name2", &args);
+ *   of_parse_clkspec(clock-consumer@3, 1, NULL, &args);
+ *   of_parse_clkspec(clock-consumer@3, 1, "name2", &args);
+ *
+ * Return: 0 upon successfully parsing the clock specifier. Otherwise, -ENOENT
+ * if @name is NULL or -EINVAL if @name is non-NULL and it can't be found in
+ * the "clock-names" property of @np.
+ */
+
+struct of_phandle_args {
+        struct device_node *np;
+        int args_count;
+        uint32_t args[MAX_PHANDLE_ARGS];
+};
+
+static int of_parse_clkspec(const struct device_node *np, int index,
+                            const char *name, struct of_phandle_args *out_args)
+{
+        int ret = -ENOENT;
+
+        /* Walk up the tree of devices looking for a clock property that matches */
+        while (np) {
+                /*
+                 * For named clocks, first look up the name in the
+                 * "clock-names" property.  If it cannot be found, then index
+                 * will be an error code and of_parse_phandle_with_args() will
+                 * return -EINVAL.
+                 */
+                if (name)
+                        index = of_property_match_string(np, "clock-names", name);
+                ret = of_parse_phandle_with_args(np, "clocks", "#clock-cells",
+                                                 index, out_args);
+                if (!ret)
+                        break;
+                if (name && index >= 0)
+                        break;
+
+                /*
+                 * No matching clock found on this node.  If the parent node
+                 * has a "clock-ranges" property, then we can try one of its
+                 * clocks.
+                 */
+                np = np->parent;
+                if (np && !of_get_property(np, "clock-ranges", NULL))
+                        break;
+                index = 0;
+        }
+
+        return ret;
+}
+
+```
+
+When you look at the device file, 
+you can easily find that your device has clock property,
+and it contains one or more phandles, which are specified with 
+\& operator and the clk device name. 
+
+Because clock of the device can be represented with the phandle,
+of_parse_clkspec needs to utilize proper device tree api 
+that can parse the phandle, of_parse_phandle_with_args.
+This function parse the current device node 
+and retrieves phandles assigned to specific property.
+
+Here, since this function pass the "clocks" as the property names,
+it will find the cloks and generates the of_phandle_args structure
+using the assigned phandles. 
+
+Note that index passed to every above function implies that 
+clock properties can have multiple phandles
+associated with the current device. 
+Therefore, by passing the index, we can skip the previous 
+clock phandles and only pick the clock that we want to have access.  
+Note that the function that we initially invoked is  
+of_clk_bulk_get not of_clk_get (need to retrieve all clk phandles). 
+
+Also, of_parse_clkspec function utilize index 
+when the name parameter has been passed as NULL.
+If the name has been passed, instead of index,
+then the index will be re-calculated by searching the 
+clock-names, which contains string names associated with each clock phandles.
+In our case, we have passed the index instead of its string alias, 
+it will directly invoke the of_parse_phandle_with_args with the passed index. 
+
+**drivers/of/base.c**
+```c
+/**
+ * of_parse_phandle_with_args() - Find a node pointed by phandle in a list
+ * @np:         pointer to a device tree node containing a list
+ * @list_name:  property name that contains a list
+ * @cells_name: property name that specifies phandles' arguments count
+ * @index:      index of a phandle to parse out
+ * @out_args:   optional pointer to output arguments structure (will be filled)
+ *
+ * This function is useful to parse lists of phandles and their arguments.
+ * Returns 0 on success and fills out_args, on error returns appropriate
+ * errno value.
+ *
+ * Caller is responsible to call of_node_put() on the returned out_args->np
+ * pointer.
+ * 
+ * Example:
+ * 
+ * phandle1: node1 {
+ *      #list-cells = <2>;
+ * }    
+ * 
+ * phandle2: node2 {
+ *      #list-cells = <1>;
+ * }    
+ *      
+ * node3 {
+ *      list = <&phandle1 1 2 &phandle2 3>;
+ * }
+ * 
+ * To get a device_node of the `node2' node you may call this:
+ * of_parse_phandle_with_args(node3, "list", "#list-cells", 1, &args);
+ */  
+int of_parse_phandle_with_args(const struct device_node *np, const char *list_name,
+                                const char *cells_name, int index,
+                                struct of_phandle_args *out_args)
+{
+        int cell_count = -1;
+ 
+        if (index < 0)
+                return -EINVAL;
+
+        /* If cells_name is NULL we assume a cell count of 0 */
+        if (!cells_name)
+                cell_count = 0;
+        
+        return __of_parse_phandle_with_args(np, list_name, cells_name,
+                                            cell_count, index, out_args);
+}        
+
+
+static int __of_parse_phandle_with_args(const struct device_node *np,
+                                        const char *list_name,
+                                        const char *cells_name,
+                                        int cell_count, int index,
+                                        struct of_phandle_args *out_args)
+{
+        struct of_phandle_iterator it;
+        int rc, cur_index = 0;
+
+        /* Loop over the phandles until all the requested entry is found */
+        of_for_each_phandle(&it, rc, np, list_name, cells_name, cell_count) {
+                /*
+                 * All of the error cases bail out of the loop, so at
+                 * this point, the parsing is successful. If the requested
+                 * index matches, then fill the out_args structure and return,
+                 * or return -ENOENT for an empty entry.
+                 */
+                rc = -ENOENT;
+                if (cur_index == index) {
+                        if (!it.phandle)
+                                goto err;
+
+                        if (out_args) {
+                                int c;
+
+                                c = of_phandle_iterator_args(&it,
+                                                             out_args->args,
+                                                             MAX_PHANDLE_ARGS);
+                                out_args->np = it.node;
+                                out_args->args_count = c;
+                        } else {
+                                of_node_put(it.node);
+                        }
+
+                        /* Found it! return success */
+                        return 0;
+                }
+
+                cur_index++;
+        }
+
+        /*
+         * Unlock node before returning result; will be one of:
+         * -ENOENT : index is for empty phandle
+         * -EINVAL : parsing error on data
+         */
+
+ err:
+        of_node_put(it.node);
+        return rc;
+}
+
+```
+
+
+__of_parse_phandle_with_args actually traverse the phandle list and 
+retrieve one phandle element from there 
+based on the index fed to this function.
+Because we passed out_args parameter,
+when the match occurs, 
+the found phandle should be stored to the out_args. 
+Here, out_args has memeber fied np, which is a device node
+associated with the found phandle. 
+Because currently we are searching clocks, 
+the found phandle's node, it.node, should be a 
+device node representing the clock source. 
+
+
+###Locating the clk structure associated with the found clkspec
+Let's revisit the of_clk_get_hw function.
+
+```c
+struct clk_hw *of_clk_get_hw(struct device_node *np, int index,
+                             const char *con_id)
+{
+        int ret;
+        struct clk_hw *hw;
+        struct of_phandle_args clkspec;
+
+        ret = of_parse_clkspec(np, index, con_id, &clkspec);
+        if (ret)
+                return ERR_PTR(ret);
+
+        hw = of_clk_get_hw_from_clkspec(&clkspec);
+        of_node_put(clkspec.np);
+
+        return hw;
+}
+```
+After the of_parse_clkspec function parse the device tree and 
+generate the clkspec structure associated with
+one clock resource specified in the clock property,
+it invokes of_clk_get_hw_from_clkspec to have an access on 
+clk_hw structure associated with the found clock resource.
+Note that clk_hw is a structure embedded in the clk structure,
+which is used to access the clk structure and invokes associated clock operations.
+Also, because clkspec we found has information such as 
+device node associated with the found clock resource,
+we can utilize it to find the pre-registered clocks.
+
+```c
+/**
+ * struct of_clk_provider - Clock provider registration structure
+ * @link: Entry in global list of clock providers
+ * @node: Pointer to device tree node of clock provider
+ * @get: Get clock callback.  Returns NULL or a struct clk for the
+ *       given clock specifier
+ * @get_hw: Get clk_hw callback.  Returns NULL, ERR_PTR or a
+ *       struct clk_hw for the given clock specifier
+ * @data: context pointer to be passed into @get callback
+ */
+struct of_clk_provider {
+        struct list_head link;
+
+        struct device_node *node;
+        struct clk *(*get)(struct of_phandle_args *clkspec, void *data);
+        struct clk_hw *(*get_hw)(struct of_phandle_args *clkspec, void *data);
+        void *data;
+};
+
+static struct clk_hw *
+of_clk_get_hw_from_clkspec(struct of_phandle_args *clkspec)
+{
+        struct of_clk_provider *provider;
+        struct clk_hw *hw = ERR_PTR(-EPROBE_DEFER);
+
+        if (!clkspec)
+                return ERR_PTR(-EINVAL);
+
+        mutex_lock(&of_clk_mutex);
+        list_for_each_entry(provider, &of_clk_providers, link) {
+                if (provider->node == clkspec->np) {
+                        hw = __of_clk_get_hw_from_provider(provider, clkspec);
+                        if (!IS_ERR(hw))
+                                break;
+                }
+        }
+        mutex_unlock(&of_clk_mutex);
+
+        return hw;
+}
+
+static struct clk_hw *
+__of_clk_get_hw_from_provider(struct of_clk_provider *provider,
+                              struct of_phandle_args *clkspec)
+{
+        struct clk *clk;
+
+        if (provider->get_hw)
+                return provider->get_hw(clkspec, provider->data);
+
+        clk = provider->get(clkspec, provider->data);
+        if (IS_ERR(clk))
+                return ERR_CAST(clk);
+        return __clk_get_hw(clk);
+}
+```
+
+Linux kernel maintains global list for clock provider, of_clk_providers.
+This structure contains all the clock resources 
+present in this current system. 
+Also, each of_clk_provider structure contains 
+its associated device node 
+which was used to register clock resource.
+Remind that we have an access to the clock device node 
+that we want to utilize on our device.
+
+Therefore, of_clk_get_hw_from_clkspec function 
+iterates the list of of_clk_provider and tries to find an entry
+that matches its device node member field with 
+device node we found in the previous step (stored in the clkspec).
+When the entry found, it invokes __of_clk_get_he_from_provider function
+to actually retrieve the clk structure registered in the provider structure. 
+Note that clk_hw structure is embedded in the clk structure. 
+
+Check out that of_clk_provider structure contains two function pointers,
+get and get_hw function.
+When the clock resource has been registered with 
+of_clk_add_provider function,
+the get function should have been successfully registered 
+in the provider's get member field.
+By invoking get function,
+we can easily retrieve the clk structure
+generated before in the clock source driver particularly at probe function.
+Finally, clk_hw can be easily retrieved with the __clk_get_hw
+which just returns the member field core->hw of the clock structure. 
+
+
+```c
+static struct clk *__of_clk_get(struct device_node *np,
+                                int index, const char *dev_id,
+                                const char *con_id)
+{
+        struct clk_hw *hw = of_clk_get_hw(np, index, con_id);
+
+        return clk_hw_create_clk(NULL, hw, dev_id, con_id);
+}
+```
+Finally, we can get the access to the hw structure associated with one clock resource 
+specified in the device file, particularly 
+one clock resource specified as phandle of clock property of our device node. 
+
+```c
+/**
+ * clk_hw_create_clk: Allocate and link a clk consumer to a clk_core given
+ * a clk_hw
+ * @dev: clk consumer device
+ * @hw: clk_hw associated with the clk being consumed
+ * @dev_id: string describing device name
+ * @con_id: connection ID string on device
+ *
+ * This is the main function used to create a clk pointer for use by clk
+ * consumers. It connects a consumer to the clk_core and clk_hw structures
+ * used by the framework and clk provider respectively.
+ */
+struct clk *clk_hw_create_clk(struct device *dev, struct clk_hw *hw,
+                              const char *dev_id, const char *con_id)
+{
+        struct clk *clk;
+        struct clk_core *core;
+
+        /* This is to allow this function to be chained to others */
+        if (IS_ERR_OR_NULL(hw))
+                return ERR_CAST(hw);
+
+        core = hw->core;
+        clk = alloc_clk(core, dev_id, con_id);
+        if (IS_ERR(clk))
+                return clk;
+        clk->dev = dev;
+
+        if (!try_module_get(core->owner)) {
+                free_clk(clk);
+                return ERR_PTR(-ENOENT);
+        }
+
+        kref_get(&core->ref);
+        clk_core_link_consumer(core, clk);
+
+        return clk;
+}
+
+/**
+ * alloc_clk - Allocate a clk consumer, but leave it unlinked to the clk_core
+ * @core: clk to allocate a consumer for
+ * @dev_id: string describing device name
+ * @con_id: connection ID string on device
+ *
+ * Returns: clk consumer left unlinked from the consumer list
+ */
+static struct clk *alloc_clk(struct clk_core *core, const char *dev_id,
+                             const char *con_id)
+{
+        struct clk *clk;
+
+        clk = kzalloc(sizeof(*clk), GFP_KERNEL);
+        if (!clk)
+                return ERR_PTR(-ENOMEM);
+
+        clk->core = core;
+        clk->dev_id = dev_id;
+        clk->con_id = kstrdup_const(con_id, GFP_KERNEL);
+        clk->max_rate = ULONG_MAX;
+
+        return clk;
+}
+```
+
+Although we had an access to the clk structure 
+that has been registered to the system as the provider.
+And instead of returning that clk structure,
+we only have an access to the clk_hw structure.
+Threfore, we need to create clk structure instance once again
+associated with current clk_hw structure.
+Then how it is different from the clk structure stored in the provider structure?
+
+##Preparing and enabling cloks
+```
+static inline int __must_check
+clk_bulk_prepare_enable(int num_clks, const struct clk_bulk_data *clks)
+{       
+        int ret;
+                
+        ret = clk_bulk_prepare(num_clks, clks);
+        if (ret)
+                return ret;
+        ret = clk_bulk_enable(num_clks, clks);
+        if (ret) 
+                clk_bulk_unprepare(num_clks, clks);
+                
+        return ret;
+}
+```
+Before clock is enabled, 
+it should be prepared with the 
+provided apis. 
+Note that clks embeds core structure that contains 
+clock operations required to prepare and enable clocks.
+
+
+```c
+/**
+ * clk_bulk_prepare - prepare a set of clocks
+ * @num_clks: the number of clk_bulk_data
+ * @clks: the clk_bulk_data table being prepared
+ *
+ * clk_bulk_prepare may sleep, which differentiates it from clk_bulk_enable.
+ * Returns 0 on success, -EERROR otherwise.
+ */
+int __must_check clk_bulk_prepare(int num_clks,
+                                  const struct clk_bulk_data *clks)
+{
+        int ret;
+        int i;
+
+        for (i = 0; i < num_clks; i++) {
+                ret = clk_prepare(clks[i].clk);
+                if (ret) {
+                        pr_err("Failed to prepare clk '%s': %d\n",
+                                clks[i].id, ret);
+                        goto err;
+                }
+        }
+
+        return 0;
+
+err:
+        clk_bulk_unprepare(i, clks);
+
+        return  ret;
+}
+EXPORT_SYMBOL_GPL(clk_bulk_prepare);
+
+/**
+ * clk_prepare - prepare a clock source
+ * @clk: the clk being prepared
+ *      
+ * clk_prepare may sleep, which differentiates it from clk_enable.  In a simple
+ * case, clk_prepare can be used instead of clk_enable to ungate a clk if the
+ * operation may sleep.  One example is a clk which is accessed over I2c.  In
+ * the complex case a clk ungate operation may require a fast and a slow part.
+ * It is this reason that clk_prepare and clk_enable are not mutually
+ * exclusive.  In fact clk_prepare must be called before clk_enable.
+ * Returns 0 on success, -EERROR otherwise.
+ */
+int clk_prepare(struct clk *clk)
+{
+        if (!clk)
+                return 0;
+
+        return clk_core_prepare_lock(clk->core);
+}
+EXPORT_SYMBOL_GPL(clk_prepare);
+
+static int clk_core_prepare_lock(struct clk_core *core)
+{
+        int ret;
+
+        clk_prepare_lock();
+        ret = clk_core_prepare(core);
+        clk_prepare_unlock();
+ 
+        return ret;
+}
+```
+Because we have multiple clock instances,
+we should invoke clk_bulk_prepare function
+that traverses all clk structures we found before
+and invoke the associated prepare methods
+embedded in that core structure of each clk structure.
+
+
+```c
+static int clk_core_prepare(struct clk_core *core)
+{
+        int ret = 0;
+
+        lockdep_assert_held(&prepare_lock);
+
+        if (!core)
+                return 0;
+
+        if (core->prepare_count == 0) {
+                ret = clk_pm_runtime_get(core);
+                if (ret)
+                        return ret;
+
+                ret = clk_core_prepare(core->parent);
+                if (ret)
+                        goto runtime_put;
+
+                trace_clk_prepare(core);
+
+                if (core->ops->prepare)
+                        ret = core->ops->prepare(core->hw);
+
+                trace_clk_prepare_complete(core);
+
+                if (ret)
+                        goto unprepare;
+        }
+
+        core->prepare_count++;
+
+        /*
+         * CLK_SET_RATE_GATE is a special case of clock protection
+         * Instead of a consumer claiming exclusive rate control, it is
+         * actually the provider which prevents any consumer from making any
+         * operation which could result in a rate change or rate glitch while
+         * the clock is prepared.
+         */
+        if (core->flags & CLK_SET_RATE_GATE)
+                clk_core_rate_protect(core);
+
+        return 0;
+unprepare:
+        clk_core_unprepare(core->parent);
+runtime_put:
+        clk_pm_runtime_put(core);
+        return ret;
+}
+
+```
+Based on the clock type such as gate, change rate, multiplexer, etc,
+some clocks may or may not implement the prepare method.
+Also, various clocks consists of hierarchies,
+one clock can has its associated parent clocks.
+Therefore, although target clock doesn't need a prepare method,
+it might need to invoke its parent's prepare method.
+Note that this prepare method is going to be invoked recursively.
+
+After that, target clock will invoke its prepare function if presents.
+In our case,
+dwc3 apple device utilizes the atc0_usb and atcphy0 clock,
+and they don't have any prepare clocks because they are clock gates.
+
+To understand how the prepare function actually 
+prepares the clock,
+you should take a look at each clock's device driver
+that initialize clk structure and its corresponding core and ops fields.
+managing those clocks. 
+Also you might want to check their parent clocks to see 
+how prepare functions are implemented in its parent clock. 
+ 
+Anyway, in our case we can find that it doesn't need to invoke prepare method directly.
+Therefore, let's see how the clocks are going to be enabled. 
+Most of the basic skeletons for the clk_bulk_enable is same as clk_bulk_prepare.
+It traverse found clk structure used by the current device node
+and invokes the enable function associated with them 
+making use of the ops of the core structure. 
+
+
+```c
+/**
+ * clk_bulk_enable - ungate a set of clocks
+ * @num_clks: the number of clk_bulk_data
+ * @clks: the clk_bulk_data table being ungated
+ *
+ * clk_bulk_enable must not sleep
+ * Returns 0 on success, -EERROR otherwise.
+ */
+int __must_check clk_bulk_enable(int num_clks, const struct clk_bulk_data *clks)
+{
+        int ret;
+        int i;
+
+        for (i = 0; i < num_clks; i++) {
+                ret = clk_enable(clks[i].clk);
+                if (ret) {
+                        pr_err("Failed to enable clk '%s': %d\n",
+                                clks[i].id, ret);
+                        goto err;
+                }
+        }
+
+        return 0;
+
+err:
+        clk_bulk_disable(i, clks);
+
+        return  ret;
+}
+EXPORT_SYMBOL_GPL(clk_bulk_enable);
+
+/**
+ * clk_enable - ungate a clock
+ * @clk: the clk being ungated
+ *
+ * clk_enable must not sleep, which differentiates it from clk_prepare.  In a
+ * simple case, clk_enable can be used instead of clk_prepare to ungate a clk
+ * if the operation will never sleep.  One example is a SoC-internal clk which
+ * is controlled via simple register writes.  In the complex case a clk ungate
+ * operation may require a fast and a slow part.  It is this reason that
+ * clk_enable and clk_prepare are not mutually exclusive.  In fact clk_prepare
+ * must be called before clk_enable.  Returns 0 on success, -EERROR
+ * otherwise.
+ */
+int clk_enable(struct clk *clk)
+{
+        if (!clk)
+                return 0;
+
+        return clk_core_enable_lock(clk->core);
+}
+EXPORT_SYMBOL_GPL(clk_enable);
+
+static int clk_core_enable_lock(struct clk_core *core)
+{
+        unsigned long flags;
+        int ret;
+
+        flags = clk_enable_lock();
+        ret = clk_core_enable(core);
+        clk_enable_unlock(flags);
+
+        return ret;
+}
+
+static int clk_core_enable(struct clk_core *core)
+{
+        int ret = 0;
+
+        lockdep_assert_held(&enable_lock);
+
+        if (!core)
+                return 0;
+
+        if (WARN(core->prepare_count == 0,
+            "Enabling unprepared %s\n", core->name))
+                return -ESHUTDOWN;
+
+        if (core->enable_count == 0) {
+                ret = clk_core_enable(core->parent);
+
+                if (ret)
+                        return ret;
+
+                trace_clk_enable_rcuidle(core);
+
+                if (core->ops->enable)
+                        ret = core->ops->enable(core->hw);
+
+                trace_clk_enable_complete_rcuidle(core);
+
+                if (ret) {
+                        clk_core_disable(core->parent);
+                        return ret;
+                }
+        }
+
+        core->enable_count++;
+        return 0;
+}
+```
+To see which function will be invoked
+when current clock's enable function is invoked. 
+Remember that the dwc3 node utilize the apple_pmgr_gate type clocks.
+
+```c
+const struct clk_ops clk_apple_pmgr_gate_ops = {
+        .enable = clk_apple_pmgr_gate_enable,
+        .disable = clk_apple_pmgr_gate_disable,
+        .is_enabled = clk_apple_pmgr_gate_is_enabled,
+};
+
+static int clk_apple_pmgr_gate_enable(struct clk_hw *hw)
+{
+        struct clk_apple_pmgr *clk = to_clk_apple_pmgr(hw);
+        unsigned max = 10000;
+        uint32_t val;
+
+        clk_apple_pmgr_run_seq(clk, clk->seq[1], clk->seqn[1]);
+
+        val = readl(clk->bases[0]);
+
+        val |= 15;
+        val &= ~0x300;
+        writel(val, clk->bases[0]);
+
+        while(max --) {
+                mb();
+                val = readl(clk->bases[0]);
+
+                if(((val >> 4) & 15) == 15) {
+                        val &= ~0x300;
+                        writel(val | 0x10000000, clk->bases[0]);
+                        clk_apple_pmgr_run_seq(clk, clk->seq[3], clk->seqn[3]);
+                        return 0;
+                }
+
+                if(max < 5000)
+                        udelay(20);
+                cpu_relax();
+        }
+
+        pr_err("%s: failed to enable PMGR clock\n", clk->name);
+
+        return -ETIMEDOUT;
+}
+```
+
+Because ops has clk_apple_pmgr_gate_enable as its enable function pointer,
+whenever the enable function is invoked through its core's ops,
+the assigned function will be invoked and enable the clock. 
+We are not going to cover the detail implementation of the clock enable function.
+
+
+
+##More DWC3 on apple device
+After the clock provided to the dwc3 device has been prepared and enabled,
+it should start the dwc3 device itself.
+The dwc3_apple_m1_start function does this for you. 
+
+
+#define USBCORE_DWC3                                    0x280000
+
+#define DWC3_GUSB2PHYCFG0_SUSPENDUSB20                  (1 << 6)
+#define DWC3_GUSB3PIPECTL0_SUSPENDENABLE                (1 << 17)
+
+static int dwc3_apple_m1_start(struct dwc3_apple *da)
+{
+        int ret;
+
+        /* set core mode to host */
+        dwc3_apple_m1_rmwl(DWC3_GCTL_PRTCAPDIR(3), DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_HOST),
+                da->usbcore + USBCORE_DWC3 + DWC3_GCTL);
+
+        ret = dwc3_apple_m1_tunable(da, "tunable");
+        if(ret < 0)
+                return ret;
+
+        /* set up power and clock parameters in DRD core */
+        dwc3_apple_m1_rmwl(DWC3_GCTL_PWRDNSCALE(0x1FFF), DWC3_GCTL_PWRDNSCALE(13),
+                da->usbcore + USBCORE_DWC3 + DWC3_GCTL);
+        dwc3_apple_m1_rmwl(0, DWC3_GCTL_GBLHIBERNATIONEN, da->usbcore + USBCORE_DWC3 + DWC3_GCTL);
+
+        /* unsuspend the PHYs */
+        dwc3_apple_m1_rmwl(DWC3_GUSB2PHYCFG0_SUSPENDUSB20, 0,
+                da->usbcore + USBCORE_DWC3 + DWC3_GUSB2PHYCFG(0));
+        dwc3_apple_m1_rmwl(DWC3_GUSB3PIPECTL0_SUSPENDENABLE, 0,
+                da->usbcore + USBCORE_DWC3 + DWC3_GUSB3PIPECTL(0));
+
+        return 0;
+}
+

@@ -1,3 +1,11 @@
+---
+layout: post
+titile: "XXX"
+categories: [GEM5, O3]
+---
+
+
+
 ## Python derives O3CPU through DerivO3CPU class
 To understand particular processor in the GEM5, 
 it is easy to start from the script that instantiate the processor. 

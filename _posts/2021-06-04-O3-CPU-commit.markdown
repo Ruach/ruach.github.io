@@ -1,3 +1,11 @@
+---
+layout: post
+titile: "Memory Read/Write"
+categories: [GEM5, Pipeline, O3]
+---
+
+
+
 # Memory read and write of the O3 CPU
 
 ## Memory read 

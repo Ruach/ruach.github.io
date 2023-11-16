@@ -1,3 +1,10 @@
+---
+layout: post
+titile: "Rename Stage (O3)"
+categories: [GEM5, Pipeline, O3]
+---
+
+
 # Rename 
 It maintains the rename history of all instructions 
 with destination registers, storing the arch register, 

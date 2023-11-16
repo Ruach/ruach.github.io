@@ -1,3 +1,9 @@
+---
+layout: post
+titile: "Fetch Stage (O3)"
+categories: [GEM5, Pipeline, O3]
+---
+
 ### Fetch
 ```cpp
  895 template <class Impl>

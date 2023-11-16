@@ -1,3 +1,7 @@
+
+
+
+
 ---
 layout: post
 tittle: "Pagetable walking and pagefault handling in Gem5"
@@ -13,9 +17,9 @@ to reduce time of walking the entire page table at every memory access.
 In other words, it is a cache of virtual to physical mapping maintained 
 by the processor usually. 
 Then which part of the CPU logic initiates the TLB logic, 
-and what operations should be done by the TLB component?  
+and what operations should be done by the TLB component?
 
-## Memory related operations of CPU sends request to TLB before accessing actual data
+## Interface between CPU pipeline and TLB component 
 ```cpp
  425 Fault
  426 TimingSimpleCPU::initiateMemRead(Addr addr, unsigned size,
@@ -75,28 +79,30 @@ and what operations should be done by the TLB component?
 ```
 One of the most important basic capability of processor is accessing memory.
 GEM5 make each processor implement their own memory access building blocks as 
-member function of each processor class. We are going to take a look at one simple processor,
-TimingSimpleCPU and corresponding memory function, initiateMemRead. 
-The detailed implementation of this function is going to be explained in XXX.
+member function of each processor class. We are going to take a look at simple 
+processor, **TimingSimpleCPU** and corresponding memory function, 
+**initiateMemRead.** 
 Note that at the end of the initiateMemRead function, it generates 
-DataTranslation object and pass it to the translateTiming function defined 
-in the datacache component of the processor. 
-This translation object is used to process current TLB access request.
-Also note that translateTiming function needs threadContext to execute TLB accessing
-and RequestPtr object containing all the memory access request information
-such as virtual address. 
+**DataTranslation** object and pass it to the translateTiming function defined 
+in the data TLB component of the processor. 
+This translation object will be used to process current TLB access request.
+Also note that translateTiming function needs threadContext to execute TLB 
+accessing and RequestPtr object containing all the memory access request 
+information such as virtual address. 
 
-## Check TLB first, and then access memory
-Although the initiateMemRead function and following translateTiming function 
-can be considered to be used for initiating memory access,
-they are basically used to initiate TLB access. 
-The actual memory access happens after the TLB resolves 
-virtual to physical translation without incurring serious processor fault. 
-The memory accessing part will be described in 
-further posting, and we will focus on the translation part only. 
+## It's all about TLB! No actual memory access to the virtual address! 
+>initiateMemRead function does not initiate actual memory access, it only asks 
+>TLB component to generate virtual address to physical address mapping in its 
+>TLB cache.
 
-*gem5/src/arch/x86/tlb.cc*
+It could be confusing because of its name **initateMemRead** but the actual 
+memory access could only be occured after the TLB request can be successfully 
+resolved. I will describe how actual memory access happens in this posting []
+Keep in mind that we will only focus on the translation part!
+
 ```cpp
+//gem5/src/arch/x86/tlb.cc
+
 441 void
 442 TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
 443         Translation *translation, Mode mode)
@@ -113,17 +119,20 @@ further posting, and we will focus on the translation part only.
 454 }
 ```
 
-*translateTiming* starts translation by invoking TLB::translate function.
-Depending on the TLB status, translate function fetch data from the TLB or 
-memory (page table).
-Also note that translateTiming function is defined as a member function
-of *TLB* class, which means we are currently dealing with TLB components 
-jumping from the processor part. 
-Let's take a look at the part of the translate function
-that we are interested in.
+As we assume that GEM5 is compiled for X86 architecture, it will invoke TLB 
+implementation for X86 architecture. 
+Please be aware that the translateTiming function is implemented as part of the
+TLB class, indicating that we are presently working with TLB components, 
+transitioning away from the processor pipeline. The actual translation is done 
+by **TLB::translate** function. 
+Depending on whether the target virtual address has previously been resolved and
+its mapping cached in the TLB or not, the function can either retrieve the TLB 
+entry from the cache or obtain it by traversing the page table. 
 
-*gem5/src/arch/x86/tlb.cc*
+
 ```cpp
+// gem5/src/arch/x86/tlb.cc
+
 277 Fault
 278 TLB::translate(const RequestPtr &req,
 279         ThreadContext *tc, Translation *translation,
@@ -164,36 +173,38 @@ that we are interested in.
 369                 } else {
 ```
 
-translate function first asks TLB to find 
-whether the required translation entry exist in the TLB already (line 345, lookup function)
-When the TLB entry is **not found**,
-it starts to traverse pagetable stored in the memory
-to get virtual to physical translation (line 351-395)
-Because I assume that readers want to make use of the fullsystem emulation,
-we are going to take a look at line 360-369.
+The initial step in the translate function involves a query to the TLB, 
+inquiring whether the necessary translation entry is present in the TLB (line
+345). In cases where the TLB entry is **absent**, the process then proceeds to 
+navigate through the page table, which is stored in memory, in order to acquire 
+the virtual-to-physical translation (spanning from line 351 to 395). Given the 
+presumed interest in utilizing full-system emulation, I will focus on FullSystem
+parts of TLB handling. 
+In GEM5's fullsystem mode, when a TLB miss occurs, the system proceeds to 
+navigate the page table using the "pagetable_walker" object (as indicated in 
+line 361). It's important to note that the "req" parameter is passed to the 
+pagetable_walker because it contains all the essential information, including 
+the address and flags, necessary for correctly resolving memory access.
 
-When GEM5 executes in fullsystem mode, and TLB miss happens,
-it traverses the pagetable with pagetable_walker (line 361, walker object).
-Note that req parameter has been passed because
-it contains all the required information such as address, flags 
-to resolve memory access properly.
-
-## Page table walking: when TLB misses happen
-When the TLB entry already exists in the TLB cache because 
-previous memory request with the same virtual address has been resolved by the TLB.
-However, when it is the initial request or the previous TLB entry has been evicted
-from the TLB cache, it should walk through the pagetable and retrieve the TLB entry
-We will take a look at how the TLB actually walks the pagetable and retrieve the 
-last-level page table entry.
+## Page table walking in TLB 
+In cases where it is either the first request or the previous TLB entry has been
+evicted from the TLB cache, it is required to traverse the page table and obtain
+the virtual to physical mapping. Let's examine the process by which the TLB 
+effectively navigates the page table and retrieves the final-level page table 
+entry.
 
 ### WalkerState per request
-Compared to other simple logic, 
-*TLB misses cannot be resolved in one cycle in general*
-because it involves multiple memory accesses
-before the virtual to physical mapping is found. 
+>In contrast to simpler operations, it's typically not possible to resolve TLB
+misses in a single cycle. 
 
-*gem5/src/arch/x86/pagetable_walker.cc*
+As the page table is structured with multiple levels, the page table walking 
+demands numerous memory accesses. These accesses are essential for reaching the 
+leaf page table entry that contains the virtual-to-physical mapping and other 
+pertinent flags.
+
 ```cpp
+//gem5/src/arch/x86/pagetable_walker.cc
+
  71 Fault
  72 Walker::start(ThreadContext * _tc, BaseTLB::Translation *_translation,
  73               const RequestPtr &_req, BaseTLB::Mode _mode)
@@ -220,28 +231,31 @@ before the virtual to physical mapping is found.
  94 }
 ```
 
-pagetable walking maintains a *WalkerState*
-that manages page table walking **per request**.
-Note that *currStates* maintains 
-all the outstanding requests as a list.
-If non-resolved miss exists,
-it just pushes current pagetable request to the list 
-and wait until previous request will be resolved (line 80-84).
-When outstanding request is resolved,
-pending requests are going to be processed one by one.
+It is important to note that TLB misses can occur simultaneously because 
+multiple processors might try to access a memory address for which the 
+virtual-to-physical mapping is not stored in the TLB cache. Additional, since 
+each request cannot be handled in a single clock cycle, there is a need to store 
+the state of page table walking for each request. 
+The "walkerState" is employed for this specific purpose, maintaining all the 
+necessary information for page table walking on a per-request basis.
 
-If it is the first request (line 85-92), 
-which means no other outstanding requests are under service,
-it should push newly generated state 
-and invokes *startWalk* function through the created state.
-Remember that each state is created per request.
-If startWalk finish walking, and if it is timing CPU,
-it doesn't need to remove current state 
-from the currStates list 
-because another stage of timing CPU model removes 
-current state from the list. 
+The "currStates" keeps track of all the outstanding requests, which are those 
+that have been requested previously but have not yet been resolved, in the form 
+of a list. If there are any unresolved TLB misses, the current request is simply 
+added to the list, and the system waits until the preceding requests have been
+resolved, as seen in lines 80-84. Once the outstanding request has been resolved,
+the pending requests are then processed one after another.
 
-### startWalk handles page table walking request
+If there is no remaining requests in the list, as indicated in lines 85-92, a 
+newly generated state should be added, and the "startWalk" function is called 
+with the newly created state. Upon completion of the page table walking by the 
+"startWalk" function, in the case of a timing CPU, there is no need to remove 
+the current state from the "currStates" list, as another stage in the timing CPU
+model takes care of removing the current state from the list.
+
+
+
+### startWalk, initiating page table walking 
 *gem5/src/arch/x86/pagetable_walker.cc*
 ```cpp
 229 Fault
@@ -274,25 +288,9 @@ current state from the list.
 256 }
 ```
 
-The main purpose of this function is 
-sending request to cache or memory 
-to read the memory,
-which actually read the page-table residing in the memory.
-This memory request results in page table access,
-and virtual to physical page mapping can be retrieved. 
-If current CPU is timing, 
-it access page tables step by step 
-based on current state.
-And *sendPackets* function sends
-page table access request to the memory-subsystem.
-
-Note that 
-even though startWalk doesn't receive any function argument,
-all the required fields such as req and flags
-are contained in the WalkerState class instance itself
-that has been used for invoking startWalk function.
-Yes we are in the WalkerState class instance now. 
-
+Since the page table is stored in memory or cache, whenever the TLB miss happens
+it should retrieve page table content from the memory subsystem. To this end, 
+TLB component initiates memory request through *sendPackets* function.
 
 ### multi-level page table walking process = multiple packets
 ```cpp
@@ -329,35 +327,31 @@ Yes we are in the WalkerState class instance now.
 691     }
 692 }
 ```
-Because modern processor makes use of multi-level page tables,
-timing CPU cannot access all of them at once.
-If the multiple accesses should happen in one CPU clock cycles,
-then it incurs severe performance overhead
-because of slow clock frequency. 
-Therefore, TLB accesses are done by multi stages
-where each stage access one level of page table.
 
-Because pagetable_walker **doesn't have memory**,
-but does have memory-subsystem maintaining actual page-tables,
-it should send different packet 
-to the memory-subsystem 
-at every different stage 
-to access one specific level of page table.
-When you look at the *sendPackets* function,
-you can easily find a familiar function name *sendTiming*
-which sends page table access request packet to the 
-memory sub-system (e.g., cache, memory).
+With modern processors making use of multi-level page tables, it becomes 
+challenging to pre-determine which page table entries will be accessed before 
+resolving the memory access at the previous level of page table entry. 
+Because of this interdependence among page table access, the accesses to these 
+entries must be carried out sequentially rather than in parallel
+Consequently, TLB accesses are structured into multiple stages, with each stage 
+responsible for accessing one level of the page table.
+
+Since TLB should request memory subsystem to fetch next level of page table 
+entry one by one, it should send send different packets at different stage to 
+access a specific level of the page table. 
+
+When you look at the "sendPackets" function, you will notice a familiar function
+name, "sendTiming," which dispatches page-table-access-request-packets to the 
+memory subsystem (e.g., cache or memory).
+
 
 ### Initial page table access packet creation
-By the way, 
-when you glimpse the sendPackets function,
-you cannot see any packet creation in there.
-However, you must find that sendTiming function receives
-*pkt* as its parameter.
-Where the pkt comes from?
-*setupWalk* function in startWalk function 
-populates proper request packet 
-initiating page table accesses.
+When you take a look at the "sendPackets" function, you won't observe any packet
+creation within it. However, you will notice that the "sendTiming" function 
+receives a parameter named pkt. So, where does this pkt come from? 
+The "setupWalk" function within the "startWalk" function is responsible for
+populating the appropriate request packet, which initiates the access to the 
+page table.
 
 ```cpp
 551 void
@@ -411,19 +405,17 @@ initiating page table accesses.
 599 }
 ```
 
-Wait! we learned that sendPackets function is utilized
-to send multiple pagetable access requests 
-depending on different stage of the pagetable walking.
-Then how the other stage's packets are populated
-and fed to the sendPackets function?
-Please be patient, 
-until we finish covering one full step of 
-pagetable walking.
+We've learned that the "sendPackets" function is employed to transmit multiple 
+page table access requests, depending on the various stages of the page table 
+walking process. So, how are the packets for the subsequent stages created and 
+provided to the "sendPackets" function? Please bear with me as we progress 
+through one complete step of page table walking; I will address this aspect 
+shortly.
+
 
 ### SendTiming function: sends request and save current state
-Now let's see how the *sendTiming* function sends 
-the generated pagetable access request packet 
-to the memory sub-system through the designated port. 
+Now, let's explore how the "sendTiming" function transmits the generated page 
+table access request packet to the memory subsystem via the designated port.
 
 ```cpp
 156 bool Walker::sendTiming(WalkerState* sendingState, PacketPtr pkt)
@@ -442,13 +434,12 @@ to the memory sub-system through the designated port.
 169
 170 }
 ```
-Note that 
-it first creates another state called *WalkerSenderState*.
-This state variable is required later
-when the requested pagetable access is done, and 
-the response from the memory sub-system is returned 
-to the pagetable walker handler 
-as a result of page table access.
+
+It's worth noting that the "sendTiming" function initially generates a separate 
+state called "WalkerSenderState." This state variable is essential for handling 
+the requested page table access and for processing the response from the memory
+subsystem once the page table access has been completed.
+
 
 ## Handling return packet from memory sub-system
 When memory sub-system successfully handled the page table access request,

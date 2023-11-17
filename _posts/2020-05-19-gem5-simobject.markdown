@@ -1,7 +1,7 @@
 ---
 layout: post
-titile: "GEM5 execution (CPP + Python)"
-categories: Gem5, Python3, pybind11, metaclass
+titile: "GEM5, from entry point to simulation loop"
+categories: Gem5, SimObject, pybind11, metaclass
 ---
 
 When you first take a look at the GEM5 source code, it could be confusing 

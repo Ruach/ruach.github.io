@@ -39,16 +39,16 @@
 <meta property="og:locale" content="en" />
 <meta name="description" content="A minimal, responsive and feature-rich Jekyll theme for technical writing." />
 <meta property="og:description" content="A minimal, responsive and feature-rich Jekyll theme for technical writing." />
-<link rel="canonical" href="http://localhost:4000/" />
-<meta property="og:url" content="http://localhost:4000/" />
+<link rel="canonical" href="http://localhost:4000/page3/" />
+<meta property="og:url" content="http://localhost:4000/page3/" />
 <meta property="og:site_name" content="Ruach" />
 <meta property="og:type" content="website" />
-<link rel="next" href="http://localhost:4000/page2" />
+<link rel="prev" href="http://localhost:4000/page2" />
 <meta name="twitter:card" content="summary" />
 <meta property="twitter:title" content="Ruach" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebSite","description":"A minimal, responsive and feature-rich Jekyll theme for technical writing.","headline":"Ruach","name":"Jaehyuk Lee","sameAs":["https://ruach.github.io","https://github.com/Ruach","https://www.linkedin.com/in/jaehyuk-lee-29b33b121/"],"url":"http://localhost:4000/"}</script>
+{"@context":"https://schema.org","@type":"WebPage","description":"A minimal, responsive and feature-rich Jekyll theme for technical writing.","headline":"Ruach","url":"http://localhost:4000/page3/"}</script>
 <!-- End Jekyll SEO tag -->
 
   
@@ -435,14 +435,14 @@
 <div id="post-list" class="flex-grow-1 px-xl-1">
   
     <article class="card-wrapper card">
-      <a href="/posts/gem5-interrupt-handling-o3/" class="post-preview row g-0 flex-md-row-reverse">
+      <a href="/posts/template-generating-microop/" class="post-preview row g-0 flex-md-row-reverse">
         
 
         
 
         <div class="col-md-12">
           <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">Gem5 Interrupt Handling O3</h1>
+            <h1 class="card-title my-2 mt-md-0">Template Generating Microop</h1>
 
             <div class="card-text content mt-0 mb-3">
               <p>
@@ -452,14 +452,9 @@
 
 
 
-                
-Interrupt makes the commit stage stop further instructions fetching
- 813 template &amp;lt;class Impl&amp;gt;
- 814 void
- 815 DefaultCommit&amp;lt;Impl&amp;gt;::commit()
- 816 {
- 817     if (FullSystem) {
- 818      ...
+                Automatic CPP Class Generation for Macroop and Microop
+In this post, we will continue to make use of the parser and the grammar defined 
+to understand the Domain Specific Language (DSL) of GEM5. Be...
               </p>
             </div>
 
@@ -477,15 +472,22 @@ Interrupt makes the commit stage stop further instructions fetching
 
 <time
   
-  data-ts="1640408400"
+  data-ts="1591070400"
   data-df="ll"
   
 >
-  Dec 25, 2021
+  Jun  2, 2020
 </time>
 
 
                 <!-- categories -->
+                
+                  <i class="far fa-folder-open fa-fw me-1"></i>
+                  <span class="categories">
+                    
+                      GEM5,
+                      Microops
+                  </span>
                 
               </div>
 
@@ -499,14 +501,14 @@ Interrupt makes the commit stage stop further instructions fetching
     </article>
   
     <article class="card-wrapper card">
-      <a href="/posts/basecpu/" class="post-preview row g-0 flex-md-row-reverse">
+      <a href="/posts/gem5-macroop-to-microop/" class="post-preview row g-0 flex-md-row-reverse">
         
 
         
 
         <div class="col-md-12">
           <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">Basecpu</h1>
+            <h1 class="card-title my-2 mt-md-0">Gem5 Macroop To Microop</h1>
 
             <div class="card-text content mt-0 mb-3">
               <p>
@@ -516,10 +518,10 @@ Interrupt makes the commit stage stop further instructions fetching
 
 
 
-                gem5/src/cpu/BaseCPU.py
- 65 if buildEnv[&#39;TARGET_ISA&#39;] == &#39;alpha&#39;:
- 66     from m5.objects.AlphaTLB import AlphaDTB as ArchDTB, AlphaITB as ArchITB
- 67     from m5.objects.AlphaInterrupts import Alp...
+                Let’s begin by examining the translation of macroops into microops by first 
+focusing on the well-known ‘mov’ instructions in the x86 architecture.
+
+gem5/src/arch/x86/isa/insts/general_purpose/data...
               </p>
             </div>
 
@@ -537,11 +539,79 @@ Interrupt makes the commit stage stop further instructions fetching
 
 <time
   
-  data-ts="1628395200"
+  data-ts="1590984000"
   data-df="ll"
   
 >
-  Aug  8, 2021
+  Jun  1, 2020
+</time>
+
+
+                <!-- categories -->
+                
+                  <i class="far fa-folder-open fa-fw me-1"></i>
+                  <span class="categories">
+                    
+                      GEM5,,
+                      Macroop,,
+                      Microops,,
+                      PLY
+                  </span>
+                
+              </div>
+
+              
+            </div>
+            <!-- .post-meta -->
+          </div>
+          <!-- .card-body -->
+        </div>
+      </a>
+    </article>
+  
+    <article class="card-wrapper card">
+      <a href="/posts/gem5-event-loop/" class="post-preview row g-0 flex-md-row-reverse">
+        
+
+        
+
+        <div class="col-md-12">
+          <div class="card-body d-flex flex-column">
+            <h1 class="card-title my-2 mt-md-0">Gem5 Event Loop</h1>
+
+            <div class="card-text content mt-0 mb-3">
+              <p>
+                
+
+
+
+
+
+                I covered how GEM5 configures the hardware parameters through the python script.
+Also, in this posting I explained details how python can instantiate the 
+CPP classes that actually simulate hardwar...
+              </p>
+            </div>
+
+            <div class="post-meta flex-grow-1 d-flex align-items-end">
+              <div class="me-auto">
+                <!-- posted date -->
+                <i class="far fa-calendar fa-fw me-1"></i>
+                <!--
+  Date format snippet
+  See: ${JS_ROOT}/utils/locale-dateime.js
+-->
+
+
+
+
+<time
+  
+  data-ts="1589947200"
+  data-df="ll"
+  
+>
+  May 20, 2020
 </time>
 
 
@@ -565,14 +635,14 @@ Interrupt makes the commit stage stop further instructions fetching
     </article>
   
     <article class="card-wrapper card">
-      <a href="/posts/O3-cache-block/" class="post-preview row g-0 flex-md-row-reverse">
+      <a href="/posts/gem5-simobject/" class="post-preview row g-0 flex-md-row-reverse">
         
 
         
 
         <div class="col-md-12">
           <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cache Block</h1>
+            <h1 class="card-title my-2 mt-md-0">Gem5 Simobject</h1>
 
             <div class="card-text content mt-0 mb-3">
               <p>
@@ -582,15 +652,9 @@ Interrupt makes the commit stage stop further instructions fetching
 
 
 
-                
-Cache internal class hierarchies in GEM5
-  92 /**
-  93  * A basic cache interface. Implements some common functions for speed.
-  94  */
-  95 class BaseCache : public ClockedObject
-  96 {
-......
- 3...
+                When you first take a look at the GEM5 source code, it could be confusing 
+because it has python, CPP, and isa files which you might haven’t seen before. 
+In GEM5, Most of the simulation logic is i...
               </p>
             </div>
 
@@ -608,142 +672,11 @@ Cache internal class hierarchies in GEM5
 
 <time
   
-  data-ts="1623384000"
+  data-ts="1589860800"
   data-df="ll"
   
 >
-  Jun 11, 2021
-</time>
-
-
-                <!-- categories -->
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/O3-cache-recv/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cache Recv</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                Cache receive
-2510 bool
-2511 BaseCache::MemSidePort::recvTimingResp(PacketPtr pkt)
-2512 {
-2513     cache-&amp;gt;recvTimingResp(pkt);
-2514     return true;
-2515 }
-
-
-BaseCache::recvTimingResp
- 419 void
-...
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1623297600"
-  data-df="ll"
-  
->
-  Jun 10, 2021
-</time>
-
-
-                <!-- categories -->
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/O3-CPU-commit/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cpu Commit</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                Memory read and write of the O3 CPU
-
-Memory read
-621 LSQUnit&amp;lt;Impl&amp;gt;::read(LSQRequest *req, int load_idx)
-622 {
-623     LQEntry&amp;amp; load_req = loadQueue[load_idx];
-624     const DynInstPtr&amp;amp...
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1622779200"
-  data-df="ll"
-  
->
-  Jun  4, 2021
+  May 19, 2020
 </time>
 
 
@@ -752,345 +685,10 @@ Memory read
                   <i class="far fa-folder-open fa-fw me-1"></i>
                   <span class="categories">
                     
-                      GEM5,
-                      Pipeline,
-                      O3
-                  </span>
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/O3-CPU-commit/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cpu Commit</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                Commit (Commit::commitInsts()). Once the instruction reaches the head of ROB, it will be committed and released from ROB.
-
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1622606400"
-  data-df="ll"
-  
->
-  Jun  2, 2021
-</time>
-
-
-                <!-- categories -->
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/O3-CPU-iew/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cpu Iew</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                IEW: Issue/Execute/Writeback
-
-  GEM5 handles both execute and writeback when the execute() 
-function is called on an instruction. Therefore, GEM5 combines 
-Issue, Execute, and Writeback stage into ...
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1622520000"
-  data-df="ll"
-  
->
-  Jun  1, 2021
-</time>
-
-
-                <!-- categories -->
-                
-                  <i class="far fa-folder-open fa-fw me-1"></i>
-                  <span class="categories">
-                    
-                      GEM5,
-                      Pipeline,
-                      O3
-                  </span>
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/O3-CPU-rename/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cpu Rename</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                Rename
-It maintains the rename history of all instructions 
-with destination registers, storing the arch register, 
-the new physical register, and the old physical register.
-The information is requ...
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1622260800"
-  data-df="ll"
-  
->
-  May 29, 2021
-</time>
-
-
-                <!-- categories -->
-                
-                  <i class="far fa-folder-open fa-fw me-1"></i>
-                  <span class="categories">
-                    
-                      GEM5,
-                      Pipeline,
-                      O3
-                  </span>
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/O3-CPU-Decode/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cpu Decode</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                Sending fetched instructions to decode stage
-gem5/src/cpu/o3/fetch_impl.hh
- 961 
- 962     // Pick a random thread to start trying to grab instructions from
- 963     auto tid_itr = activeThreads-&amp;gt...
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1622174400"
-  data-df="ll"
-  
->
-  May 28, 2021
-</time>
-
-
-                <!-- categories -->
-                
-                  <i class="far fa-folder-open fa-fw me-1"></i>
-                  <span class="categories">
-                    
-                      GEM5,
-                      Pipeline,
-                      O3
-                  </span>
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/O3-CPU-Fetch/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cpu Fetch</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                Fetch
- 895 template &amp;lt;class Impl&amp;gt;
- 896 void
- 897 DefaultFetch&amp;lt;Impl&amp;gt;::tick()
- 898 {
- 899     list&amp;lt;ThreadID&amp;gt;::iterator threads = activeThreads-&amp;gt;begin();
- 900     list&amp;lt;ThreadID&amp;...
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1622088000"
-  data-df="ll"
-  
->
-  May 27, 2021
-</time>
-
-
-                <!-- categories -->
-                
-                  <i class="far fa-folder-open fa-fw me-1"></i>
-                  <span class="categories">
-                    
-                      GEM5,
-                      Pipeline,
-                      O3
+                      Gem5,,
+                      SimObject,,
+                      pybind11,,
+                      metaclass
                   </span>
                 
               </div>
@@ -1115,8 +713,8 @@ gem5/src/cpu/o3/fetch_impl.hh
     <!-- left arrow -->
     
 
-    <li class="page-item disabled">
-      <a class="page-link" href="#" aria-label="previous-page">
+    <li class="page-item ">
+      <a class="page-link" href="/page2" aria-label="previous-page">
         <i class="fas fa-angle-left"></i>
       </a>
     </li>
@@ -1136,7 +734,7 @@ gem5/src/cpu/o3/fetch_impl.hh
 
       
         <!-- show number -->
-        <li class="page-item  active">
+        <li class="page-item ">
           <a
             class="page-link"
             href="/"
@@ -1172,7 +770,7 @@ gem5/src/cpu/o3/fetch_impl.hh
 
       
         <!-- show number -->
-        <li class="page-item ">
+        <li class="page-item  active">
           <a
             class="page-link"
             href="/page3"
@@ -1183,15 +781,15 @@ gem5/src/cpu/o3/fetch_impl.hh
 
     <!-- mobile pagination -->
     <li class="page-index align-middle">
-      <span>1</span>
+      <span>3</span>
       <span class="text-muted">/ 3</span>
     </li>
 
     <!-- right arrow -->
     
 
-    <li class="page-item ">
-      <a class="page-link" href="/page2" aria-label="next-page">
+    <li class="page-item disabled">
+      <a class="page-link" href="#" aria-label="next-page">
         <i class="fas fa-angle-right"></i>
       </a>
     </li>

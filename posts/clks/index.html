@@ -1,0 +1,3782 @@
+<!doctype html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- `site.alt_lang` can specify a language different from the UI -->
+<html lang="en" data-mode="light">
+  <!-- The Head -->
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f7f7">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1b1b1e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta
+    name="viewport"
+    content="width=device-width, user-scalable=no initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
+  >
+
+  
+
+  
+
+  
+    <!-- Begin Jekyll SEO tag v2.8.0 -->
+<meta name="generator" content="Jekyll v4.3.2" />
+<meta property="og:title" content="Clks" />
+<meta property="og:locale" content="en" />
+<meta name="description" content="##Dwc3 probing ```c static int dwc3_apple_m1_probe(struct platform_device *pdev) { struct dwc3_apple *da; struct device *dev = &amp;pdev-&gt;dev; struct device_node *np = dev-&gt;of_node; 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 int ret; da = devm_kzalloc(dev, sizeof(*da), GFP_KERNEL); if (!da) return -ENOMEM; platform_set_drvdata(pdev, da); da-&gt;dev = dev; da-&gt;atcphy = of_iomap(np, 0); da-&gt;usbcore = of_iomap(np, 1); if (!da-&gt;atcphy || !da-&gt;usbcore) { pr_err(&quot;%pOFn: %s: failed to map MMIO ranges.&quot;, np, __func__); return -EINVAL; } ret = clk_bulk_get_all(da-&gt;dev, &amp;da-&gt;clks); if (ret &lt; 0) { pr_err(&quot;%pOFn: %s: clk_bulk_get_all failed.&quot;, np, __func__); return ret; } da-&gt;num_clocks = ret; ret = clk_bulk_prepare_enable(da-&gt;num_clocks, da-&gt;clks); if (ret) { pr_err(&quot;%pOFn: %s: clk_bulk_prepare_enable failed.&quot;, np, __func__); return ret; } ret = dwc3_apple_m1_start(da); if(ret) { pr_err(&quot;%pOFn: %s: failed to prepare hardware: %d.&quot;, np, __func__, ret); return ret; } ret = of_platform_populate(np, NULL, NULL, dev); if (ret) goto err_clk_put; pm_runtime_set_active(dev); pm_runtime_enable(dev); pm_runtime_get_sync(dev); return 0;" />
+<meta property="og:description" content="##Dwc3 probing ```c static int dwc3_apple_m1_probe(struct platform_device *pdev) { struct dwc3_apple *da; struct device *dev = &amp;pdev-&gt;dev; struct device_node *np = dev-&gt;of_node; 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 int ret; da = devm_kzalloc(dev, sizeof(*da), GFP_KERNEL); if (!da) return -ENOMEM; platform_set_drvdata(pdev, da); da-&gt;dev = dev; da-&gt;atcphy = of_iomap(np, 0); da-&gt;usbcore = of_iomap(np, 1); if (!da-&gt;atcphy || !da-&gt;usbcore) { pr_err(&quot;%pOFn: %s: failed to map MMIO ranges.&quot;, np, __func__); return -EINVAL; } ret = clk_bulk_get_all(da-&gt;dev, &amp;da-&gt;clks); if (ret &lt; 0) { pr_err(&quot;%pOFn: %s: clk_bulk_get_all failed.&quot;, np, __func__); return ret; } da-&gt;num_clocks = ret; ret = clk_bulk_prepare_enable(da-&gt;num_clocks, da-&gt;clks); if (ret) { pr_err(&quot;%pOFn: %s: clk_bulk_prepare_enable failed.&quot;, np, __func__); return ret; } ret = dwc3_apple_m1_start(da); if(ret) { pr_err(&quot;%pOFn: %s: failed to prepare hardware: %d.&quot;, np, __func__, ret); return ret; } ret = of_platform_populate(np, NULL, NULL, dev); if (ret) goto err_clk_put; pm_runtime_set_active(dev); pm_runtime_enable(dev); pm_runtime_get_sync(dev); return 0;" />
+<link rel="canonical" href="http://localhost:4000/posts/clks/" />
+<meta property="og:url" content="http://localhost:4000/posts/clks/" />
+<meta property="og:site_name" content="Ruach" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2021-05-07T00:00:00-04:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Clks" />
+<meta name="twitter:site" content="@ruach_lee" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-05-07T00:00:00-04:00","datePublished":"2021-05-07T00:00:00-04:00","description":"##Dwc3 probing ```c static int dwc3_apple_m1_probe(struct platform_device *pdev) { struct dwc3_apple *da; struct device *dev = &amp;pdev-&gt;dev; struct device_node *np = dev-&gt;of_node; 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 int ret; da = devm_kzalloc(dev, sizeof(*da), GFP_KERNEL); if (!da) return -ENOMEM; platform_set_drvdata(pdev, da); da-&gt;dev = dev; da-&gt;atcphy = of_iomap(np, 0); da-&gt;usbcore = of_iomap(np, 1); if (!da-&gt;atcphy || !da-&gt;usbcore) { pr_err(&quot;%pOFn: %s: failed to map MMIO ranges.&quot;, np, __func__); return -EINVAL; } ret = clk_bulk_get_all(da-&gt;dev, &amp;da-&gt;clks); if (ret &lt; 0) { pr_err(&quot;%pOFn: %s: clk_bulk_get_all failed.&quot;, np, __func__); return ret; } da-&gt;num_clocks = ret; ret = clk_bulk_prepare_enable(da-&gt;num_clocks, da-&gt;clks); if (ret) { pr_err(&quot;%pOFn: %s: clk_bulk_prepare_enable failed.&quot;, np, __func__); return ret; } ret = dwc3_apple_m1_start(da); if(ret) { pr_err(&quot;%pOFn: %s: failed to prepare hardware: %d.&quot;, np, __func__, ret); return ret; } ret = of_platform_populate(np, NULL, NULL, dev); if (ret) goto err_clk_put; pm_runtime_set_active(dev); pm_runtime_enable(dev); pm_runtime_get_sync(dev); return 0;","headline":"Clks","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/posts/clks/"},"url":"http://localhost:4000/posts/clks/"}</script>
+<!-- End Jekyll SEO tag -->
+
+  
+
+  <title>Clks | Ruach
+  </title>
+
+  <!--
+  The Favicons for Web, Android, Microsoft, and iOS (iPhone and iPad) Apps
+  Generated by: https://realfavicongenerator.net/
+-->
+
+
+
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/favicons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/img/favicons/favicon-16x16.png">
+<link rel="manifest" href="/assets/img/favicons/site.webmanifest">
+<link rel="shortcut icon" href="/assets/img/favicons/favicon.ico">
+<meta name="apple-mobile-web-app-title" content="Ruach">
+<meta name="application-name" content="Ruach">
+<meta name="msapplication-TileColor" content="#da532c">
+<meta name="msapplication-config" content="/assets/img/favicons/browserconfig.xml">
+<meta name="theme-color" content="#ffffff">
+
+
+  
+    
+      <link rel="preconnect" href="https://fonts.googleapis.com" >
+      <link rel="dns-prefetch" href="https://fonts.googleapis.com" >
+    
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link rel="dns-prefetch" href="https://fonts.gstatic.com" crossorigin>
+    
+      <link rel="preconnect" href="https://fonts.googleapis.com" >
+      <link rel="dns-prefetch" href="https://fonts.googleapis.com" >
+    
+      <link rel="preconnect" href="https://cdn.jsdelivr.net" >
+      <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" >
+    
+
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato&family=Source+Sans+Pro:wght@400;600;700;900&display=swap">
+  
+
+  <!-- GA -->
+  
+
+  <!-- Bootstrap -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.2/css/all.min.css">
+
+  <link rel="stylesheet" href="/assets/css/jekyll-theme-chirpy.css">
+
+  
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tocbot@4.21.2/dist/tocbot.min.css">
+  
+
+  
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/loading-attribute-polyfill@2.1.1/dist/loading-attribute-polyfill.min.css">
+  
+
+  
+    <!-- Manific Popup -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/magnific-popup@1.1.0/dist/magnific-popup.min.css">
+  
+
+  <!-- JavaScript -->
+
+  
+
+  <!-- A placeholder to allow defining custom metadata -->
+
+</head>
+
+
+  <body>
+    <!-- The Side Bar -->
+
+<aside aria-label="Sidebar" id="sidebar" class="d-flex flex-column align-items-end">
+  <header class="profile-wrapper">
+    <a href="/" id="avatar" class="rounded-circle">
+      
+        
+        <img src="/assets/img/jaehyuk.png" width="112" height="112" alt="avatar" onerror="this.style.display='none'">
+      
+    </a>
+
+    <h1 class="site-title">
+      <a href="/">Ruach</a>
+    </h1>
+    <p class="site-subtitle fst-italic mb-0">Security Researcher at Gatech</p>
+  </header>
+  <!-- .profile-wrapper -->
+
+  <nav class="flex-column flex-grow-1 w-100 ps-0">
+    <ul class="nav">
+      <!-- home -->
+      <li class="nav-item">
+        <a href="/" class="nav-link">
+          <i class="fa-fw fas fa-home"></i>
+          <span>HOME</span>
+        </a>
+      </li>
+      <!-- the real tabs -->
+      
+        <li class="nav-item">
+          <a href="/categories/" class="nav-link">
+            <i class="fa-fw fas fa-stream"></i>
+            
+
+            <span>CATEGORIES</span>
+          </a>
+        </li>
+        <!-- .nav-item -->
+      
+        <li class="nav-item">
+          <a href="/tags/" class="nav-link">
+            <i class="fa-fw fas fa-tags"></i>
+            
+
+            <span>TAGS</span>
+          </a>
+        </li>
+        <!-- .nav-item -->
+      
+        <li class="nav-item">
+          <a href="/archives/" class="nav-link">
+            <i class="fa-fw fas fa-archive"></i>
+            
+
+            <span>ARCHIVES</span>
+          </a>
+        </li>
+        <!-- .nav-item -->
+      
+        <li class="nav-item">
+          <a href="/about/" class="nav-link">
+            <i class="fa-fw fas fa-info-circle"></i>
+            
+
+            <span>ABOUT</span>
+          </a>
+        </li>
+        <!-- .nav-item -->
+      
+    </ul>
+  </nav>
+
+  <div class="sidebar-bottom d-flex flex-wrap  align-items-center w-100">
+    
+
+    
+      
+
+      
+        <a
+          href="javascript:location.href = 'mailto:' + ['jaehyuk','gatech.edu'].join('@')"
+          aria-label="email"
+          
+
+          
+
+          
+
+          
+        >
+          <i class="fas fa-envelope"></i>
+        </a>
+      
+    
+      
+
+      
+        <a
+          href="https://www.linkedin.com/in/jaehyuk-lee-29b33b121/"
+          aria-label="linkedin"
+          
+
+          
+            target="_blank"
+            
+          
+
+          
+
+          
+            rel="noopener noreferrer"
+          
+        >
+          <i class="fab fa-linkedin"></i>
+        </a>
+      
+    
+      
+
+      
+        <a
+          href="https://github.com/Ruach"
+          aria-label="github"
+          
+
+          
+            target="_blank"
+            
+          
+
+          
+
+          
+            rel="noopener noreferrer"
+          
+        >
+          <i class="fab fa-github"></i>
+        </a>
+      
+    
+      
+
+      
+        <a
+          href="https://stackoverflow.com/users/4460514/ruach?tab=profile"
+          aria-label="stack-overflow"
+          
+
+          
+            target="_blank"
+            
+          
+
+          
+
+          
+            rel="noopener noreferrer"
+          
+        >
+          <i class="fab fa-stack-overflow"></i>
+        </a>
+      
+    
+  </div>
+  <!-- .sidebar-bottom -->
+</aside>
+<!-- #sidebar -->
+
+
+    <div id="main-wrapper" class="d-flex justify-content-center">
+      <div class="container d-flex flex-column px-xxl-5">
+        <!-- The Top Bar -->
+
+<header id="topbar-wrapper" aria-label="Top Bar">
+  <div
+    id="topbar"
+    class="d-flex align-items-center justify-content-between px-lg-3 h-100"
+  >
+    <nav id="breadcrumb" aria-label="Breadcrumb">
+      
+
+      
+        
+          
+            <span>
+              <a href="/">
+                Home
+              </a>
+            </span>
+
+          
+        
+          
+        
+          
+            
+              <span>Clks</span>
+            
+
+          
+        
+      
+    </nav>
+    <!-- endof #breadcrumb -->
+
+    <button type="button" id="sidebar-trigger" class="btn btn-link">
+      <i class="fas fa-bars fa-fw"></i>
+    </button>
+
+    <div id="topbar-title">
+      Post
+    </div>
+
+    <button type="button" id="search-trigger" class="btn btn-link">
+      <i class="fas fa-search fa-fw"></i>
+    </button>
+
+    <search class="align-items-center ms-3 ms-lg-0">
+      <i class="fas fa-search fa-fw"></i>
+      <input
+        class="form-control"
+        id="search-input"
+        type="search"
+        aria-label="search"
+        autocomplete="off"
+        placeholder="Search..."
+      >
+    </search>
+    <button type="button" class="btn btn-link text-decoration-none" id="search-cancel">Cancel</button>
+  </div>
+</header>
+
+
+        <div class="row flex-grow-1">
+          <main aria-label="Main Content" class="col-12 col-lg-11 col-xl-9 px-md-4">
+            
+              <!-- Refactor the HTML structure -->
+
+
+
+<!--
+  In order to allow a wide table to scroll horizontally,
+  we suround the markdown table with `<div class="table-wrapper">` and `</div>`
+-->
+
+
+
+<!--
+  Fixed kramdown code highlight rendering:
+  https://github.com/penibelst/jekyll-compress-html/issues/101
+  https://github.com/penibelst/jekyll-compress-html/issues/71#issuecomment-188144901
+-->
+
+
+
+<!-- Change the icon of checkbox -->
+
+
+
+<!-- Handle images -->
+
+
+
+
+
+<!-- Add header for code snippets -->
+
+
+
+<!-- Create heading anchors -->
+
+
+
+
+
+  
+  
+
+  
+
+  
+  
+
+  
+
+  
+  
+
+  
+
+  
+  
+
+  
+
+
+
+
+<!-- return -->
+
+
+
+
+<article class="px-1">
+  <header>
+    <h1 data-toc-skip>Clks</h1>
+
+    <div class="post-meta text-muted">
+      <!-- published date -->
+      <span>
+        Posted
+        <!--
+  Date format snippet
+  See: ${JS_ROOT}/utils/locale-dateime.js
+-->
+
+
+
+
+<time
+  
+  data-ts="1620360000"
+  data-df="ll"
+  
+    data-bs-toggle="tooltip" data-bs-placement="bottom"
+  
+>
+  May  7, 2021
+</time>
+
+      </span>
+
+      <!-- lastmod date -->
+      
+
+      
+
+      <div class="d-flex justify-content-between">
+        <!-- author(s) -->
+        <span>
+          
+
+          By
+
+          <em>
+            
+              <a href="https://ruach.github.io">Jaehyuk Lee</a>
+            
+          </em>
+        </span>
+
+        <!-- read time -->
+        <!-- Calculate the post's reading time, and display the word count in tooltip -->
+
+
+
+<!-- words per minute -->
+
+
+
+
+
+
+
+
+
+
+<!-- return element -->
+<span
+  class="readtime"
+  data-bs-toggle="tooltip"
+  data-bs-placement="bottom"
+  title="6520 words"
+>
+  <em>36 min</em> read</span>
+
+      </div>
+      <!-- .d-flex -->
+    </div>
+    <!-- .post-meta -->
+  </header>
+
+  <div class="content">
+    <p>##Dwc3 probing</p>
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+</pre></td><td class="rouge-code"><pre><span class="k">static</span> <span class="kt">int</span> <span class="nf">dwc3_apple_m1_probe</span><span class="p">(</span><span class="k">struct</span> <span class="n">platform_device</span> <span class="o">*</span><span class="n">pdev</span><span class="p">)</span>
+<span class="p">{</span>       
+        <span class="k">struct</span> <span class="n">dwc3_apple</span>       <span class="o">*</span><span class="n">da</span><span class="p">;</span> 
+        <span class="k">struct</span> <span class="n">device</span>           <span class="o">*</span><span class="n">dev</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">pdev</span><span class="o">-&gt;</span><span class="n">dev</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">device_node</span>      <span class="o">*</span><span class="n">np</span> <span class="o">=</span> <span class="n">dev</span><span class="o">-&gt;</span><span class="n">of_node</span><span class="p">;</span>
+        
+        <span class="kt">int</span>                     <span class="n">ret</span><span class="p">;</span>
+        
+        <span class="n">da</span> <span class="o">=</span> <span class="n">devm_kzalloc</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">da</span><span class="p">),</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">da</span><span class="p">)</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+        
+        <span class="n">platform_set_drvdata</span><span class="p">(</span><span class="n">pdev</span><span class="p">,</span> <span class="n">da</span><span class="p">);</span>
+        <span class="n">da</span><span class="o">-&gt;</span><span class="n">dev</span> <span class="o">=</span> <span class="n">dev</span><span class="p">;</span>
+        
+        <span class="n">da</span><span class="o">-&gt;</span><span class="n">atcphy</span> <span class="o">=</span> <span class="n">of_iomap</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+        <span class="n">da</span><span class="o">-&gt;</span><span class="n">usbcore</span> <span class="o">=</span> <span class="n">of_iomap</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">da</span><span class="o">-&gt;</span><span class="n">atcphy</span> <span class="o">||</span> <span class="o">!</span><span class="n">da</span><span class="o">-&gt;</span><span class="n">usbcore</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">pr_err</span><span class="p">(</span><span class="s">"%pOFn: %s: failed to map MMIO ranges."</span><span class="p">,</span> <span class="n">np</span><span class="p">,</span> <span class="n">__func__</span><span class="p">);</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">EINVAL</span><span class="p">;</span>
+        <span class="p">}</span>
+        
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_bulk_get_all</span><span class="p">(</span><span class="n">da</span><span class="o">-&gt;</span><span class="n">dev</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">da</span><span class="o">-&gt;</span><span class="n">clks</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">ret</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">pr_err</span><span class="p">(</span><span class="s">"%pOFn: %s: clk_bulk_get_all failed."</span><span class="p">,</span> <span class="n">np</span><span class="p">,</span> <span class="n">__func__</span><span class="p">);</span>
+                <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="p">}</span>
+        
+        <span class="n">da</span><span class="o">-&gt;</span><span class="n">num_clocks</span> <span class="o">=</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_bulk_prepare_enable</span><span class="p">(</span><span class="n">da</span><span class="o">-&gt;</span><span class="n">num_clocks</span><span class="p">,</span> <span class="n">da</span><span class="o">-&gt;</span><span class="n">clks</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">pr_err</span><span class="p">(</span><span class="s">"%pOFn: %s: clk_bulk_prepare_enable failed."</span><span class="p">,</span> <span class="n">np</span><span class="p">,</span> <span class="n">__func__</span><span class="p">);</span>
+                <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="p">}</span>
+        
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">dwc3_apple_m1_start</span><span class="p">(</span><span class="n">da</span><span class="p">);</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">pr_err</span><span class="p">(</span><span class="s">"%pOFn: %s: failed to prepare hardware: %d."</span><span class="p">,</span> <span class="n">np</span><span class="p">,</span> <span class="n">__func__</span><span class="p">,</span> <span class="n">ret</span><span class="p">);</span>
+                <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="p">}</span>
+        
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">of_platform_populate</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="n">dev</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+                <span class="k">goto</span> <span class="n">err_clk_put</span><span class="p">;</span>
+        
+        <span class="n">pm_runtime_set_active</span><span class="p">(</span><span class="n">dev</span><span class="p">);</span>
+        <span class="n">pm_runtime_enable</span><span class="p">(</span><span class="n">dev</span><span class="p">);</span>
+        <span class="n">pm_runtime_get_sync</span><span class="p">(</span><span class="n">dev</span><span class="p">);</span>
+        
+        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="nl">err_clk_put:</span>
+        <span class="n">clk_bulk_disable_unprepare</span><span class="p">(</span><span class="n">da</span><span class="o">-&gt;</span><span class="n">num_clocks</span><span class="p">,</span> <span class="n">da</span><span class="o">-&gt;</span><span class="n">clks</span><span class="p">);</span>
+        <span class="n">clk_bulk_put_all</span><span class="p">(</span><span class="n">da</span><span class="o">-&gt;</span><span class="n">num_clocks</span><span class="p">,</span> <span class="n">da</span><span class="o">-&gt;</span><span class="n">clks</span><span class="p">);</span>
+        
+        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+<p>TODO: more…</p>
+
+<p>##Adding clock to the system in Linux Kernel with Device Tree</p>
+<div class="language-plaintext highlighter-rouge"><div class="code-header">
+        <span data-label-text="Plaintext"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+</pre></td><td class="rouge-code"><pre>    refclk24mhz: refclk24mhz {
+        compatible = "fixed-clock";
+        #clock-cells = &lt;0&gt;;
+        clock-frequency = &lt;24000000&gt;;
+        clock-output-names = "refclk24mhz";
+    };
+        atc0_common: atc0_common@23b700420 {
+            compatible = "apple,pmgr-clk-gate";
+            #clock-cells = &lt;0&gt;;
+            reg = &lt;0x2 0x3b700420 0x0 0x8&gt;;
+            clocks = &lt;&amp;refclk24mhz&gt;;
+            clock-output-names = "atc0_common";
+        };
+
+        atc0_usb_aon: atc0_usb_aon@23d280088 {
+            compatible = "apple,pmgr-clk-gate";
+            #clock-cells = &lt;0&gt;;
+            reg = &lt;0x2 0x3d280088 0x0 0x8&gt;;
+            clocks = &lt;&amp;atc0_common&gt;;
+            clock-output-names = "atc0_usb_aon";
+        };
+
+        atc0_usb: atc0_usb@23d280098 {
+            compatible = "apple,pmgr-clk-gate";
+            #clock-cells = &lt;0&gt;;
+            reg = &lt;0x2 0x3d280098 0x0 0x8&gt;;
+            clocks = &lt;&amp;atc0_usb_aon&gt;;
+            clock-output-names = "atc0_usb";
+        };
+</pre></td></tr></tbody></table></code></div></div>
+<p>When we take a look at the atc0_usb clock device,
+we can find that it has another clock phandle as 
+its clocks property.
+When we go all the way up to the root clock device node,
+we can see that 24mhz fixed clock device is the
+root device of multiple atc0 related clocks.</p>
+
+<p>Because fixed-clock is not in the interest of this posting,
+we will take a look at how the device driver 
+associated with apple clock device 
+handles those clock nodes in the device tree.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+</pre></td><td class="rouge-code"><pre><span class="k">static</span> <span class="kt">int</span> <span class="nf">clk_apple_pmgr_driver_probe</span><span class="p">(</span><span class="k">struct</span> <span class="n">platform_device</span> <span class="o">*</span><span class="n">pdev</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">node</span> <span class="o">=</span> <span class="n">pdev</span><span class="o">-&gt;</span><span class="n">dev</span><span class="p">.</span><span class="n">of_node</span><span class="p">;</span>
+        <span class="k">const</span> <span class="kt">char</span> <span class="o">**</span><span class="n">parent_names</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+        <span class="kt">unsigned</span> <span class="n">num_parents</span><span class="p">,</span> <span class="n">type</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="n">clk</span><span class="p">;</span>
+        <span class="kt">void</span> <span class="n">__iomem</span> <span class="o">*</span><span class="n">bases</span><span class="p">[</span><span class="n">MAX_BASES</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span> <span class="nb">NULL</span> <span class="p">};</span>
+        <span class="kt">int</span> <span class="n">i</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">err</span><span class="p">;</span>
+        <span class="kt">unsigned</span> <span class="n">seqn</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span> <span class="mi">0</span> <span class="p">},</span> <span class="o">*</span><span class="n">seq</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span> <span class="nb">NULL</span> <span class="p">};</span>
+        <span class="k">static</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span> <span class="k">const</span> <span class="n">seqname</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span> <span class="s">"pre-down"</span><span class="p">,</span> <span class="s">"pre-up"</span><span class="p">,</span> <span class="s">"post-down"</span><span class="p">,</span> <span class="s">"post-up"</span> <span class="p">};</span>
+        <span class="k">struct</span> <span class="n">clk_apple_pmgr</span> <span class="o">*</span><span class="n">clk_apple_pmgr</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">clk_init_data</span> <span class="n">init</span> <span class="o">=</span> <span class="p">{};</span>
+        <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span><span class="p">;</span>
+
+        <span class="n">num_parents</span> <span class="o">=</span> <span class="n">of_clk_get_parent_count</span><span class="p">(</span><span class="n">node</span><span class="p">);</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">num_parents</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">parent_names</span> <span class="o">=</span> <span class="n">devm_kcalloc</span><span class="p">(</span><span class="o">&amp;</span><span class="n">pdev</span><span class="o">-&gt;</span><span class="n">dev</span><span class="p">,</span> <span class="n">num_parents</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">),</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+                <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">parent_names</span><span class="p">)</span>
+                        <span class="k">return</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+                <span class="n">of_clk_parent_fill</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">parent_names</span><span class="p">,</span> <span class="n">num_parents</span><span class="p">);</span>
+        <span class="p">}</span>
+
+        <span class="n">n</span> <span class="o">=</span> <span class="n">of_property_count_elems_of_size</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="s">"reg"</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint32_t</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">of_n_addr_cells</span><span class="p">(</span><span class="n">node</span><span class="p">)</span> <span class="o">+</span> <span class="n">of_n_size_cells</span><span class="p">(</span><span class="n">node</span><span class="p">)));</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">n</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">pr_err</span><span class="p">(</span><span class="s">"%pOFn: %s: not enough MMIO ranges.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">__func__</span><span class="p">);</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">EINVAL</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">n</span> <span class="o">&gt;</span> <span class="n">MAX_BASES</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">pr_err</span><span class="p">(</span><span class="s">"%pOFn: %s: too many MMIO ranges.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">__func__</span><span class="p">);</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">EINVAL</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">for</span><span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="n">n</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">bases</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">of_iomap</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+                <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">bases</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="p">{</span>
+                        <span class="n">pr_err</span><span class="p">(</span><span class="s">"%pOFn: %s: unable to map MMIO range %d.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">__func__</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+                        <span class="k">return</span> <span class="o">-</span><span class="n">EINVAL</span><span class="p">;</span>
+                <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="k">for</span><span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="mi">4</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">n</span> <span class="o">=</span> <span class="n">of_property_count_elems_of_size</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">seqname</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint32_t</span><span class="p">));</span>
+                <span class="k">if</span><span class="p">(</span><span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                        <span class="n">seq</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">devm_kcalloc</span><span class="p">(</span><span class="o">&amp;</span><span class="n">pdev</span><span class="o">-&gt;</span><span class="n">dev</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">unsigned</span><span class="p">),</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+                        <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">seq</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                                <span class="k">return</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+                        <span class="n">seqn</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">of_property_read_variable_u32_array</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">seqname</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">seq</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span> <span class="o">/</span> <span class="mi">4</span><span class="p">;</span>
+                <span class="p">}</span>
+        <span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+<p>The first part of the probe function retrieves the reg values of the clock.
+of_property_count_elems_of_size function searches device tree nodes
+and returns how many reg property has values on its list.
+After the number has been figured out,
+it maps the value of reg properties to the kernel memory
+using the of_iomap function.
+Because reg property contains the physical addresses 
+that maps the device,
+of_iomap function traverse the reg property list 
+and maps the addresses. 
+All the mapped virtual addresses are stored in the bases array.</p>
+
+<p>In addition to the reg property,
+there can be clk related properties specified in the seqname array.
+When those properties exist and has some values,
+it should also be parsed and its string value should be translated to unsigned 32bit integer values
+(of_property_read_variable_u32_array).</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+</pre></td><td class="rouge-code"><pre><span class="k">struct</span> <span class="n">clk_apple_pmgr</span> <span class="p">{</span>
+        <span class="k">struct</span> <span class="n">clk_hw</span> <span class="n">hw</span><span class="p">;</span>
+        <span class="kt">unsigned</span> <span class="n">type</span><span class="p">;</span>
+        <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">;</span>
+        <span class="kt">void</span> <span class="n">__iomem</span> <span class="o">*</span><span class="n">bases</span><span class="p">[</span><span class="n">MAX_BASES</span><span class="p">];</span>
+        <span class="k">const</span> <span class="kt">unsigned</span> <span class="o">*</span><span class="n">seq</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span>
+        <span class="kt">unsigned</span> <span class="n">seqn</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span>
+        <span class="n">u32</span> <span class="n">freq_target</span><span class="p">;</span>
+<span class="p">};</span>
+  
+        <span class="n">type</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">of_device_is_compatible</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="s">"apple,pmgr-clk-gate"</span><span class="p">))</span>
+                <span class="n">type</span> <span class="o">=</span> <span class="n">PMGR_GATE</span><span class="p">;</span>
+
+        <span class="n">clk_apple_pmgr</span> <span class="o">=</span> <span class="n">devm_kzalloc</span><span class="p">(</span><span class="o">&amp;</span><span class="n">pdev</span><span class="o">-&gt;</span><span class="n">dev</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">clk_apple_pmgr</span><span class="p">),</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+        <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="n">clk_apple_pmgr</span><span class="p">)</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+
+        <span class="n">clk_apple_pmgr</span><span class="o">-&gt;</span><span class="n">type</span> <span class="o">=</span> <span class="n">type</span><span class="p">;</span>
+        <span class="k">for</span><span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="n">MAX_BASES</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+                <span class="n">clk_apple_pmgr</span><span class="o">-&gt;</span><span class="n">bases</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">bases</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+        <span class="k">for</span><span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span> <span class="n">i</span><span class="o">&lt;</span><span class="mi">4</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">clk_apple_pmgr</span><span class="o">-&gt;</span><span class="n">seq</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">seq</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+                <span class="n">clk_apple_pmgr</span><span class="o">-&gt;</span><span class="n">seqn</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">seqn</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+        <span class="p">}</span>
+        <span class="n">clk_apple_pmgr</span><span class="o">-&gt;</span><span class="n">name</span> <span class="o">=</span> <span class="n">node</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">;</span>
+
+        <span class="n">init</span><span class="p">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">node</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">;</span>
+        <span class="n">init</span><span class="p">.</span><span class="n">parent_names</span> <span class="o">=</span> <span class="n">parent_names</span><span class="p">;</span>
+        <span class="n">init</span><span class="p">.</span><span class="n">num_parents</span> <span class="o">=</span> <span class="n">num_parents</span><span class="p">;</span>
+
+</pre></td></tr></tbody></table></code></div></div>
+<p>The next part is not that interesting, just allocating instance of clk_apple_pmgr
+and assigns values read from the device tree 
+to the allocated object.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+</pre></td><td class="rouge-code"><pre>        <span class="k">switch</span><span class="p">(</span><span class="n">type</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">case</span> <span class="n">PMGR_GATE</span><span class="p">:</span>
+                <span class="n">err</span> <span class="o">=</span> <span class="n">clk_prepare_apple_pmgr_gate</span><span class="p">(</span><span class="n">clk_apple_pmgr</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">init</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">pdev</span><span class="o">-&gt;</span><span class="n">dev</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">parent_names</span><span class="p">,</span> <span class="n">num_parents</span><span class="p">,</span> <span class="n">bases</span><span class="p">);</span>
+                <span class="k">break</span><span class="p">;</span>
+        <span class="nl">default:</span>
+                <span class="n">pr_err</span><span class="p">(</span><span class="s">"%pOFn: %s: unsupported device type</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">node</span><span class="p">,</span> <span class="n">__func__</span><span class="p">);</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">EINVAL</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">err</span><span class="p">;</span>
+
+        <span class="n">clk_apple_pmgr</span><span class="o">-&gt;</span><span class="n">hw</span><span class="p">.</span><span class="n">init</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">init</span><span class="p">;</span>
+
+        <span class="n">hw</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">clk_apple_pmgr</span><span class="o">-&gt;</span><span class="n">hw</span><span class="p">;</span>
+        <span class="n">err</span> <span class="o">=</span> <span class="n">devm_clk_hw_register</span><span class="p">(</span><span class="o">&amp;</span><span class="n">pdev</span><span class="o">-&gt;</span><span class="n">dev</span><span class="p">,</span> <span class="n">hw</span><span class="p">);</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">err</span><span class="p">;</span>
+
+        <span class="n">clk</span> <span class="o">=</span> <span class="n">hw</span><span class="o">-&gt;</span><span class="n">clk</span><span class="p">;</span>
+        <span class="k">return</span> <span class="nf">of_clk_add_provider</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">of_clk_src_simple_get</span><span class="p">,</span> <span class="n">clk</span><span class="p">);</span>
+<span class="err">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+<p>The last part is the most important part, initializing the clock and registering to the linux kernel.
+First, take a look at how the clock can be initiliazed.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+</pre></td><td class="rouge-code"><pre><span class="cm">/**
+ * struct clk_init_data - holds init data that's common to all clocks and is
+ * shared between the clock provider and the common clock framework.
+ *
+ * @name: clock name
+ * @ops: operations this clock supports
+ * @parent_names: array of string names for all possible parents
+ * @parent_data: array of parent data for all possible parents (when some
+ *               parents are external to the clk controller)
+ * @parent_hws: array of pointers to all possible parents (when all parents
+ *              are internal to the clk controller)
+ * @num_parents: number of possible parents
+ * @flags: framework-level hints and quirks
+ */</span>
+<span class="k">struct</span> <span class="n">clk_init_data</span> <span class="p">{</span>
+        <span class="k">const</span> <span class="kt">char</span>              <span class="o">*</span><span class="n">name</span><span class="p">;</span>
+        <span class="k">const</span> <span class="k">struct</span> <span class="n">clk_ops</span>    <span class="o">*</span><span class="n">ops</span><span class="p">;</span>
+        <span class="cm">/* Only one of the following three should be assigned */</span>
+        <span class="k">const</span> <span class="kt">char</span>              <span class="o">*</span> <span class="k">const</span> <span class="o">*</span><span class="n">parent_names</span><span class="p">;</span>
+        <span class="k">const</span> <span class="k">struct</span> <span class="n">clk_parent_data</span>    <span class="o">*</span><span class="n">parent_data</span><span class="p">;</span>
+        <span class="k">const</span> <span class="k">struct</span> <span class="n">clk_hw</span>             <span class="o">**</span><span class="n">parent_hws</span><span class="p">;</span>
+        <span class="n">u8</span>                      <span class="n">num_parents</span><span class="p">;</span>
+        <span class="kt">unsigned</span> <span class="kt">long</span>           <span class="n">flags</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">static</span> <span class="kt">int</span> <span class="nf">clk_prepare_apple_pmgr_gate</span><span class="p">(</span><span class="k">struct</span> <span class="n">clk_apple_pmgr</span> <span class="o">*</span><span class="n">clk_apple_pmgr</span><span class="p">,</span> <span class="k">struct</span> <span class="n">clk_init_data</span> <span class="o">*</span><span class="n">init</span><span class="p">,</span> <span class="k">struct</span> <span class="n">device</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">node</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span> <span class="k">const</span> <span class="o">*</span><span class="n">parent_names</span><span class="p">,</span> <span class="n">u8</span> <span class="n">num_parents</span><span class="p">,</span> <span class="kt">void</span> <span class="n">__iomem</span> <span class="o">**</span><span class="n">bases</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="n">init</span><span class="o">-&gt;</span><span class="n">ops</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">clk_apple_pmgr_gate_ops</span><span class="p">;</span>
+        <span class="n">init</span><span class="o">-&gt;</span><span class="n">flags</span> <span class="o">=</span> <span class="n">CLK_SET_RATE_PARENT</span><span class="p">;</span>
+        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>Actually, initilization function doesn’t do much for pmgr_gate clock.
+for gate type clock, it must implement at least three functions
+speicified in the clk_apple_pmgr_gate_ops.
+It just assigns the clock operations to the init structure 
+and set flags. 
+And the filled-out init structure object is assigned to the clk_hw structure’s 
+memeber field init.</p>
+
+<p>Now we are going to check the most important clock api, clk_hw_register generating clock 
+and of_clk_add_provider registering generated clock to the linux system.
+First take a look at how the clk_hw_register function can populate the clock and register it to clock tree.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+</pre></td><td class="rouge-code"><pre><span class="cm">/**     
+ * devm_clk_hw_register - resource managed clk_hw_register()
+ * @dev: device that is registering this clock
+ * @hw: link to hardware-specific clock data
+ *      
+ * Managed clk_hw_register(). Clocks registered by this function are
+ * automatically clk_hw_unregister()ed on driver detach. See clk_hw_register()
+ * for more information.
+ */</span>     
+<span class="kt">int</span> <span class="nf">devm_clk_hw_register</span><span class="p">(</span><span class="k">struct</span> <span class="n">device</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span><span class="p">)</span>
+<span class="p">{</span>       
+        <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">**</span><span class="n">hwp</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+                
+        <span class="n">hwp</span> <span class="o">=</span> <span class="n">devres_alloc</span><span class="p">(</span><span class="n">devm_clk_hw_unregister_cb</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">hwp</span><span class="p">),</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">hwp</span><span class="p">)</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+        
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_hw_register</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="n">hw</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">ret</span><span class="p">)</span> <span class="p">{</span>
+                <span class="o">*</span><span class="n">hwp</span> <span class="o">=</span> <span class="n">hw</span><span class="p">;</span>
+                <span class="n">devres_add</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="n">hwp</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+                <span class="n">devres_free</span><span class="p">(</span><span class="n">hwp</span><span class="p">);</span>
+        <span class="p">}</span>
+        
+        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="n">EXPORT_SYMBOL_GPL</span><span class="p">(</span><span class="n">devm_clk_hw_register</span><span class="p">);</span>
+
+<span class="cm">/**
+ * clk_hw_register - register a clk_hw and return an error code
+ * @dev: device that is registering this clock
+ * @hw: link to hardware-specific clock data
+ *
+ * clk_hw_register is the primary interface for populating the clock tree with
+ * new clock nodes. It returns an integer equal to zero indicating success or
+ * less than zero indicating failure. Drivers must test for an error code after
+ * calling clk_hw_register().
+ */</span>
+<span class="kt">int</span> <span class="nf">clk_hw_register</span><span class="p">(</span><span class="k">struct</span> <span class="n">device</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">return</span> <span class="n">PTR_ERR_OR_ZERO</span><span class="p">(</span><span class="n">__clk_register</span><span class="p">(</span><span class="n">dev</span><span class="p">,</span> <span class="n">dev_or_parent_of_node</span><span class="p">(</span><span class="n">dev</span><span class="p">),</span>
+                               <span class="n">hw</span><span class="p">));</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span>
+<span class="nf">__clk_register</span><span class="p">(</span><span class="k">struct</span> <span class="n">device</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span> <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">clk_core</span> <span class="o">*</span><span class="n">core</span><span class="p">;</span>
+        <span class="k">const</span> <span class="k">struct</span> <span class="n">clk_init_data</span> <span class="o">*</span><span class="n">init</span> <span class="o">=</span> <span class="n">hw</span><span class="o">-&gt;</span><span class="n">init</span><span class="p">;</span>
+
+        <span class="cm">/*
+         * The init data is not supposed to be used outside of registration path.
+         * Set it to NULL so that provider drivers can't use it either and so that
+         * we catch use of hw-&gt;init early on in the core.
+         */</span>
+        <span class="n">hw</span><span class="o">-&gt;</span><span class="n">init</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+
+        <span class="n">core</span> <span class="o">=</span> <span class="n">kzalloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">core</span><span class="p">),</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">core</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+                <span class="k">goto</span> <span class="n">fail_out</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">name</span> <span class="o">=</span> <span class="n">kstrdup_const</span><span class="p">(</span><span class="n">init</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">,</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+                <span class="k">goto</span> <span class="n">fail_name</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">WARN_ON</span><span class="p">(</span><span class="o">!</span><span class="n">init</span><span class="o">-&gt;</span><span class="n">ops</span><span class="p">))</span> <span class="p">{</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="o">-</span><span class="n">EINVAL</span><span class="p">;</span>
+                <span class="k">goto</span> <span class="n">fail_ops</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">ops</span> <span class="o">=</span> <span class="n">init</span><span class="o">-&gt;</span><span class="n">ops</span><span class="p">;</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">dev</span> <span class="o">&amp;&amp;</span> <span class="n">pm_runtime_enabled</span><span class="p">(</span><span class="n">dev</span><span class="p">))</span>
+                <span class="n">core</span><span class="o">-&gt;</span><span class="n">rpm_enabled</span> <span class="o">=</span> <span class="nb">true</span><span class="p">;</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">dev</span> <span class="o">=</span> <span class="n">dev</span><span class="p">;</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">of_node</span> <span class="o">=</span> <span class="n">np</span><span class="p">;</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">dev</span> <span class="o">&amp;&amp;</span> <span class="n">dev</span><span class="o">-&gt;</span><span class="n">driver</span><span class="p">)</span>
+                <span class="n">core</span><span class="o">-&gt;</span><span class="n">owner</span> <span class="o">=</span> <span class="n">dev</span><span class="o">-&gt;</span><span class="n">driver</span><span class="o">-&gt;</span><span class="n">owner</span><span class="p">;</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">hw</span> <span class="o">=</span> <span class="n">hw</span><span class="p">;</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">flags</span> <span class="o">=</span> <span class="n">init</span><span class="o">-&gt;</span><span class="n">flags</span><span class="p">;</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">num_parents</span> <span class="o">=</span> <span class="n">init</span><span class="o">-&gt;</span><span class="n">num_parents</span><span class="p">;</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">min_rate</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">max_rate</span> <span class="o">=</span> <span class="n">ULONG_MAX</span><span class="p">;</span>
+        <span class="n">hw</span><span class="o">-&gt;</span><span class="n">core</span> <span class="o">=</span> <span class="n">core</span><span class="p">;</span>
+
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_core_populate_parent_map</span><span class="p">(</span><span class="n">core</span><span class="p">,</span> <span class="n">init</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+                <span class="k">goto</span> <span class="n">fail_parents</span><span class="p">;</span>
+
+        <span class="n">INIT_HLIST_HEAD</span><span class="p">(</span><span class="o">&amp;</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">clks</span><span class="p">);</span>
+</pre></td></tr></tbody></table></code></div></div>
+<p>As you can see in the above function,
+the init structure we set in the clk_hw object 
+is used to fill out the new core structure object.
+After finishing assigning information to core object, 
+it should be assigned to the clk_hw object.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+</pre></td><td class="rouge-code"><pre>
+        <span class="cm">/*
+         * Don't call clk_hw_create_clk() here because that would pin the
+         * provider module to itself and prevent it from ever being removed.
+         */</span>
+        <span class="n">hw</span><span class="o">-&gt;</span><span class="n">clk</span> <span class="o">=</span> <span class="n">alloc_clk</span><span class="p">(</span><span class="n">core</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">IS_ERR</span><span class="p">(</span><span class="n">hw</span><span class="o">-&gt;</span><span class="n">clk</span><span class="p">))</span> <span class="p">{</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">PTR_ERR</span><span class="p">(</span><span class="n">hw</span><span class="o">-&gt;</span><span class="n">clk</span><span class="p">);</span>
+                <span class="k">goto</span> <span class="n">fail_create_clk</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="n">clk_core_link_consumer</span><span class="p">(</span><span class="n">hw</span><span class="o">-&gt;</span><span class="n">core</span><span class="p">,</span> <span class="n">hw</span><span class="o">-&gt;</span><span class="n">clk</span><span class="p">);</span>
+
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">__clk_core_init</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">ret</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">hw</span><span class="o">-&gt;</span><span class="n">clk</span><span class="p">;</span>
+
+        <span class="n">clk_prepare_lock</span><span class="p">();</span>
+        <span class="n">clk_core_unlink_consumer</span><span class="p">(</span><span class="n">hw</span><span class="o">-&gt;</span><span class="n">clk</span><span class="p">);</span>
+        <span class="n">clk_prepare_unlock</span><span class="p">();</span>
+
+        <span class="n">free_clk</span><span class="p">(</span><span class="n">hw</span><span class="o">-&gt;</span><span class="n">clk</span><span class="p">);</span>
+        <span class="n">hw</span><span class="o">-&gt;</span><span class="n">clk</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+
+<span class="n">fail_create_clk</span><span class="o">:</span>
+        <span class="n">clk_core_free_parent_map</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+<span class="n">fail_parents</span><span class="o">:</span>
+<span class="n">fail_ops</span><span class="o">:</span>
+        <span class="n">kfree_const</span><span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">);</span>
+<span class="n">fail_name</span><span class="o">:</span>
+        <span class="n">kfree</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+<span class="n">fail_out</span><span class="o">:</span>
+        <span class="k">return</span> <span class="nf">ERR_PTR</span><span class="p">(</span><span class="n">ret</span><span class="p">);</span>
+<span class="err">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+<p>Now fianlly, this function allocates a clock object using alloc_clk function.
+By passing the core structure, it will assign the object to the generated clk object.
+At the time of clk object has been allocated,
+clk object, core object, and clk_hw objects will have a pointers 
+connecting each other.
+Also __clk_core_inti function checks
+whether the core operations has been properly set, and 
+if they are set correctly, they initialize the left fields
+such as frequency using the provided operations.</p>
+
+<p>###Adding generated clock as provider 
+After generating all required fields for clock structure such as core and clk_hw,
+we need to register the generated clock to the system. 
+Let’s revisit how the of_clk_add_provider is invoked 
+in the probe function of apple-pmgr device driver
+and check out how this function finish clock registration properly.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+</pre></td><td class="rouge-code"><pre><span class="cm">/**
+
+        clk = hw-&gt;clk;
+        return of_clk_add_provider(node, of_clk_src_simple_get, clk);
+
+ * of_clk_add_provider() - Register a clock provider for a node
+ * @np: Device node pointer associated with clock provider
+ * @clk_src_get: callback for decoding clock
+ * @data: context pointer for @clk_src_get callback.
+ *
+ * This function is *deprecated*. Use of_clk_add_hw_provider() instead.
+ */</span>
+<span class="kt">int</span> <span class="nf">of_clk_add_provider</span><span class="p">(</span><span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span>
+                        <span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="p">(</span><span class="o">*</span><span class="n">clk_src_get</span><span class="p">)(</span><span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="o">*</span><span class="n">clkspec</span><span class="p">,</span>
+                                                   <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">),</span>
+                        <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">of_clk_provider</span> <span class="o">*</span><span class="n">cp</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+
+        <span class="n">cp</span> <span class="o">=</span> <span class="n">kzalloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">cp</span><span class="p">),</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">cp</span><span class="p">)</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+
+        <span class="n">cp</span><span class="o">-&gt;</span><span class="n">node</span> <span class="o">=</span> <span class="n">of_node_get</span><span class="p">(</span><span class="n">np</span><span class="p">);</span>
+        <span class="n">cp</span><span class="o">-&gt;</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="p">;</span>
+        <span class="n">cp</span><span class="o">-&gt;</span><span class="n">get</span> <span class="o">=</span> <span class="n">clk_src_get</span><span class="p">;</span>
+
+        <span class="n">mutex_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">of_clk_mutex</span><span class="p">);</span>
+        <span class="n">list_add</span><span class="p">(</span><span class="o">&amp;</span><span class="n">cp</span><span class="o">-&gt;</span><span class="n">link</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">of_clk_providers</span><span class="p">);</span>
+        <span class="n">mutex_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">of_clk_mutex</span><span class="p">);</span>
+        <span class="n">pr_debug</span><span class="p">(</span><span class="s">"Added clock from %pOF</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">np</span><span class="p">);</span>
+
+        <span class="n">clk_core_reparent_orphans</span><span class="p">();</span>
+
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">of_clk_set_defaults</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="nb">true</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">ret</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="n">of_clk_del_provider</span><span class="p">(</span><span class="n">np</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="n">EXPORT_SYMBOL_GPL</span><span class="p">(</span><span class="n">of_clk_add_provider</span><span class="p">);</span>
+</pre></td></tr></tbody></table></code></div></div>
+<p>Note that we passed clk object to the of_clk_add_provider function as its data argument.
+This data is actual clock object we created through previous steps. 
+And also, it requires clk_src_get function which will be invoked later 
+to retireve the registered clock object by the consumer. 
+Actually registering our clock object to system is 
+just assigning the of_clk_provider structure that embraces
+not only the clock object we created, but also the method to retrieve the clock object 
+to the global list called of_clk_providers.
+Later this list will be searched to find out the clock object
+whenever the other device node requiring the pre-configured clocks.</p>
+
+<p>##Utilizing registered clock resource in other devices</p>
+
+<p><strong>driver/clk/clk-bulk.c</strong></p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+</pre></td><td class="rouge-code"><pre><span class="kt">int</span> <span class="n">__must_check</span> <span class="nf">clk_bulk_get_all</span><span class="p">(</span><span class="k">struct</span> <span class="n">device</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span>
+                                  <span class="k">struct</span> <span class="n">clk_bulk_data</span> <span class="o">**</span><span class="n">clks</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span> <span class="o">=</span> <span class="n">dev_of_node</span><span class="p">(</span><span class="n">dev</span><span class="p">);</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">np</span><span class="p">)</span>
+                <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">return</span> <span class="n">of_clk_bulk_get_all</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="n">clks</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="n">EXPORT_SYMBOL</span><span class="p">(</span><span class="n">clk_bulk_get_all</span><span class="p">);</span>
+
+<span class="k">static</span> <span class="kt">int</span> <span class="n">__must_check</span> <span class="nf">of_clk_bulk_get_all</span><span class="p">(</span><span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span>
+                                            <span class="k">struct</span> <span class="n">clk_bulk_data</span> <span class="o">**</span><span class="n">clks</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">clk_bulk_data</span> <span class="o">*</span><span class="n">clk_bulk</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">num_clks</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+
+        <span class="n">num_clks</span> <span class="o">=</span> <span class="n">of_clk_get_parent_count</span><span class="p">(</span><span class="n">np</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">num_clks</span><span class="p">)</span>
+                <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="n">clk_bulk</span> <span class="o">=</span> <span class="n">kmalloc_array</span><span class="p">(</span><span class="n">num_clks</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">clk_bulk</span><span class="p">),</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">clk_bulk</span><span class="p">)</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">of_clk_bulk_get</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="n">num_clks</span><span class="p">,</span> <span class="n">clk_bulk</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">kfree</span><span class="p">(</span><span class="n">clk_bulk</span><span class="p">);</span>
+                <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="o">*</span><span class="n">clks</span> <span class="o">=</span> <span class="n">clk_bulk</span><span class="p">;</span>
+
+        <span class="k">return</span> <span class="n">num_clks</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="kt">int</span> <span class="n">__must_check</span> <span class="nf">of_clk_bulk_get</span><span class="p">(</span><span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span> <span class="kt">int</span> <span class="n">num_clks</span><span class="p">,</span>
+                                        <span class="k">struct</span> <span class="n">clk_bulk_data</span> <span class="o">*</span><span class="n">clks</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">i</span><span class="p">;</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">num_clks</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">id</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+                <span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">clk</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">num_clks</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">of_property_read_string_index</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="s">"clock-names"</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">id</span><span class="p">);</span>
+                <span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">clk</span> <span class="o">=</span> <span class="n">of_clk_get</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">IS_ERR</span><span class="p">(</span><span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">clk</span><span class="p">))</span> <span class="p">{</span>
+                        <span class="n">ret</span> <span class="o">=</span> <span class="n">PTR_ERR</span><span class="p">(</span><span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">clk</span><span class="p">);</span>
+                        <span class="n">pr_err</span><span class="p">(</span><span class="s">"%pOF: Failed to get clk index: %d ret: %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span>
+                               <span class="n">np</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">ret</span><span class="p">);</span>
+                        <span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">clk</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+                        <span class="k">goto</span> <span class="n">err</span><span class="p">;</span>
+                <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="nl">err:</span>
+        <span class="n">clk_bulk_put</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">clks</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>The most important part of the above function is of_clk_get which retrieves the clk structure
+associated with current device. 
+Remember that the clk structure should be registered 
+before the device make use of it.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+</pre></td><td class="rouge-code"><pre><span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="nf">of_clk_get</span><span class="p">(</span><span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span> <span class="kt">int</span> <span class="n">index</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">return</span> <span class="n">__of_clk_get</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">np</span><span class="o">-&gt;</span><span class="n">full_name</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+<span class="p">}</span>       
+<span class="n">EXPORT_SYMBOL</span><span class="p">(</span><span class="n">of_clk_get</span><span class="p">);</span>
+
+<span class="k">static</span> <span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="nf">__of_clk_get</span><span class="p">(</span><span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span>
+                                <span class="kt">int</span> <span class="n">index</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">dev_id</span><span class="p">,</span>
+                                <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">con_id</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span> <span class="o">=</span> <span class="n">of_clk_get_hw</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">con_id</span><span class="p">);</span>
+                                            
+        <span class="k">return</span> <span class="n">clk_hw_create_clk</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span> <span class="n">hw</span><span class="p">,</span> <span class="n">dev_id</span><span class="p">,</span> <span class="n">con_id</span><span class="p">);</span>
+<span class="p">}</span>       
+        
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>To retrieve the clk structure,
+it first needs to have an access to the clk_hw structure 
+which is embedded in the clk structure that we want.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+</pre></td><td class="rouge-code"><pre><span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="nf">of_clk_get_hw</span><span class="p">(</span><span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span> <span class="kt">int</span> <span class="n">index</span><span class="p">,</span>
+                             <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">con_id</span><span class="p">)</span>
+<span class="p">{</span>               
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="n">clkspec</span><span class="p">;</span>
+                        
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">of_parse_clkspec</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">con_id</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">clkspec</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span>        
+                <span class="k">return</span> <span class="n">ERR_PTR</span><span class="p">(</span><span class="n">ret</span><span class="p">);</span>
+                
+        <span class="n">hw</span> <span class="o">=</span> <span class="n">of_clk_get_hw_from_clkspec</span><span class="p">(</span><span class="o">&amp;</span><span class="n">clkspec</span><span class="p">);</span>
+        <span class="n">of_node_put</span><span class="p">(</span><span class="n">clkspec</span><span class="p">.</span><span class="n">np</span><span class="p">);</span>
+        
+        <span class="k">return</span> <span class="n">hw</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>###Locating the clock node
+The below sequences of function tries to locate the 
+clock property of your device node first.
+Because clock property contains one or more clocks 
+as the format for phandles, 
+first we need to find a phandle associated with the clock device
+that we want to retrieve. 
+To do that, we can pass either index or con_id 
+used to find the phandle that we want to retrieve. 
+After the phandle is found,
+because phandle is also a device node for the clock,
+we can retrieve the associated device node of that clock source.
+This clock resource is going to be stored in the clkspec.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+</pre></td><td class="rouge-code"><pre><span class="cm">/**
+ * of_parse_clkspec() - Parse a DT clock specifier for a given device node
+ * @np: device node to parse clock specifier from
+ * @index: index of phandle to parse clock out of. If index &lt; 0, @name is used
+ * @name: clock name to find and parse. If name is NULL, the index is used
+ * @out_args: Result of parsing the clock specifier
+ *
+ * Parses a device node's "clocks" and "clock-names" properties to find the
+ * phandle and cells for the index or name that is desired. The resulting clock
+ * specifier is placed into @out_args, or an errno is returned when there's a
+ * parsing error. The @index argument is ignored if @name is non-NULL.
+ *
+ * Example:
+ *
+ * phandle1: clock-controller@1 {
+ *      #clock-cells = &lt;2&gt;;
+ * }
+ *
+ * phandle2: clock-controller@2 {
+ *      #clock-cells = &lt;1&gt;;
+ * }
+ *
+ * clock-consumer@3 {
+ *      clocks = &lt;&amp;phandle1 1 2 &amp;phandle2 3&gt;;
+ *      clock-names = "name1", "name2";
+ * }
+ *
+ * To get a device_node for `clock-controller@2' node you may call this
+ * function a few different ways:
+ *
+ *   of_parse_clkspec(clock-consumer@3, -1, "name2", &amp;args);
+ *   of_parse_clkspec(clock-consumer@3, 1, NULL, &amp;args);
+ *   of_parse_clkspec(clock-consumer@3, 1, "name2", &amp;args);
+ *
+ * Return: 0 upon successfully parsing the clock specifier. Otherwise, -ENOENT
+ * if @name is NULL or -EINVAL if @name is non-NULL and it can't be found in
+ * the "clock-names" property of @np.
+ */</span>
+
+<span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="p">{</span>
+        <span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">args_count</span><span class="p">;</span>
+        <span class="kt">uint32_t</span> <span class="n">args</span><span class="p">[</span><span class="n">MAX_PHANDLE_ARGS</span><span class="p">];</span>
+<span class="p">};</span>
+
+<span class="k">static</span> <span class="kt">int</span> <span class="nf">of_parse_clkspec</span><span class="p">(</span><span class="k">const</span> <span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span> <span class="kt">int</span> <span class="n">index</span><span class="p">,</span>
+                            <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">name</span><span class="p">,</span> <span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="o">*</span><span class="n">out_args</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">int</span> <span class="n">ret</span> <span class="o">=</span> <span class="o">-</span><span class="n">ENOENT</span><span class="p">;</span>
+
+        <span class="cm">/* Walk up the tree of devices looking for a clock property that matches */</span>
+        <span class="k">while</span> <span class="p">(</span><span class="n">np</span><span class="p">)</span> <span class="p">{</span>
+                <span class="cm">/*
+                 * For named clocks, first look up the name in the
+                 * "clock-names" property.  If it cannot be found, then index
+                 * will be an error code and of_parse_phandle_with_args() will
+                 * return -EINVAL.
+                 */</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">name</span><span class="p">)</span>
+                        <span class="n">index</span> <span class="o">=</span> <span class="n">of_property_match_string</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="s">"clock-names"</span><span class="p">,</span> <span class="n">name</span><span class="p">);</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">of_parse_phandle_with_args</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="s">"clocks"</span><span class="p">,</span> <span class="s">"#clock-cells"</span><span class="p">,</span>
+                                                 <span class="n">index</span><span class="p">,</span> <span class="n">out_args</span><span class="p">);</span>
+                <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">ret</span><span class="p">)</span>
+                        <span class="k">break</span><span class="p">;</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">name</span> <span class="o">&amp;&amp;</span> <span class="n">index</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">)</span>
+                        <span class="k">break</span><span class="p">;</span>
+
+                <span class="cm">/*
+                 * No matching clock found on this node.  If the parent node
+                 * has a "clock-ranges" property, then we can try one of its
+                 * clocks.
+                 */</span>
+                <span class="n">np</span> <span class="o">=</span> <span class="n">np</span><span class="o">-&gt;</span><span class="n">parent</span><span class="p">;</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">np</span> <span class="o">&amp;&amp;</span> <span class="o">!</span><span class="n">of_get_property</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="s">"clock-ranges"</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">))</span>
+                        <span class="k">break</span><span class="p">;</span>
+                <span class="n">index</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>When you look at the device file, 
+you can easily find that your device has clock property,
+and it contains one or more phandles, which are specified with 
+\&amp; operator and the clk device name.</p>
+
+<p>Because clock of the device can be represented with the phandle,
+of_parse_clkspec needs to utilize proper device tree api 
+that can parse the phandle, of_parse_phandle_with_args.
+This function parse the current device node 
+and retrieves phandles assigned to specific property.</p>
+
+<p>Here, since this function pass the “clocks” as the property names,
+it will find the cloks and generates the of_phandle_args structure
+using the assigned phandles.</p>
+
+<p>Note that index passed to every above function implies that 
+clock properties can have multiple phandles
+associated with the current device. 
+Therefore, by passing the index, we can skip the previous 
+clock phandles and only pick the clock that we want to have access.<br />
+Note that the function that we initially invoked is<br />
+of_clk_bulk_get not of_clk_get (need to retrieve all clk phandles).</p>
+
+<p>Also, of_parse_clkspec function utilize index 
+when the name parameter has been passed as NULL.
+If the name has been passed, instead of index,
+then the index will be re-calculated by searching the 
+clock-names, which contains string names associated with each clock phandles.
+In our case, we have passed the index instead of its string alias, 
+it will directly invoke the of_parse_phandle_with_args with the passed index.</p>
+
+<p><strong>drivers/of/base.c</strong></p>
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+101
+102
+</pre></td><td class="rouge-code"><pre><span class="cm">/**
+ * of_parse_phandle_with_args() - Find a node pointed by phandle in a list
+ * @np:         pointer to a device tree node containing a list
+ * @list_name:  property name that contains a list
+ * @cells_name: property name that specifies phandles' arguments count
+ * @index:      index of a phandle to parse out
+ * @out_args:   optional pointer to output arguments structure (will be filled)
+ *
+ * This function is useful to parse lists of phandles and their arguments.
+ * Returns 0 on success and fills out_args, on error returns appropriate
+ * errno value.
+ *
+ * Caller is responsible to call of_node_put() on the returned out_args-&gt;np
+ * pointer.
+ * 
+ * Example:
+ * 
+ * phandle1: node1 {
+ *      #list-cells = &lt;2&gt;;
+ * }    
+ * 
+ * phandle2: node2 {
+ *      #list-cells = &lt;1&gt;;
+ * }    
+ *      
+ * node3 {
+ *      list = &lt;&amp;phandle1 1 2 &amp;phandle2 3&gt;;
+ * }
+ * 
+ * To get a device_node of the `node2' node you may call this:
+ * of_parse_phandle_with_args(node3, "list", "#list-cells", 1, &amp;args);
+ */</span>  
+<span class="kt">int</span> <span class="nf">of_parse_phandle_with_args</span><span class="p">(</span><span class="k">const</span> <span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">list_name</span><span class="p">,</span>
+                                <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">cells_name</span><span class="p">,</span> <span class="kt">int</span> <span class="n">index</span><span class="p">,</span>
+                                <span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="o">*</span><span class="n">out_args</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">int</span> <span class="n">cell_count</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+ 
+        <span class="k">if</span> <span class="p">(</span><span class="n">index</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">EINVAL</span><span class="p">;</span>
+
+        <span class="cm">/* If cells_name is NULL we assume a cell count of 0 */</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">cells_name</span><span class="p">)</span>
+                <span class="n">cell_count</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        
+        <span class="k">return</span> <span class="n">__of_parse_phandle_with_args</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="n">list_name</span><span class="p">,</span> <span class="n">cells_name</span><span class="p">,</span>
+                                            <span class="n">cell_count</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">out_args</span><span class="p">);</span>
+<span class="p">}</span>        
+
+
+<span class="k">static</span> <span class="kt">int</span> <span class="nf">__of_parse_phandle_with_args</span><span class="p">(</span><span class="k">const</span> <span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span>
+                                        <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">list_name</span><span class="p">,</span>
+                                        <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">cells_name</span><span class="p">,</span>
+                                        <span class="kt">int</span> <span class="n">cell_count</span><span class="p">,</span> <span class="kt">int</span> <span class="n">index</span><span class="p">,</span>
+                                        <span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="o">*</span><span class="n">out_args</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">of_phandle_iterator</span> <span class="n">it</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">rc</span><span class="p">,</span> <span class="n">cur_index</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="cm">/* Loop over the phandles until all the requested entry is found */</span>
+        <span class="n">of_for_each_phandle</span><span class="p">(</span><span class="o">&amp;</span><span class="n">it</span><span class="p">,</span> <span class="n">rc</span><span class="p">,</span> <span class="n">np</span><span class="p">,</span> <span class="n">list_name</span><span class="p">,</span> <span class="n">cells_name</span><span class="p">,</span> <span class="n">cell_count</span><span class="p">)</span> <span class="p">{</span>
+                <span class="cm">/*
+                 * All of the error cases bail out of the loop, so at
+                 * this point, the parsing is successful. If the requested
+                 * index matches, then fill the out_args structure and return,
+                 * or return -ENOENT for an empty entry.
+                 */</span>
+                <span class="n">rc</span> <span class="o">=</span> <span class="o">-</span><span class="n">ENOENT</span><span class="p">;</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">cur_index</span> <span class="o">==</span> <span class="n">index</span><span class="p">)</span> <span class="p">{</span>
+                        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">it</span><span class="p">.</span><span class="n">phandle</span><span class="p">)</span>
+                                <span class="k">goto</span> <span class="n">err</span><span class="p">;</span>
+
+                        <span class="k">if</span> <span class="p">(</span><span class="n">out_args</span><span class="p">)</span> <span class="p">{</span>
+                                <span class="kt">int</span> <span class="n">c</span><span class="p">;</span>
+
+                                <span class="n">c</span> <span class="o">=</span> <span class="n">of_phandle_iterator_args</span><span class="p">(</span><span class="o">&amp;</span><span class="n">it</span><span class="p">,</span>
+                                                             <span class="n">out_args</span><span class="o">-&gt;</span><span class="n">args</span><span class="p">,</span>
+                                                             <span class="n">MAX_PHANDLE_ARGS</span><span class="p">);</span>
+                                <span class="n">out_args</span><span class="o">-&gt;</span><span class="n">np</span> <span class="o">=</span> <span class="n">it</span><span class="p">.</span><span class="n">node</span><span class="p">;</span>
+                                <span class="n">out_args</span><span class="o">-&gt;</span><span class="n">args_count</span> <span class="o">=</span> <span class="n">c</span><span class="p">;</span>
+                        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+                                <span class="n">of_node_put</span><span class="p">(</span><span class="n">it</span><span class="p">.</span><span class="n">node</span><span class="p">);</span>
+                        <span class="p">}</span>
+
+                        <span class="cm">/* Found it! return success */</span>
+                        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+                <span class="p">}</span>
+
+                <span class="n">cur_index</span><span class="o">++</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="cm">/*
+         * Unlock node before returning result; will be one of:
+         * -ENOENT : index is for empty phandle
+         * -EINVAL : parsing error on data
+         */</span>
+
+ <span class="nl">err:</span>
+        <span class="n">of_node_put</span><span class="p">(</span><span class="n">it</span><span class="p">.</span><span class="n">node</span><span class="p">);</span>
+        <span class="k">return</span> <span class="n">rc</span><span class="p">;</span>
+<span class="p">}</span>
+
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>__of_parse_phandle_with_args actually traverse the phandle list and 
+retrieve one phandle element from there 
+based on the index fed to this function.
+Because we passed out_args parameter,
+when the match occurs, 
+the found phandle should be stored to the out_args. 
+Here, out_args has memeber fied np, which is a device node
+associated with the found phandle. 
+Because currently we are searching clocks, 
+the found phandle’s node, it.node, should be a 
+device node representing the clock source.</p>
+
+<p>###Locating the clk structure associated with the found clkspec
+Let’s revisit the of_clk_get_hw function.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+</pre></td><td class="rouge-code"><pre><span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="nf">of_clk_get_hw</span><span class="p">(</span><span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span> <span class="kt">int</span> <span class="n">index</span><span class="p">,</span>
+                             <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">con_id</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="n">clkspec</span><span class="p">;</span>
+
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">of_parse_clkspec</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">con_id</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">clkspec</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">ERR_PTR</span><span class="p">(</span><span class="n">ret</span><span class="p">);</span>
+
+        <span class="n">hw</span> <span class="o">=</span> <span class="n">of_clk_get_hw_from_clkspec</span><span class="p">(</span><span class="o">&amp;</span><span class="n">clkspec</span><span class="p">);</span>
+        <span class="n">of_node_put</span><span class="p">(</span><span class="n">clkspec</span><span class="p">.</span><span class="n">np</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="n">hw</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+<p>After the of_parse_clkspec function parse the device tree and 
+generate the clkspec structure associated with
+one clock resource specified in the clock property,
+it invokes of_clk_get_hw_from_clkspec to have an access on 
+clk_hw structure associated with the found clock resource.
+Note that clk_hw is a structure embedded in the clk structure,
+which is used to access the clk structure and invokes associated clock operations.
+Also, because clkspec we found has information such as 
+device node associated with the found clock resource,
+we can utilize it to find the pre-registered clocks.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+</pre></td><td class="rouge-code"><pre><span class="cm">/**
+ * struct of_clk_provider - Clock provider registration structure
+ * @link: Entry in global list of clock providers
+ * @node: Pointer to device tree node of clock provider
+ * @get: Get clock callback.  Returns NULL or a struct clk for the
+ *       given clock specifier
+ * @get_hw: Get clk_hw callback.  Returns NULL, ERR_PTR or a
+ *       struct clk_hw for the given clock specifier
+ * @data: context pointer to be passed into @get callback
+ */</span>
+<span class="k">struct</span> <span class="n">of_clk_provider</span> <span class="p">{</span>
+        <span class="k">struct</span> <span class="n">list_head</span> <span class="n">link</span><span class="p">;</span>
+
+        <span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">node</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="p">(</span><span class="o">*</span><span class="n">get</span><span class="p">)(</span><span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="o">*</span><span class="n">clkspec</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">);</span>
+        <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="p">(</span><span class="o">*</span><span class="n">get_hw</span><span class="p">)(</span><span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="o">*</span><span class="n">clkspec</span><span class="p">,</span> <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">);</span>
+        <span class="kt">void</span> <span class="o">*</span><span class="n">data</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">static</span> <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span>
+<span class="nf">of_clk_get_hw_from_clkspec</span><span class="p">(</span><span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="o">*</span><span class="n">clkspec</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">of_clk_provider</span> <span class="o">*</span><span class="n">provider</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span> <span class="o">=</span> <span class="n">ERR_PTR</span><span class="p">(</span><span class="o">-</span><span class="n">EPROBE_DEFER</span><span class="p">);</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">clkspec</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">ERR_PTR</span><span class="p">(</span><span class="o">-</span><span class="n">EINVAL</span><span class="p">);</span>
+
+        <span class="n">mutex_lock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">of_clk_mutex</span><span class="p">);</span>
+        <span class="n">list_for_each_entry</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">of_clk_providers</span><span class="p">,</span> <span class="n">link</span><span class="p">)</span> <span class="p">{</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">provider</span><span class="o">-&gt;</span><span class="n">node</span> <span class="o">==</span> <span class="n">clkspec</span><span class="o">-&gt;</span><span class="n">np</span><span class="p">)</span> <span class="p">{</span>
+                        <span class="n">hw</span> <span class="o">=</span> <span class="n">__of_clk_get_hw_from_provider</span><span class="p">(</span><span class="n">provider</span><span class="p">,</span> <span class="n">clkspec</span><span class="p">);</span>
+                        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">IS_ERR</span><span class="p">(</span><span class="n">hw</span><span class="p">))</span>
+                                <span class="k">break</span><span class="p">;</span>
+                <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="n">mutex_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">of_clk_mutex</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="n">hw</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span>
+<span class="nf">__of_clk_get_hw_from_provider</span><span class="p">(</span><span class="k">struct</span> <span class="n">of_clk_provider</span> <span class="o">*</span><span class="n">provider</span><span class="p">,</span>
+                              <span class="k">struct</span> <span class="n">of_phandle_args</span> <span class="o">*</span><span class="n">clkspec</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="n">clk</span><span class="p">;</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">provider</span><span class="o">-&gt;</span><span class="n">get_hw</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">provider</span><span class="o">-&gt;</span><span class="n">get_hw</span><span class="p">(</span><span class="n">clkspec</span><span class="p">,</span> <span class="n">provider</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">);</span>
+
+        <span class="n">clk</span> <span class="o">=</span> <span class="n">provider</span><span class="o">-&gt;</span><span class="n">get</span><span class="p">(</span><span class="n">clkspec</span><span class="p">,</span> <span class="n">provider</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">IS_ERR</span><span class="p">(</span><span class="n">clk</span><span class="p">))</span>
+                <span class="k">return</span> <span class="n">ERR_CAST</span><span class="p">(</span><span class="n">clk</span><span class="p">);</span>
+        <span class="k">return</span> <span class="n">__clk_get_hw</span><span class="p">(</span><span class="n">clk</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>Linux kernel maintains global list for clock provider, of_clk_providers.
+This structure contains all the clock resources 
+present in this current system. 
+Also, each of_clk_provider structure contains 
+its associated device node 
+which was used to register clock resource.
+Remind that we have an access to the clock device node 
+that we want to utilize on our device.</p>
+
+<p>Therefore, of_clk_get_hw_from_clkspec function 
+iterates the list of of_clk_provider and tries to find an entry
+that matches its device node member field with 
+device node we found in the previous step (stored in the clkspec).
+When the entry found, it invokes __of_clk_get_he_from_provider function
+to actually retrieve the clk structure registered in the provider structure. 
+Note that clk_hw structure is embedded in the clk structure.</p>
+
+<p>Check out that of_clk_provider structure contains two function pointers,
+get and get_hw function.
+When the clock resource has been registered with 
+of_clk_add_provider function,
+the get function should have been successfully registered 
+in the provider’s get member field.
+By invoking get function,
+we can easily retrieve the clk structure
+generated before in the clock source driver particularly at probe function.
+Finally, clk_hw can be easily retrieved with the __clk_get_hw
+which just returns the member field core-&gt;hw of the clock structure.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+</pre></td><td class="rouge-code"><pre><span class="k">static</span> <span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="nf">__of_clk_get</span><span class="p">(</span><span class="k">struct</span> <span class="n">device_node</span> <span class="o">*</span><span class="n">np</span><span class="p">,</span>
+                                <span class="kt">int</span> <span class="n">index</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">dev_id</span><span class="p">,</span>
+                                <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">con_id</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span> <span class="o">=</span> <span class="n">of_clk_get_hw</span><span class="p">(</span><span class="n">np</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">con_id</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="n">clk_hw_create_clk</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span> <span class="n">hw</span><span class="p">,</span> <span class="n">dev_id</span><span class="p">,</span> <span class="n">con_id</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+<p>Finally, we can get the access to the hw structure associated with one clock resource 
+specified in the device file, particularly 
+one clock resource specified as phandle of clock property of our device node.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+</pre></td><td class="rouge-code"><pre><span class="cm">/**
+ * clk_hw_create_clk: Allocate and link a clk consumer to a clk_core given
+ * a clk_hw
+ * @dev: clk consumer device
+ * @hw: clk_hw associated with the clk being consumed
+ * @dev_id: string describing device name
+ * @con_id: connection ID string on device
+ *
+ * This is the main function used to create a clk pointer for use by clk
+ * consumers. It connects a consumer to the clk_core and clk_hw structures
+ * used by the framework and clk provider respectively.
+ */</span>
+<span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="nf">clk_hw_create_clk</span><span class="p">(</span><span class="k">struct</span> <span class="n">device</span> <span class="o">*</span><span class="n">dev</span><span class="p">,</span> <span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span><span class="p">,</span>
+                              <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">dev_id</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">con_id</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="n">clk</span><span class="p">;</span>
+        <span class="k">struct</span> <span class="n">clk_core</span> <span class="o">*</span><span class="n">core</span><span class="p">;</span>
+
+        <span class="cm">/* This is to allow this function to be chained to others */</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">IS_ERR_OR_NULL</span><span class="p">(</span><span class="n">hw</span><span class="p">))</span>
+                <span class="k">return</span> <span class="n">ERR_CAST</span><span class="p">(</span><span class="n">hw</span><span class="p">);</span>
+
+        <span class="n">core</span> <span class="o">=</span> <span class="n">hw</span><span class="o">-&gt;</span><span class="n">core</span><span class="p">;</span>
+        <span class="n">clk</span> <span class="o">=</span> <span class="n">alloc_clk</span><span class="p">(</span><span class="n">core</span><span class="p">,</span> <span class="n">dev_id</span><span class="p">,</span> <span class="n">con_id</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">IS_ERR</span><span class="p">(</span><span class="n">clk</span><span class="p">))</span>
+                <span class="k">return</span> <span class="n">clk</span><span class="p">;</span>
+        <span class="n">clk</span><span class="o">-&gt;</span><span class="n">dev</span> <span class="o">=</span> <span class="n">dev</span><span class="p">;</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">try_module_get</span><span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">owner</span><span class="p">))</span> <span class="p">{</span>
+                <span class="n">free_clk</span><span class="p">(</span><span class="n">clk</span><span class="p">);</span>
+                <span class="k">return</span> <span class="n">ERR_PTR</span><span class="p">(</span><span class="o">-</span><span class="n">ENOENT</span><span class="p">);</span>
+        <span class="p">}</span>
+
+        <span class="n">kref_get</span><span class="p">(</span><span class="o">&amp;</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">ref</span><span class="p">);</span>
+        <span class="n">clk_core_link_consumer</span><span class="p">(</span><span class="n">core</span><span class="p">,</span> <span class="n">clk</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="n">clk</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="cm">/**
+ * alloc_clk - Allocate a clk consumer, but leave it unlinked to the clk_core
+ * @core: clk to allocate a consumer for
+ * @dev_id: string describing device name
+ * @con_id: connection ID string on device
+ *
+ * Returns: clk consumer left unlinked from the consumer list
+ */</span>
+<span class="k">static</span> <span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="nf">alloc_clk</span><span class="p">(</span><span class="k">struct</span> <span class="n">clk_core</span> <span class="o">*</span><span class="n">core</span><span class="p">,</span> <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">dev_id</span><span class="p">,</span>
+                             <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">con_id</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="n">clk</span><span class="p">;</span>
+
+        <span class="n">clk</span> <span class="o">=</span> <span class="n">kzalloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="o">*</span><span class="n">clk</span><span class="p">),</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">clk</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">ERR_PTR</span><span class="p">(</span><span class="o">-</span><span class="n">ENOMEM</span><span class="p">);</span>
+
+        <span class="n">clk</span><span class="o">-&gt;</span><span class="n">core</span> <span class="o">=</span> <span class="n">core</span><span class="p">;</span>
+        <span class="n">clk</span><span class="o">-&gt;</span><span class="n">dev_id</span> <span class="o">=</span> <span class="n">dev_id</span><span class="p">;</span>
+        <span class="n">clk</span><span class="o">-&gt;</span><span class="n">con_id</span> <span class="o">=</span> <span class="n">kstrdup_const</span><span class="p">(</span><span class="n">con_id</span><span class="p">,</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+        <span class="n">clk</span><span class="o">-&gt;</span><span class="n">max_rate</span> <span class="o">=</span> <span class="n">ULONG_MAX</span><span class="p">;</span>
+
+        <span class="k">return</span> <span class="n">clk</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>Although we had an access to the clk structure 
+that has been registered to the system as the provider.
+And instead of returning that clk structure,
+we only have an access to the clk_hw structure.
+Threfore, we need to create clk structure instance once again
+associated with current clk_hw structure.
+Then how it is different from the clk structure stored in the provider structure?</p>
+
+<p>##Preparing and enabling cloks</p>
+<div class="language-plaintext highlighter-rouge"><div class="code-header">
+        <span data-label-text="Plaintext"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+</pre></td><td class="rouge-code"><pre>static inline int __must_check
+clk_bulk_prepare_enable(int num_clks, const struct clk_bulk_data *clks)
+{       
+        int ret;
+                
+        ret = clk_bulk_prepare(num_clks, clks);
+        if (ret)
+                return ret;
+        ret = clk_bulk_enable(num_clks, clks);
+        if (ret) 
+                clk_bulk_unprepare(num_clks, clks);
+                
+        return ret;
+}
+</pre></td></tr></tbody></table></code></div></div>
+<p>Before clock is enabled, 
+it should be prepared with the 
+provided apis. 
+Note that clks embeds core structure that contains 
+clock operations required to prepare and enable clocks.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+</pre></td><td class="rouge-code"><pre><span class="cm">/**
+ * clk_bulk_prepare - prepare a set of clocks
+ * @num_clks: the number of clk_bulk_data
+ * @clks: the clk_bulk_data table being prepared
+ *
+ * clk_bulk_prepare may sleep, which differentiates it from clk_bulk_enable.
+ * Returns 0 on success, -EERROR otherwise.
+ */</span>
+<span class="kt">int</span> <span class="n">__must_check</span> <span class="nf">clk_bulk_prepare</span><span class="p">(</span><span class="kt">int</span> <span class="n">num_clks</span><span class="p">,</span>
+                                  <span class="k">const</span> <span class="k">struct</span> <span class="n">clk_bulk_data</span> <span class="o">*</span><span class="n">clks</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">i</span><span class="p">;</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">num_clks</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_prepare</span><span class="p">(</span><span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">clk</span><span class="p">);</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span> <span class="p">{</span>
+                        <span class="n">pr_err</span><span class="p">(</span><span class="s">"Failed to prepare clk '%s': %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span>
+                                <span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">id</span><span class="p">,</span> <span class="n">ret</span><span class="p">);</span>
+                        <span class="k">goto</span> <span class="n">err</span><span class="p">;</span>
+                <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="nl">err:</span>
+        <span class="n">clk_bulk_unprepare</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">clks</span><span class="p">);</span>
+
+        <span class="k">return</span>  <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="n">EXPORT_SYMBOL_GPL</span><span class="p">(</span><span class="n">clk_bulk_prepare</span><span class="p">);</span>
+
+<span class="cm">/**
+ * clk_prepare - prepare a clock source
+ * @clk: the clk being prepared
+ *      
+ * clk_prepare may sleep, which differentiates it from clk_enable.  In a simple
+ * case, clk_prepare can be used instead of clk_enable to ungate a clk if the
+ * operation may sleep.  One example is a clk which is accessed over I2c.  In
+ * the complex case a clk ungate operation may require a fast and a slow part.
+ * It is this reason that clk_prepare and clk_enable are not mutually
+ * exclusive.  In fact clk_prepare must be called before clk_enable.
+ * Returns 0 on success, -EERROR otherwise.
+ */</span>
+<span class="kt">int</span> <span class="nf">clk_prepare</span><span class="p">(</span><span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="n">clk</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">clk</span><span class="p">)</span>
+                <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">return</span> <span class="n">clk_core_prepare_lock</span><span class="p">(</span><span class="n">clk</span><span class="o">-&gt;</span><span class="n">core</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="n">EXPORT_SYMBOL_GPL</span><span class="p">(</span><span class="n">clk_prepare</span><span class="p">);</span>
+
+<span class="k">static</span> <span class="kt">int</span> <span class="nf">clk_core_prepare_lock</span><span class="p">(</span><span class="k">struct</span> <span class="n">clk_core</span> <span class="o">*</span><span class="n">core</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+
+        <span class="n">clk_prepare_lock</span><span class="p">();</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_core_prepare</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+        <span class="n">clk_prepare_unlock</span><span class="p">();</span>
+ 
+        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+<p>Because we have multiple clock instances,
+we should invoke clk_bulk_prepare function
+that traverses all clk structures we found before
+and invoke the associated prepare methods
+embedded in that core structure of each clk structure.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+</pre></td><td class="rouge-code"><pre><span class="k">static</span> <span class="kt">int</span> <span class="nf">clk_core_prepare</span><span class="p">(</span><span class="k">struct</span> <span class="n">clk_core</span> <span class="o">*</span><span class="n">core</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">int</span> <span class="n">ret</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="n">lockdep_assert_held</span><span class="p">(</span><span class="o">&amp;</span><span class="n">prepare_lock</span><span class="p">);</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">core</span><span class="p">)</span>
+                <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">prepare_count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_pm_runtime_get</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+                        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_core_prepare</span><span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">parent</span><span class="p">);</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+                        <span class="k">goto</span> <span class="n">runtime_put</span><span class="p">;</span>
+
+                <span class="n">trace_clk_prepare</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+
+                <span class="k">if</span> <span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">ops</span><span class="o">-&gt;</span><span class="n">prepare</span><span class="p">)</span>
+                        <span class="n">ret</span> <span class="o">=</span> <span class="n">core</span><span class="o">-&gt;</span><span class="n">ops</span><span class="o">-&gt;</span><span class="n">prepare</span><span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">hw</span><span class="p">);</span>
+
+                <span class="n">trace_clk_prepare_complete</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+
+                <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+                        <span class="k">goto</span> <span class="n">unprepare</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">prepare_count</span><span class="o">++</span><span class="p">;</span>
+
+        <span class="cm">/*
+         * CLK_SET_RATE_GATE is a special case of clock protection
+         * Instead of a consumer claiming exclusive rate control, it is
+         * actually the provider which prevents any consumer from making any
+         * operation which could result in a rate change or rate glitch while
+         * the clock is prepared.
+         */</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">flags</span> <span class="o">&amp;</span> <span class="n">CLK_SET_RATE_GATE</span><span class="p">)</span>
+                <span class="n">clk_core_rate_protect</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="nl">unprepare:</span>
+        <span class="n">clk_core_unprepare</span><span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">parent</span><span class="p">);</span>
+<span class="nl">runtime_put:</span>
+        <span class="n">clk_pm_runtime_put</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+
+</pre></td></tr></tbody></table></code></div></div>
+<p>Based on the clock type such as gate, change rate, multiplexer, etc,
+some clocks may or may not implement the prepare method.
+Also, various clocks consists of hierarchies,
+one clock can has its associated parent clocks.
+Therefore, although target clock doesn’t need a prepare method,
+it might need to invoke its parent’s prepare method.
+Note that this prepare method is going to be invoked recursively.</p>
+
+<p>After that, target clock will invoke its prepare function if presents.
+In our case,
+dwc3 apple device utilizes the atc0_usb and atcphy0 clock,
+and they don’t have any prepare clocks because they are clock gates.</p>
+
+<p>To understand how the prepare function actually 
+prepares the clock,
+you should take a look at each clock’s device driver
+that initialize clk structure and its corresponding core and ops fields.
+managing those clocks. 
+Also you might want to check their parent clocks to see 
+how prepare functions are implemented in its parent clock.</p>
+
+<p>Anyway, in our case we can find that it doesn’t need to invoke prepare method directly.
+Therefore, let’s see how the clocks are going to be enabled. 
+Most of the basic skeletons for the clk_bulk_enable is same as clk_bulk_prepare.
+It traverse found clk structure used by the current device node
+and invokes the enable function associated with them 
+making use of the ops of the core structure.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+</pre></td><td class="rouge-code"><pre><span class="cm">/**
+ * clk_bulk_enable - ungate a set of clocks
+ * @num_clks: the number of clk_bulk_data
+ * @clks: the clk_bulk_data table being ungated
+ *
+ * clk_bulk_enable must not sleep
+ * Returns 0 on success, -EERROR otherwise.
+ */</span>
+<span class="kt">int</span> <span class="n">__must_check</span> <span class="nf">clk_bulk_enable</span><span class="p">(</span><span class="kt">int</span> <span class="n">num_clks</span><span class="p">,</span> <span class="k">const</span> <span class="k">struct</span> <span class="n">clk_bulk_data</span> <span class="o">*</span><span class="n">clks</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">i</span><span class="p">;</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">num_clks</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_enable</span><span class="p">(</span><span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">clk</span><span class="p">);</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span> <span class="p">{</span>
+                        <span class="n">pr_err</span><span class="p">(</span><span class="s">"Failed to enable clk '%s': %d</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span>
+                                <span class="n">clks</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">id</span><span class="p">,</span> <span class="n">ret</span><span class="p">);</span>
+                        <span class="k">goto</span> <span class="n">err</span><span class="p">;</span>
+                <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="nl">err:</span>
+        <span class="n">clk_bulk_disable</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">clks</span><span class="p">);</span>
+
+        <span class="k">return</span>  <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="n">EXPORT_SYMBOL_GPL</span><span class="p">(</span><span class="n">clk_bulk_enable</span><span class="p">);</span>
+
+<span class="cm">/**
+ * clk_enable - ungate a clock
+ * @clk: the clk being ungated
+ *
+ * clk_enable must not sleep, which differentiates it from clk_prepare.  In a
+ * simple case, clk_enable can be used instead of clk_prepare to ungate a clk
+ * if the operation will never sleep.  One example is a SoC-internal clk which
+ * is controlled via simple register writes.  In the complex case a clk ungate
+ * operation may require a fast and a slow part.  It is this reason that
+ * clk_enable and clk_prepare are not mutually exclusive.  In fact clk_prepare
+ * must be called before clk_enable.  Returns 0 on success, -EERROR
+ * otherwise.
+ */</span>
+<span class="kt">int</span> <span class="nf">clk_enable</span><span class="p">(</span><span class="k">struct</span> <span class="n">clk</span> <span class="o">*</span><span class="n">clk</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">clk</span><span class="p">)</span>
+                <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">return</span> <span class="n">clk_core_enable_lock</span><span class="p">(</span><span class="n">clk</span><span class="o">-&gt;</span><span class="n">core</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="n">EXPORT_SYMBOL_GPL</span><span class="p">(</span><span class="n">clk_enable</span><span class="p">);</span>
+
+<span class="k">static</span> <span class="kt">int</span> <span class="nf">clk_core_enable_lock</span><span class="p">(</span><span class="k">struct</span> <span class="n">clk_core</span> <span class="o">*</span><span class="n">core</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">flags</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">ret</span><span class="p">;</span>
+
+        <span class="n">flags</span> <span class="o">=</span> <span class="n">clk_enable_lock</span><span class="p">();</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_core_enable</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+        <span class="n">clk_enable_unlock</span><span class="p">(</span><span class="n">flags</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">static</span> <span class="kt">int</span> <span class="nf">clk_core_enable</span><span class="p">(</span><span class="k">struct</span> <span class="n">clk_core</span> <span class="o">*</span><span class="n">core</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="kt">int</span> <span class="n">ret</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="n">lockdep_assert_held</span><span class="p">(</span><span class="o">&amp;</span><span class="n">enable_lock</span><span class="p">);</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">core</span><span class="p">)</span>
+                <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">WARN</span><span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">prepare_count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span>
+            <span class="s">"Enabling unprepared %s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">core</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">))</span>
+                <span class="k">return</span> <span class="o">-</span><span class="n">ESHUTDOWN</span><span class="p">;</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">enable_count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">clk_core_enable</span><span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">parent</span><span class="p">);</span>
+
+                <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+                        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+
+                <span class="n">trace_clk_enable_rcuidle</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+
+                <span class="k">if</span> <span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">ops</span><span class="o">-&gt;</span><span class="n">enable</span><span class="p">)</span>
+                        <span class="n">ret</span> <span class="o">=</span> <span class="n">core</span><span class="o">-&gt;</span><span class="n">ops</span><span class="o">-&gt;</span><span class="n">enable</span><span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">hw</span><span class="p">);</span>
+
+                <span class="n">trace_clk_enable_complete_rcuidle</span><span class="p">(</span><span class="n">core</span><span class="p">);</span>
+
+                <span class="k">if</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span> <span class="p">{</span>
+                        <span class="n">clk_core_disable</span><span class="p">(</span><span class="n">core</span><span class="o">-&gt;</span><span class="n">parent</span><span class="p">);</span>
+                        <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+                <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="n">core</span><span class="o">-&gt;</span><span class="n">enable_count</span><span class="o">++</span><span class="p">;</span>
+        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+<p>To see which function will be invoked
+when current clock’s enable function is invoked. 
+Remember that the dwc3 node utilize the apple_pmgr_gate type clocks.</p>
+
+<div class="language-c highlighter-rouge"><div class="code-header">
+        <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+</pre></td><td class="rouge-code"><pre><span class="k">const</span> <span class="k">struct</span> <span class="n">clk_ops</span> <span class="n">clk_apple_pmgr_gate_ops</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">enable</span> <span class="o">=</span> <span class="n">clk_apple_pmgr_gate_enable</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">disable</span> <span class="o">=</span> <span class="n">clk_apple_pmgr_gate_disable</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">is_enabled</span> <span class="o">=</span> <span class="n">clk_apple_pmgr_gate_is_enabled</span><span class="p">,</span>
+<span class="p">};</span>
+
+<span class="k">static</span> <span class="kt">int</span> <span class="nf">clk_apple_pmgr_gate_enable</span><span class="p">(</span><span class="k">struct</span> <span class="n">clk_hw</span> <span class="o">*</span><span class="n">hw</span><span class="p">)</span>
+<span class="p">{</span>
+        <span class="k">struct</span> <span class="n">clk_apple_pmgr</span> <span class="o">*</span><span class="n">clk</span> <span class="o">=</span> <span class="n">to_clk_apple_pmgr</span><span class="p">(</span><span class="n">hw</span><span class="p">);</span>
+        <span class="kt">unsigned</span> <span class="n">max</span> <span class="o">=</span> <span class="mi">10000</span><span class="p">;</span>
+        <span class="kt">uint32_t</span> <span class="n">val</span><span class="p">;</span>
+
+        <span class="n">clk_apple_pmgr_run_seq</span><span class="p">(</span><span class="n">clk</span><span class="p">,</span> <span class="n">clk</span><span class="o">-&gt;</span><span class="n">seq</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">clk</span><span class="o">-&gt;</span><span class="n">seqn</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+
+        <span class="n">val</span> <span class="o">=</span> <span class="n">readl</span><span class="p">(</span><span class="n">clk</span><span class="o">-&gt;</span><span class="n">bases</span><span class="p">[</span><span class="mi">0</span><span class="p">]);</span>
+
+        <span class="n">val</span> <span class="o">|=</span> <span class="mi">15</span><span class="p">;</span>
+        <span class="n">val</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="mh">0x300</span><span class="p">;</span>
+        <span class="n">writel</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">clk</span><span class="o">-&gt;</span><span class="n">bases</span><span class="p">[</span><span class="mi">0</span><span class="p">]);</span>
+
+        <span class="k">while</span><span class="p">(</span><span class="n">max</span> <span class="o">--</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">mb</span><span class="p">();</span>
+                <span class="n">val</span> <span class="o">=</span> <span class="n">readl</span><span class="p">(</span><span class="n">clk</span><span class="o">-&gt;</span><span class="n">bases</span><span class="p">[</span><span class="mi">0</span><span class="p">]);</span>
+
+                <span class="k">if</span><span class="p">(((</span><span class="n">val</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mi">15</span><span class="p">)</span> <span class="o">==</span> <span class="mi">15</span><span class="p">)</span> <span class="p">{</span>
+                        <span class="n">val</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="mh">0x300</span><span class="p">;</span>
+                        <span class="n">writel</span><span class="p">(</span><span class="n">val</span> <span class="o">|</span> <span class="mh">0x10000000</span><span class="p">,</span> <span class="n">clk</span><span class="o">-&gt;</span><span class="n">bases</span><span class="p">[</span><span class="mi">0</span><span class="p">]);</span>
+                        <span class="n">clk_apple_pmgr_run_seq</span><span class="p">(</span><span class="n">clk</span><span class="p">,</span> <span class="n">clk</span><span class="o">-&gt;</span><span class="n">seq</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">clk</span><span class="o">-&gt;</span><span class="n">seqn</span><span class="p">[</span><span class="mi">3</span><span class="p">]);</span>
+                        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+                <span class="p">}</span>
+
+                <span class="k">if</span><span class="p">(</span><span class="n">max</span> <span class="o">&lt;</span> <span class="mi">5000</span><span class="p">)</span>
+                        <span class="n">udelay</span><span class="p">(</span><span class="mi">20</span><span class="p">);</span>
+                <span class="n">cpu_relax</span><span class="p">();</span>
+        <span class="p">}</span>
+
+        <span class="n">pr_err</span><span class="p">(</span><span class="s">"%s: failed to enable PMGR clock</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">clk</span><span class="o">-&gt;</span><span class="n">name</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="o">-</span><span class="n">ETIMEDOUT</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>Because ops has clk_apple_pmgr_gate_enable as its enable function pointer,
+whenever the enable function is invoked through its core’s ops,
+the assigned function will be invoked and enable the clock. 
+We are not going to cover the detail implementation of the clock enable function.</p>
+
+<p>##More DWC3 on apple device
+After the clock provided to the dwc3 device has been prepared and enabled,
+it should start the dwc3 device itself.
+The dwc3_apple_m1_start function does this for you.</p>
+
+<p>#define USBCORE_DWC3                                    0x280000</p>
+
+<p>#define DWC3_GUSB2PHYCFG0_SUSPENDUSB20                  (1 « 6)
+#define DWC3_GUSB3PIPECTL0_SUSPENDENABLE                (1 « 17)</p>
+
+<p>static int dwc3_apple_m1_start(struct dwc3_apple *da)
+{
+        int ret;</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="code-header">
+        <span data-label-text="Plaintext"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+</pre></td><td class="rouge-code"><pre>    /* set core mode to host */
+    dwc3_apple_m1_rmwl(DWC3_GCTL_PRTCAPDIR(3), DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_HOST),
+            da-&gt;usbcore + USBCORE_DWC3 + DWC3_GCTL);
+
+    ret = dwc3_apple_m1_tunable(da, "tunable");
+    if(ret &lt; 0)
+            return ret;
+
+    /* set up power and clock parameters in DRD core */
+    dwc3_apple_m1_rmwl(DWC3_GCTL_PWRDNSCALE(0x1FFF), DWC3_GCTL_PWRDNSCALE(13),
+            da-&gt;usbcore + USBCORE_DWC3 + DWC3_GCTL);
+    dwc3_apple_m1_rmwl(0, DWC3_GCTL_GBLHIBERNATIONEN, da-&gt;usbcore + USBCORE_DWC3 + DWC3_GCTL);
+
+    /* unsuspend the PHYs */
+    dwc3_apple_m1_rmwl(DWC3_GUSB2PHYCFG0_SUSPENDUSB20, 0,
+            da-&gt;usbcore + USBCORE_DWC3 + DWC3_GUSB2PHYCFG(0));
+    dwc3_apple_m1_rmwl(DWC3_GUSB3PIPECTL0_SUSPENDENABLE, 0,
+            da-&gt;usbcore + USBCORE_DWC3 + DWC3_GUSB3PIPECTL(0));
+
+    return 0; }
+</pre></td></tr></tbody></table></code></div></div>
+
+
+  </div>
+
+  <div class="post-tail-wrapper text-muted">
+    <!-- categories -->
+    
+      <div class="post-meta mb-3">
+        <i class="far fa-folder-open fa-fw me-1"></i>
+        
+          <a href="/categories/linux/">linux,</a>,
+          <a href="/categories/embedded-linux/">embedded-linux</a>
+      </div>
+    
+
+    <!-- tags -->
+    
+
+    <div
+      class="
+        post-tail-bottom
+        d-flex justify-content-between align-items-center mt-5 pb-2
+      "
+    >
+      <div class="license-wrapper">
+        
+          
+
+          This post is licensed under 
+        <a href="https://creativecommons.org/licenses/by/4.0/">
+          CC BY 4.0
+        </a>
+         by the author.
+        
+      </div>
+
+      <!-- Post sharing snippet -->
+
+<div class="share-wrapper d-flex align-items-center">
+  <span class="share-label text-muted">Share</span>
+  <span class="share-icons">
+    
+    
+    
+
+    
+
+      
+
+      <a
+        href="https://twitter.com/intent/tweet?text=Clks%20-%20Ruach&url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fclks%2F"
+        data-bs-toggle="tooltip"
+        data-bs-placement="top"
+        title="Twitter"
+        target="_blank"
+        rel="noopener"
+        aria-label="Twitter"
+      >
+        <i class="fa-fw fa-brands fa-square-x-twitter"></i>
+      </a>
+    
+
+      
+
+      <a
+        href="https://www.facebook.com/sharer/sharer.php?title=Clks%20-%20Ruach&u=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fclks%2F"
+        data-bs-toggle="tooltip"
+        data-bs-placement="top"
+        title="Facebook"
+        target="_blank"
+        rel="noopener"
+        aria-label="Facebook"
+      >
+        <i class="fa-fw fab fa-facebook-square"></i>
+      </a>
+    
+
+      
+
+      <a
+        href="https://t.me/share/url?url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fclks%2F&text=Clks%20-%20Ruach"
+        data-bs-toggle="tooltip"
+        data-bs-placement="top"
+        title="Telegram"
+        target="_blank"
+        rel="noopener"
+        aria-label="Telegram"
+      >
+        <i class="fa-fw fab fa-telegram"></i>
+      </a>
+    
+
+      
+
+      <a
+        href="https://www.linkedin.com/sharing/share-offsite/?url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fclks%2F"
+        data-bs-toggle="tooltip"
+        data-bs-placement="top"
+        title="Linkedin"
+        target="_blank"
+        rel="noopener"
+        aria-label="Linkedin"
+      >
+        <i class="fa-fw fab fa-linkedin"></i>
+      </a>
+    
+
+    <button
+      id="copy-link"
+      aria-label="Copy link"
+      class="btn small"
+      data-bs-toggle="tooltip"
+      data-bs-placement="top"
+      title="Copy link"
+      data-title-succeed="Link copied successfully!"
+    >
+      <i class="fa-fw fas fa-link pe-none fs-6"></i>
+    </button>
+  </span>
+</div>
+
+    </div>
+    <!-- .post-tail-bottom -->
+  </div>
+  <!-- div.post-tail-wrapper -->
+</article>
+
+
+            
+          </main>
+
+          <!-- panel -->
+          <aside aria-label="Panel" id="panel-wrapper" class="col-xl-3 ps-2 mb-5 text-muted">
+            <div class="access">
+              <!-- Get the last 5 posts from lastmod list. -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+              <!-- The trending tags list -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            </div>
+
+            
+              
+              
+
+
+
+
+            
+          </aside>
+        </div>
+
+        <div class="row">
+          <!-- tail -->
+          <div id="tail-wrapper" class="col-12 col-lg-11 col-xl-9 px-md-4">
+            
+              
+              <!-- Recommend the other 3 posts according to the tags and categories of the current post. -->
+
+<!-- The total size of related posts -->
+
+
+<!-- An random integer that bigger than 0 -->
+
+
+<!-- Equals to TAG_SCORE / {max_categories_hierarchy} -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+    
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+
+
+
+
+
+
+
+
+
+
+  <aside id="related-posts" aria-labelledby="related-label">
+    <h3 class="mb-4" id="related-label">Further Reading</h3>
+    <nav class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4 mb-4">
+      
+        <article class="col">
+          <a href="/posts/initcalls/" class="post-preview card h-100">
+            <div class="card-body">
+              <!--
+  Date format snippet
+  See: ${JS_ROOT}/utils/locale-dateime.js
+-->
+
+
+
+
+<time
+  
+  data-ts="1619582400"
+  data-df="ll"
+  
+>
+  Apr 28, 2021
+</time>
+
+              <h4 class="pt-0 my-2">Initcalls</h4>
+              <div class="text-muted">
+                <p>
+                  
+
+
+
+
+
+                  #do_initcalls
+static void __init do_basic_setup(void)
+{
+        cpuset_init_smp();
+        driver_init();
+        init_irq_proc();
+        do_ctors();
+        usermodehelper_enable();
+        do_in...
+                </p>
+              </div>
+            </div>
+          </a>
+        </article>
+      
+        <article class="col">
+          <a href="/posts/platform-device/" class="post-preview card h-100">
+            <div class="card-body">
+              <!--
+  Date format snippet
+  See: ${JS_ROOT}/utils/locale-dateime.js
+-->
+
+
+
+
+<time
+  
+  data-ts="1619841600"
+  data-df="ll"
+  
+>
+  May  1, 2021
+</time>
+
+              <h4 class="pt-0 my-2">Platform Device</h4>
+              <div class="text-muted">
+                <p>
+                  
+
+
+
+
+
+                  Kernel initialization before DeviceTree
+Although we are not going to cover the details of the initialization procedure,
+this post will take a look at 
+what happens before the device tree is initial...
+                </p>
+              </div>
+            </div>
+          </a>
+        </article>
+      
+        <article class="col">
+          <a href="/posts/register-platform-device-driver/" class="post-preview card h-100">
+            <div class="card-body">
+              <!--
+  Date format snippet
+  See: ${JS_ROOT}/utils/locale-dateime.js
+-->
+
+
+
+
+<time
+  
+  data-ts="1619928000"
+  data-df="ll"
+  
+>
+  May  2, 2021
+</time>
+
+              <h4 class="pt-0 my-2">Register Platform Device Driver</h4>
+              <div class="text-muted">
+                <p>
+                  
+
+
+
+
+
+                  We will cover how the platform device drivers 
+can be registered and managed by the platform device bus subsystem.
+
+struct platform_driver {
+        int (*probe)(struct platform_device *);
+        ...
+                </p>
+              </div>
+            </div>
+          </a>
+        </article>
+      
+    </nav>
+  </aside>
+  <!-- #related-posts -->
+
+
+            
+              
+              <!-- Navigation buttons at the bottom of the post. -->
+
+<nav class="post-navigation d-flex justify-content-between" aria-label="Post Navigation">
+  
+  
+
+  
+    <a
+      href="/posts/register-device-through-bus/"
+      class="btn btn-outline-primary"
+      aria-label="Older"
+    >
+      <p>Register Device Through Bus</p>
+    </a>
+  
+
+  
+    <a
+      href="/posts/usb-device-add/"
+      class="btn btn-outline-primary"
+      aria-label="Newer"
+    >
+      <p>Usb Device Add</p>
+    </a>
+  
+</nav>
+
+            
+              
+              <!--  The comments switcher -->
+
+
+            
+
+            <!-- The Footer -->
+
+<footer
+  aria-label="Site Info"
+  class="
+    d-flex flex-column justify-content-center text-muted
+    flex-lg-row justify-content-lg-between align-items-lg-center pb-lg-3
+  "
+>
+  <p>
+    ©
+    <time>2023</time>
+    <a href="https://ruach.github.io">Jaehyuk Lee</a>.
+    
+      <span
+        data-bs-toggle="tooltip"
+        data-bs-placement="top"
+        title="Except where otherwise noted, the blog posts on this site are licensed under the Creative Commons Attribution 4.0 International (CC BY 4.0) License by the author."
+      >Some rights reserved.</span>
+    
+  </p>
+
+  <p>Using the <a href="https://github.com/cotes2020/jekyll-theme-chirpy" target="_blank" rel="noopener">Chirpy</a> theme for <a href="https://jekyllrb.com" target="_blank" rel="noopener">Jekyll</a>
+  </p>
+</footer>
+
+          </div>
+        </div>
+
+        <!-- The Search results -->
+
+<div id="search-result-wrapper" class="d-flex justify-content-center unloaded">
+  <div class="col-11 content">
+    <div id="search-hints">
+      <!-- The trending tags list -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    </div>
+    <div id="search-results" class="d-flex flex-wrap justify-content-center text-muted mt-3"></div>
+  </div>
+</div>
+
+      </div>
+
+      <aside aria-label="Scroll to Top">
+        <button id="back-to-top" type="button" class="btn btn-lg btn-box-shadow">
+          <i class="fas fa-angle-up"></i>
+        </button>
+      </aside>
+    </div>
+
+    <div id="mask"></div>
+
+    
+      <aside
+  id="notification"
+  class="toast"
+  role="alert"
+  aria-live="assertive"
+  aria-atomic="true"
+  data-bs-animation="true"
+  data-bs-autohide="false"
+>
+  <div class="toast-header">
+    <button
+      type="button"
+      class="btn-close ms-auto"
+      data-bs-dismiss="toast"
+      aria-label="Close"
+    ></button>
+  </div>
+  <div class="toast-body text-center pt-0">
+    <p class="px-2 mb-3">A new version of content is available.</p>
+    <button type="button" class="btn btn-primary" aria-label="Update">
+      Update
+    </button>
+  </div>
+</aside>
+
+    
+
+    <!-- JavaScripts -->
+
+    <!-- JS selector for site. -->
+
+<!-- commons -->
+
+
+
+<!-- layout specified -->
+
+
+  
+
+  
+    <!-- image lazy-loading & popup & clipboard -->
+    
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+    
+
+    
+
+  
+
+  
+    
+
+    
+
+  
+
+  
+    
+
+    
+
+  
+
+  
+    
+
+    
+
+  
+
+  
+    
+
+    
+
+  
+
+  
+    
+
+    
+
+  
+
+  
+    
+
+    
+
+  
+
+  
+    
+
+    
+
+  
+
+  
+    
+
+    
+
+  
+
+  
+    
+
+    
+
+  
+
+
+
+  <script src="https://cdn.jsdelivr.net/combine/npm/jquery@3.7.1/dist/jquery.min.js,npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js,npm/simple-jekyll-search@1.10.0/dest/simple-jekyll-search.min.js,npm/loading-attribute-polyfill@2.1.1/dist/loading-attribute-polyfill.umd.min.js,npm/magnific-popup@1.1.0/dist/jquery.magnific-popup.min.js,npm/clipboard@2.0.11/dist/clipboard.min.js,npm/dayjs@1.11.10/dayjs.min.js,npm/dayjs@1.11.10/locale/en.min.js,npm/dayjs@1.11.10/plugin/relativeTime.min.js,npm/dayjs@1.11.10/plugin/localizedFormat.min.js"></script>
+
+
+
+
+
+
+<script defer src="/assets/js/dist/post.min.js"></script>
+
+
+
+
+
+
+    
+
+    <!--
+  Jekyll Simple Search loader
+  See: <https://github.com/christian-fei/Simple-Jekyll-Search>
+-->
+
+
+
+
+
+<script>
+  /* Note: dependent library will be loaded in `js-selector.html` */
+  SimpleJekyllSearch({
+    searchInput: document.getElementById('search-input'),
+    resultsContainer: document.getElementById('search-results'),
+    json: '/assets/js/data/search.json',
+    searchResultTemplate: '  <article class="px-1 px-sm-2 px-lg-4 px-xl-0">    <header>      <h2><a href="{url}">{title}</a></h2>      <div class="post-meta d-flex flex-column flex-sm-row text-muted mt-1 mb-1">        {categories}        {tags}      </div>    </header>    <p>{snippet}</p>  </article>',
+    noResultsText: '<p class="mt-5"></p>',
+    templateMiddleware: function(prop, value, template) {
+      if (prop === 'categories') {
+        if (value === '') {
+          return `${value}`;
+        } else {
+          return `<div class="me-sm-4"><i class="far fa-folder fa-fw"></i>${value}</div>`;
+        }
+      }
+
+      if (prop === 'tags') {
+        if (value === '') {
+          return `${value}`;
+        } else {
+          return `<div><i class="fa fa-tag fa-fw"></i>${value}</div>`;
+        }
+      }
+    }
+  });
+</script>
+
+  </body>
+</html>
+

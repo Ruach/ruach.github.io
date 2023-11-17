@@ -1,17 +1,17 @@
 
 
 <feed xmlns="http://www.w3.org/2005/Atom">
-  <id>http://localhost:4000/</id>
+  <id>https://ruach.github.io/</id>
   <title>Ruach</title>
   <subtitle>A minimal, responsive and feature-rich Jekyll theme for technical writing.</subtitle>
-  <updated>2023-11-17T17:31:41-05:00</updated>
+  <updated>2023-11-17T17:58:58-05:00</updated>
   <author>
     <name>Jaehyuk Lee</name>
-    <uri>http://localhost:4000/</uri>
+    <uri>https://ruach.github.io/</uri>
   </author>
-  <link rel="self" type="application/atom+xml" href="http://localhost:4000/feed.xml"/>
+  <link rel="self" type="application/atom+xml" href="https://ruach.github.io/feed.xml"/>
   <link rel="alternate" type="text/html" hreflang="en"
-    href="http://localhost:4000/"/>
+    href="https://ruach.github.io/"/>
   <generator uri="https://jekyllrb.com/" version="4.3.2">Jekyll</generator>
   <rights> © 2023 Jaehyuk Lee </rights>
   <icon>/assets/img/favicons/favicon.ico</icon>
@@ -21,13 +21,13 @@
   
   <entry>
     <title>Gem5 Interrupt Handling O3</title>
-    <link href="http://localhost:4000/posts/gem5-interrupt-handling-o3/" rel="alternate" type="text/html" title="Gem5 Interrupt Handling O3" />
+    <link href="https://ruach.github.io/posts/gem5-interrupt-handling-o3/" rel="alternate" type="text/html" title="Gem5 Interrupt Handling O3" />
     <published>2021-12-25T00:00:00-05:00</published>
   
     <updated>2021-12-25T00:00:00-05:00</updated>
   
-    <id>http://localhost:4000/posts/gem5-interrupt-handling-o3/</id>
-    <content src="http://localhost:4000/posts/gem5-interrupt-handling-o3/" />
+    <id>https://ruach.github.io/posts/gem5-interrupt-handling-o3/</id>
+    <content src="https://ruach.github.io/posts/gem5-interrupt-handling-o3/" />
     <author>
       <name>Jaehyuk Lee</name>
     </author>
@@ -66,13 +66,13 @@ Interrupt makes the commit stage stop further instructions fetching
   
   <entry>
     <title>Basecpu</title>
-    <link href="http://localhost:4000/posts/basecpu/" rel="alternate" type="text/html" title="Basecpu" />
+    <link href="https://ruach.github.io/posts/basecpu/" rel="alternate" type="text/html" title="Basecpu" />
     <published>2021-08-08T00:00:00-04:00</published>
   
     <updated>2021-08-08T00:00:00-04:00</updated>
   
-    <id>http://localhost:4000/posts/basecpu/</id>
-    <content src="http://localhost:4000/posts/basecpu/" />
+    <id>https://ruach.github.io/posts/basecpu/</id>
+    <content src="https://ruach.github.io/posts/basecpu/" />
     <author>
       <name>Jaehyuk Lee</name>
     </author>
@@ -107,13 +107,13 @@ Interrupt makes the commit stage stop further instructions fetching
   
   <entry>
     <title>O3 Cache Block</title>
-    <link href="http://localhost:4000/posts/O3-cache-block/" rel="alternate" type="text/html" title="O3 Cache Block" />
+    <link href="https://ruach.github.io/posts/O3-cache-block/" rel="alternate" type="text/html" title="O3 Cache Block" />
     <published>2021-06-11T00:00:00-04:00</published>
   
     <updated>2021-06-11T00:00:00-04:00</updated>
   
-    <id>http://localhost:4000/posts/O3-cache-block/</id>
-    <content src="http://localhost:4000/posts/O3-cache-block/" />
+    <id>https://ruach.github.io/posts/O3-cache-block/</id>
+    <content src="https://ruach.github.io/posts/O3-cache-block/" />
     <author>
       <name>Jaehyuk Lee</name>
     </author>
@@ -157,13 +157,13 @@ Cache internal class hierarchies in GEM5
   
   <entry>
     <title>O3 Cache Recv</title>
-    <link href="http://localhost:4000/posts/O3-cache-recv/" rel="alternate" type="text/html" title="O3 Cache Recv" />
+    <link href="https://ruach.github.io/posts/O3-cache-recv/" rel="alternate" type="text/html" title="O3 Cache Recv" />
     <published>2021-06-10T00:00:00-04:00</published>
   
     <updated>2021-06-10T00:00:00-04:00</updated>
   
-    <id>http://localhost:4000/posts/O3-cache-recv/</id>
-    <content src="http://localhost:4000/posts/O3-cache-recv/" />
+    <id>https://ruach.github.io/posts/O3-cache-recv/</id>
+    <content src="https://ruach.github.io/posts/O3-cache-recv/" />
     <author>
       <name>Jaehyuk Lee</name>
     </author>
@@ -205,13 +205,13 @@ BaseCache::recvTimingResp
   
   <entry>
     <title>O3 Cpu Commit</title>
-    <link href="http://localhost:4000/posts/O3-CPU-commit/" rel="alternate" type="text/html" title="O3 Cpu Commit" />
+    <link href="https://ruach.github.io/posts/O3-CPU-commit/" rel="alternate" type="text/html" title="O3 Cpu Commit" />
     <published>2021-06-04T00:00:00-04:00</published>
   
     <updated>2021-06-04T00:00:00-04:00</updated>
   
-    <id>http://localhost:4000/posts/O3-CPU-commit/</id>
-    <content src="http://localhost:4000/posts/O3-CPU-commit/" />
+    <id>https://ruach.github.io/posts/O3-CPU-commit/</id>
+    <content src="https://ruach.github.io/posts/O3-CPU-commit/" />
     <author>
       <name>Jaehyuk Lee</name>
     </author>

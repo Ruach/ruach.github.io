@@ -39,8 +39,8 @@
 <meta property="og:locale" content="en" />
 <meta name="description" content="In my previous post, I discussed the automatic generation of C++ classes for macroops and microops using various GEM5 tools, including a Python-based parser and string-based template substitution. I also provided an example, explaining how a class definition and its constructor for micro-load instructions are generated. Additionally, I presented several definitions that implement the actual semantics of micro-load operations, including the execute function." />
 <meta property="og:description" content="In my previous post, I discussed the automatic generation of C++ classes for macroops and microops using various GEM5 tools, including a Python-based parser and string-based template substitution. I also provided an example, explaining how a class definition and its constructor for micro-load instructions are generated. Additionally, I presented several definitions that implement the actual semantics of micro-load operations, including the execute function." />
-<link rel="canonical" href="http://localhost:4000/posts/gem5-memaccess/" />
-<meta property="og:url" content="http://localhost:4000/posts/gem5-memaccess/" />
+<link rel="canonical" href="https://ruach.github.io/posts/gem5-memaccess/" />
+<meta property="og:url" content="https://ruach.github.io/posts/gem5-memaccess/" />
 <meta property="og:site_name" content="Ruach" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2020-06-05T00:00:00-04:00" />
@@ -48,7 +48,7 @@
 <meta property="twitter:title" content="Gem5 Memaccess" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2020-06-05T00:00:00-04:00","datePublished":"2020-06-05T00:00:00-04:00","description":"In my previous post, I discussed the automatic generation of C++ classes for macroops and microops using various GEM5 tools, including a Python-based parser and string-based template substitution. I also provided an example, explaining how a class definition and its constructor for micro-load instructions are generated. Additionally, I presented several definitions that implement the actual semantics of micro-load operations, including the execute function.","headline":"Gem5 Memaccess","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/posts/gem5-memaccess/"},"url":"http://localhost:4000/posts/gem5-memaccess/"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2020-06-05T00:00:00-04:00","datePublished":"2020-06-05T00:00:00-04:00","description":"In my previous post, I discussed the automatic generation of C++ classes for macroops and microops using various GEM5 tools, including a Python-based parser and string-based template substitution. I also provided an example, explaining how a class definition and its constructor for micro-load instructions are generated. Additionally, I presented several definitions that implement the actual semantics of micro-load operations, including the execute function.","headline":"Gem5 Memaccess","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/gem5-memaccess/"},"url":"https://ruach.github.io/posts/gem5-memaccess/"}</script>
 <!-- End Jekyll SEO tag -->
 
   
@@ -2308,7 +2308,7 @@ to process the recevied packet.</p>
       
 
       <a
-        href="https://twitter.com/intent/tweet?text=Gem5%20Memaccess%20-%20Ruach&url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fgem5-memaccess%2F"
+        href="https://twitter.com/intent/tweet?text=Gem5%20Memaccess%20-%20Ruach&url=https%3A%2F%2Fruach.github.io%2Fposts%2Fgem5-memaccess%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Twitter"
@@ -2323,7 +2323,7 @@ to process the recevied packet.</p>
       
 
       <a
-        href="https://www.facebook.com/sharer/sharer.php?title=Gem5%20Memaccess%20-%20Ruach&u=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fgem5-memaccess%2F"
+        href="https://www.facebook.com/sharer/sharer.php?title=Gem5%20Memaccess%20-%20Ruach&u=https%3A%2F%2Fruach.github.io%2Fposts%2Fgem5-memaccess%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Facebook"
@@ -2338,7 +2338,7 @@ to process the recevied packet.</p>
       
 
       <a
-        href="https://t.me/share/url?url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fgem5-memaccess%2F&text=Gem5%20Memaccess%20-%20Ruach"
+        href="https://t.me/share/url?url=https%3A%2F%2Fruach.github.io%2Fposts%2Fgem5-memaccess%2F&text=Gem5%20Memaccess%20-%20Ruach"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Telegram"
@@ -2353,7 +2353,7 @@ to process the recevied packet.</p>
       
 
       <a
-        href="https://www.linkedin.com/sharing/share-offsite/?url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fgem5-memaccess%2F"
+        href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fruach.github.io%2Fposts%2Fgem5-memaccess%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Linkedin"
@@ -2631,70 +2631,55 @@ gem5/src/arch/x86/isa/insts/general_purpose/data...
               <!--  The comments switcher -->
 
   
-  <!-- https://giscus.app/ -->
+  <!-- The Disqus lazy loading. -->
+
+<div id="disqus_thread">
+  <p class="text-center text-muted small">Comments powered by <a href="https://disqus.com/">Disqus</a>.</p>
+</div>
+
 <script type="text/javascript">
-  (function () {
-    const origin = 'https://giscus.app';
-    const iframe = 'iframe.giscus-frame';
-    const lightTheme = 'light';
-    const darkTheme = 'dark_dimmed';
+  var disqus_config = function () {
+    this.page.url = 'https://ruach.github.io/posts/gem5-memaccess/';
+    this.page.identifier = '/posts/gem5-memaccess/';
+  };
 
-    let initTheme = lightTheme;
-    const html = document.documentElement;
+  /* Lazy loading */
+  var disqus_observer = new IntersectionObserver(
+    function (entries) {
+      if (entries[0].isIntersecting) {
+        (function () {
+          var d = document,
+            s = d.createElement('script');
+          s.src = 'https://ruach.disqus.com/embed.js';
+          s.setAttribute('data-timestamp', +new Date());
+          (d.head || d.body).appendChild(s);
+        })();
 
-    if (
-      (html.hasAttribute('data-mode') &&
-        html.getAttribute('data-mode') === 'dark') ||
-      (!html.hasAttribute('data-mode') &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches)
-    ) {
-      initTheme = darkTheme;
-    }
-
-    let giscusAttributes = {
-      src: 'https://giscus.app/client.js',
-      'data-repo': 'Ruach/ruach.github.io',
-      'data-repo-id': '',
-      'data-category': '',
-      'data-category-id': '',
-      'data-mapping': 'pathname',
-      'data-reactions-enabled': '1',
-      'data-emit-metadata': '0',
-      'data-theme': initTheme,
-      'data-input-position': 'bottom',
-      'data-lang': 'en',
-      'data-loading': 'lazy',
-      crossorigin: 'anonymous',
-      async: ''
-    };
-
-    let giscusScript = document.createElement('script');
-    Object.entries(giscusAttributes).forEach(([key, value]) =>
-      giscusScript.setAttribute(key, value)
-    );
-    document.getElementById('tail-wrapper').appendChild(giscusScript);
-
-    addEventListener('message', (event) => {
-      if (
-        event.source === window &&
-        event.data &&
-        event.data.direction === ModeToggle.ID
-      ) {
-        /* global theme mode changed */
-        const mode = event.data.message;
-        const theme = mode === ModeToggle.DARK_MODE ? darkTheme : lightTheme;
-
-        const message = {
-          setConfig: {
-            theme: theme
-          }
-        };
-
-        const giscus = document.querySelector(iframe).contentWindow;
-        giscus.postMessage({ giscus: message }, origin);
+        disqus_observer.disconnect();
       }
-    });
-  })();
+    },
+    { threshold: [0] }
+  );
+
+  disqus_observer.observe(document.querySelector('#disqus_thread'));
+
+  /* Auto switch theme */
+  function reloadDisqus() {
+    if (event.source === window && event.data && event.data.direction === ModeToggle.ID) {
+      /* Disqus hasn't been loaded */
+      if (typeof DISQUS === 'undefined') {
+        return;
+      }
+
+      if (document.readyState == 'complete') {
+        DISQUS.reset({ reload: true, config: disqus_config });
+      }
+    }
+  }
+
+  if (document.querySelector('.mode-toggle')) {
+    window.addEventListener('message', reloadDisqus);
+  }
 </script>
 
 

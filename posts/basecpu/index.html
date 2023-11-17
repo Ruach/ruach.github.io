@@ -39,8 +39,8 @@
 <meta property="og:locale" content="en" />
 <meta name="description" content="gem5/src/cpu/BaseCPU.py 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 65 if buildEnv[&#39;TARGET_ISA&#39;] == &#39;alpha&#39;: 66 from m5.objects.AlphaTLB import AlphaDTB as ArchDTB, AlphaITB as ArchITB 67 from m5.objects.AlphaInterrupts import AlphaInterrupts as ArchInterrupts 68 from m5.objects.AlphaISA import AlphaISA as ArchISA 69 ArchISAsParam = VectorParam.AlphaISA 70 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;sparc&#39;: 71 from m5.objects.SparcTLB import SparcTLB as ArchDTB, SparcTLB as ArchITB 72 from m5.objects.SparcInterrupts import SparcInterrupts as ArchInterrupts 73 from m5.objects.SparcISA import SparcISA as ArchISA 74 ArchISAsParam = VectorParam.SparcISA 75 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;x86&#39;: 76 from m5.objects.X86TLB import X86TLB as ArchDTB, X86TLB as ArchITB 77 from m5.objects.X86LocalApic import X86LocalApic as ArchInterrupts 78 from m5.objects.X86ISA import X86ISA as ArchISA 79 ArchISAsParam = VectorParam.X86ISA 80 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;mips&#39;: 81 from m5.objects.MipsTLB import MipsTLB as ArchDTB, MipsTLB as ArchITB 82 from m5.objects.MipsInterrupts import MipsInterrupts as ArchInterrupts 83 from m5.objects.MipsISA import MipsISA as ArchISA 84 ArchISAsParam = VectorParam.MipsISA 85 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;arm&#39;: 86 from m5.objects.ArmTLB import ArmDTB as ArchDTB, ArmITB as ArchITB 87 from m5.objects.ArmInterrupts import ArmInterrupts as ArchInterrupts 88 from m5.objects.ArmISA import ArmISA as ArchISA 89 ArchISAsParam = VectorParam.ArmISA 90 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;power&#39;: 91 from m5.objects.PowerTLB import PowerTLB as ArchDTB, PowerTLB as ArchITB 92 from m5.objects.PowerInterrupts import PowerInterrupts as ArchInterrupts 93 from m5.objects.PowerISA import PowerISA as ArchISA 94 ArchISAsParam = VectorParam.PowerISA 95 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;riscv&#39;: 96 from m5.objects.RiscvTLB import RiscvTLB as ArchDTB, RiscvTLB as ArchITB 97 from m5.objects.RiscvInterrupts import RiscvInterrupts as ArchInterrupts 98 from m5.objects.RiscvISA import RiscvISA as ArchISA 99 ArchISAsParam = VectorParam.RiscvISA 100 else: 101 print(&quot;Don&#39;t know what object types to use for ISA %s&quot; % 102 buildEnv[&#39;TARGET_ISA&#39;]) 103 sys.exit(1) 104" />
 <meta property="og:description" content="gem5/src/cpu/BaseCPU.py 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 65 if buildEnv[&#39;TARGET_ISA&#39;] == &#39;alpha&#39;: 66 from m5.objects.AlphaTLB import AlphaDTB as ArchDTB, AlphaITB as ArchITB 67 from m5.objects.AlphaInterrupts import AlphaInterrupts as ArchInterrupts 68 from m5.objects.AlphaISA import AlphaISA as ArchISA 69 ArchISAsParam = VectorParam.AlphaISA 70 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;sparc&#39;: 71 from m5.objects.SparcTLB import SparcTLB as ArchDTB, SparcTLB as ArchITB 72 from m5.objects.SparcInterrupts import SparcInterrupts as ArchInterrupts 73 from m5.objects.SparcISA import SparcISA as ArchISA 74 ArchISAsParam = VectorParam.SparcISA 75 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;x86&#39;: 76 from m5.objects.X86TLB import X86TLB as ArchDTB, X86TLB as ArchITB 77 from m5.objects.X86LocalApic import X86LocalApic as ArchInterrupts 78 from m5.objects.X86ISA import X86ISA as ArchISA 79 ArchISAsParam = VectorParam.X86ISA 80 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;mips&#39;: 81 from m5.objects.MipsTLB import MipsTLB as ArchDTB, MipsTLB as ArchITB 82 from m5.objects.MipsInterrupts import MipsInterrupts as ArchInterrupts 83 from m5.objects.MipsISA import MipsISA as ArchISA 84 ArchISAsParam = VectorParam.MipsISA 85 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;arm&#39;: 86 from m5.objects.ArmTLB import ArmDTB as ArchDTB, ArmITB as ArchITB 87 from m5.objects.ArmInterrupts import ArmInterrupts as ArchInterrupts 88 from m5.objects.ArmISA import ArmISA as ArchISA 89 ArchISAsParam = VectorParam.ArmISA 90 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;power&#39;: 91 from m5.objects.PowerTLB import PowerTLB as ArchDTB, PowerTLB as ArchITB 92 from m5.objects.PowerInterrupts import PowerInterrupts as ArchInterrupts 93 from m5.objects.PowerISA import PowerISA as ArchISA 94 ArchISAsParam = VectorParam.PowerISA 95 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;riscv&#39;: 96 from m5.objects.RiscvTLB import RiscvTLB as ArchDTB, RiscvTLB as ArchITB 97 from m5.objects.RiscvInterrupts import RiscvInterrupts as ArchInterrupts 98 from m5.objects.RiscvISA import RiscvISA as ArchISA 99 ArchISAsParam = VectorParam.RiscvISA 100 else: 101 print(&quot;Don&#39;t know what object types to use for ISA %s&quot; % 102 buildEnv[&#39;TARGET_ISA&#39;]) 103 sys.exit(1) 104" />
-<link rel="canonical" href="http://localhost:4000/posts/basecpu/" />
-<meta property="og:url" content="http://localhost:4000/posts/basecpu/" />
+<link rel="canonical" href="https://ruach.github.io/posts/basecpu/" />
+<meta property="og:url" content="https://ruach.github.io/posts/basecpu/" />
 <meta property="og:site_name" content="Ruach" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2021-08-08T00:00:00-04:00" />
@@ -48,7 +48,7 @@
 <meta property="twitter:title" content="Basecpu" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-08-08T00:00:00-04:00","datePublished":"2021-08-08T00:00:00-04:00","description":"gem5/src/cpu/BaseCPU.py 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 65 if buildEnv[&#39;TARGET_ISA&#39;] == &#39;alpha&#39;: 66 from m5.objects.AlphaTLB import AlphaDTB as ArchDTB, AlphaITB as ArchITB 67 from m5.objects.AlphaInterrupts import AlphaInterrupts as ArchInterrupts 68 from m5.objects.AlphaISA import AlphaISA as ArchISA 69 ArchISAsParam = VectorParam.AlphaISA 70 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;sparc&#39;: 71 from m5.objects.SparcTLB import SparcTLB as ArchDTB, SparcTLB as ArchITB 72 from m5.objects.SparcInterrupts import SparcInterrupts as ArchInterrupts 73 from m5.objects.SparcISA import SparcISA as ArchISA 74 ArchISAsParam = VectorParam.SparcISA 75 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;x86&#39;: 76 from m5.objects.X86TLB import X86TLB as ArchDTB, X86TLB as ArchITB 77 from m5.objects.X86LocalApic import X86LocalApic as ArchInterrupts 78 from m5.objects.X86ISA import X86ISA as ArchISA 79 ArchISAsParam = VectorParam.X86ISA 80 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;mips&#39;: 81 from m5.objects.MipsTLB import MipsTLB as ArchDTB, MipsTLB as ArchITB 82 from m5.objects.MipsInterrupts import MipsInterrupts as ArchInterrupts 83 from m5.objects.MipsISA import MipsISA as ArchISA 84 ArchISAsParam = VectorParam.MipsISA 85 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;arm&#39;: 86 from m5.objects.ArmTLB import ArmDTB as ArchDTB, ArmITB as ArchITB 87 from m5.objects.ArmInterrupts import ArmInterrupts as ArchInterrupts 88 from m5.objects.ArmISA import ArmISA as ArchISA 89 ArchISAsParam = VectorParam.ArmISA 90 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;power&#39;: 91 from m5.objects.PowerTLB import PowerTLB as ArchDTB, PowerTLB as ArchITB 92 from m5.objects.PowerInterrupts import PowerInterrupts as ArchInterrupts 93 from m5.objects.PowerISA import PowerISA as ArchISA 94 ArchISAsParam = VectorParam.PowerISA 95 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;riscv&#39;: 96 from m5.objects.RiscvTLB import RiscvTLB as ArchDTB, RiscvTLB as ArchITB 97 from m5.objects.RiscvInterrupts import RiscvInterrupts as ArchInterrupts 98 from m5.objects.RiscvISA import RiscvISA as ArchISA 99 ArchISAsParam = VectorParam.RiscvISA 100 else: 101 print(&quot;Don&#39;t know what object types to use for ISA %s&quot; % 102 buildEnv[&#39;TARGET_ISA&#39;]) 103 sys.exit(1) 104","headline":"Basecpu","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/posts/basecpu/"},"url":"http://localhost:4000/posts/basecpu/"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-08-08T00:00:00-04:00","datePublished":"2021-08-08T00:00:00-04:00","description":"gem5/src/cpu/BaseCPU.py 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 65 if buildEnv[&#39;TARGET_ISA&#39;] == &#39;alpha&#39;: 66 from m5.objects.AlphaTLB import AlphaDTB as ArchDTB, AlphaITB as ArchITB 67 from m5.objects.AlphaInterrupts import AlphaInterrupts as ArchInterrupts 68 from m5.objects.AlphaISA import AlphaISA as ArchISA 69 ArchISAsParam = VectorParam.AlphaISA 70 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;sparc&#39;: 71 from m5.objects.SparcTLB import SparcTLB as ArchDTB, SparcTLB as ArchITB 72 from m5.objects.SparcInterrupts import SparcInterrupts as ArchInterrupts 73 from m5.objects.SparcISA import SparcISA as ArchISA 74 ArchISAsParam = VectorParam.SparcISA 75 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;x86&#39;: 76 from m5.objects.X86TLB import X86TLB as ArchDTB, X86TLB as ArchITB 77 from m5.objects.X86LocalApic import X86LocalApic as ArchInterrupts 78 from m5.objects.X86ISA import X86ISA as ArchISA 79 ArchISAsParam = VectorParam.X86ISA 80 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;mips&#39;: 81 from m5.objects.MipsTLB import MipsTLB as ArchDTB, MipsTLB as ArchITB 82 from m5.objects.MipsInterrupts import MipsInterrupts as ArchInterrupts 83 from m5.objects.MipsISA import MipsISA as ArchISA 84 ArchISAsParam = VectorParam.MipsISA 85 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;arm&#39;: 86 from m5.objects.ArmTLB import ArmDTB as ArchDTB, ArmITB as ArchITB 87 from m5.objects.ArmInterrupts import ArmInterrupts as ArchInterrupts 88 from m5.objects.ArmISA import ArmISA as ArchISA 89 ArchISAsParam = VectorParam.ArmISA 90 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;power&#39;: 91 from m5.objects.PowerTLB import PowerTLB as ArchDTB, PowerTLB as ArchITB 92 from m5.objects.PowerInterrupts import PowerInterrupts as ArchInterrupts 93 from m5.objects.PowerISA import PowerISA as ArchISA 94 ArchISAsParam = VectorParam.PowerISA 95 elif buildEnv[&#39;TARGET_ISA&#39;] == &#39;riscv&#39;: 96 from m5.objects.RiscvTLB import RiscvTLB as ArchDTB, RiscvTLB as ArchITB 97 from m5.objects.RiscvInterrupts import RiscvInterrupts as ArchInterrupts 98 from m5.objects.RiscvISA import RiscvISA as ArchISA 99 ArchISAsParam = VectorParam.RiscvISA 100 else: 101 print(&quot;Don&#39;t know what object types to use for ISA %s&quot; % 102 buildEnv[&#39;TARGET_ISA&#39;]) 103 sys.exit(1) 104","headline":"Basecpu","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/basecpu/"},"url":"https://ruach.github.io/posts/basecpu/"}</script>
 <!-- End Jekyll SEO tag -->
 
   
@@ -996,7 +996,7 @@ X86TLB class, it will invoke the SimObject’s constructor.</p>
       
 
       <a
-        href="https://twitter.com/intent/tweet?text=Basecpu%20-%20Ruach&url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fbasecpu%2F"
+        href="https://twitter.com/intent/tweet?text=Basecpu%20-%20Ruach&url=https%3A%2F%2Fruach.github.io%2Fposts%2Fbasecpu%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Twitter"
@@ -1011,7 +1011,7 @@ X86TLB class, it will invoke the SimObject’s constructor.</p>
       
 
       <a
-        href="https://www.facebook.com/sharer/sharer.php?title=Basecpu%20-%20Ruach&u=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fbasecpu%2F"
+        href="https://www.facebook.com/sharer/sharer.php?title=Basecpu%20-%20Ruach&u=https%3A%2F%2Fruach.github.io%2Fposts%2Fbasecpu%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Facebook"
@@ -1026,7 +1026,7 @@ X86TLB class, it will invoke the SimObject’s constructor.</p>
       
 
       <a
-        href="https://t.me/share/url?url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fbasecpu%2F&text=Basecpu%20-%20Ruach"
+        href="https://t.me/share/url?url=https%3A%2F%2Fruach.github.io%2Fposts%2Fbasecpu%2F&text=Basecpu%20-%20Ruach"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Telegram"
@@ -1041,7 +1041,7 @@ X86TLB class, it will invoke the SimObject’s constructor.</p>
       
 
       <a
-        href="https://www.linkedin.com/sharing/share-offsite/?url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fbasecpu%2F"
+        href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fruach.github.io%2Fposts%2Fbasecpu%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Linkedin"
@@ -1429,70 +1429,55 @@ We can easily find that lots of G...
               <!--  The comments switcher -->
 
   
-  <!-- https://giscus.app/ -->
+  <!-- The Disqus lazy loading. -->
+
+<div id="disqus_thread">
+  <p class="text-center text-muted small">Comments powered by <a href="https://disqus.com/">Disqus</a>.</p>
+</div>
+
 <script type="text/javascript">
-  (function () {
-    const origin = 'https://giscus.app';
-    const iframe = 'iframe.giscus-frame';
-    const lightTheme = 'light';
-    const darkTheme = 'dark_dimmed';
+  var disqus_config = function () {
+    this.page.url = 'https://ruach.github.io/posts/basecpu/';
+    this.page.identifier = '/posts/basecpu/';
+  };
 
-    let initTheme = lightTheme;
-    const html = document.documentElement;
+  /* Lazy loading */
+  var disqus_observer = new IntersectionObserver(
+    function (entries) {
+      if (entries[0].isIntersecting) {
+        (function () {
+          var d = document,
+            s = d.createElement('script');
+          s.src = 'https://ruach.disqus.com/embed.js';
+          s.setAttribute('data-timestamp', +new Date());
+          (d.head || d.body).appendChild(s);
+        })();
 
-    if (
-      (html.hasAttribute('data-mode') &&
-        html.getAttribute('data-mode') === 'dark') ||
-      (!html.hasAttribute('data-mode') &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches)
-    ) {
-      initTheme = darkTheme;
-    }
-
-    let giscusAttributes = {
-      src: 'https://giscus.app/client.js',
-      'data-repo': 'Ruach/ruach.github.io',
-      'data-repo-id': '',
-      'data-category': '',
-      'data-category-id': '',
-      'data-mapping': 'pathname',
-      'data-reactions-enabled': '1',
-      'data-emit-metadata': '0',
-      'data-theme': initTheme,
-      'data-input-position': 'bottom',
-      'data-lang': 'en',
-      'data-loading': 'lazy',
-      crossorigin: 'anonymous',
-      async: ''
-    };
-
-    let giscusScript = document.createElement('script');
-    Object.entries(giscusAttributes).forEach(([key, value]) =>
-      giscusScript.setAttribute(key, value)
-    );
-    document.getElementById('tail-wrapper').appendChild(giscusScript);
-
-    addEventListener('message', (event) => {
-      if (
-        event.source === window &&
-        event.data &&
-        event.data.direction === ModeToggle.ID
-      ) {
-        /* global theme mode changed */
-        const mode = event.data.message;
-        const theme = mode === ModeToggle.DARK_MODE ? darkTheme : lightTheme;
-
-        const message = {
-          setConfig: {
-            theme: theme
-          }
-        };
-
-        const giscus = document.querySelector(iframe).contentWindow;
-        giscus.postMessage({ giscus: message }, origin);
+        disqus_observer.disconnect();
       }
-    });
-  })();
+    },
+    { threshold: [0] }
+  );
+
+  disqus_observer.observe(document.querySelector('#disqus_thread'));
+
+  /* Auto switch theme */
+  function reloadDisqus() {
+    if (event.source === window && event.data && event.data.direction === ModeToggle.ID) {
+      /* Disqus hasn't been loaded */
+      if (typeof DISQUS === 'undefined') {
+        return;
+      }
+
+      if (document.readyState == 'complete') {
+        DISQUS.reset({ reload: true, config: disqus_config });
+      }
+    }
+  }
+
+  if (document.querySelector('.mode-toggle')) {
+    window.addEventListener('message', reloadDisqus);
+  }
 </script>
 
 

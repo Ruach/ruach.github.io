@@ -39,8 +39,8 @@
 <meta property="og:locale" content="en" />
 <meta name="description" content="Cache internal class hierarchies in GEM5 1 2 3 4 5 6 7 8 92 /** 93 * A basic cache interface. Implements some common functions for speed. 94 */ 95 class BaseCache : public ClockedObject 96 { ...... 349 /** Tag and data Storage */ 350 BaseTags *tags;" />
 <meta property="og:description" content="Cache internal class hierarchies in GEM5 1 2 3 4 5 6 7 8 92 /** 93 * A basic cache interface. Implements some common functions for speed. 94 */ 95 class BaseCache : public ClockedObject 96 { ...... 349 /** Tag and data Storage */ 350 BaseTags *tags;" />
-<link rel="canonical" href="http://localhost:4000/posts/O3-cache-block/" />
-<meta property="og:url" content="http://localhost:4000/posts/O3-cache-block/" />
+<link rel="canonical" href="https://ruach.github.io/posts/O3-cache-block/" />
+<meta property="og:url" content="https://ruach.github.io/posts/O3-cache-block/" />
 <meta property="og:site_name" content="Ruach" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2021-06-11T00:00:00-04:00" />
@@ -48,7 +48,7 @@
 <meta property="twitter:title" content="O3 Cache Block" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-06-11T00:00:00-04:00","datePublished":"2021-06-11T00:00:00-04:00","description":"Cache internal class hierarchies in GEM5 1 2 3 4 5 6 7 8 92 /** 93 * A basic cache interface. Implements some common functions for speed. 94 */ 95 class BaseCache : public ClockedObject 96 { ...... 349 /** Tag and data Storage */ 350 BaseTags *tags;","headline":"O3 Cache Block","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/posts/O3-cache-block/"},"url":"http://localhost:4000/posts/O3-cache-block/"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-06-11T00:00:00-04:00","datePublished":"2021-06-11T00:00:00-04:00","description":"Cache internal class hierarchies in GEM5 1 2 3 4 5 6 7 8 92 /** 93 * A basic cache interface. Implements some common functions for speed. 94 */ 95 class BaseCache : public ClockedObject 96 { ...... 349 /** Tag and data Storage */ 350 BaseTags *tags;","headline":"O3 Cache Block","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/O3-cache-block/"},"url":"https://ruach.github.io/posts/O3-cache-block/"}</script>
 <!-- End Jekyll SEO tag -->
 
   
@@ -1144,7 +1144,7 @@ with set and ways indexing.</p>
       
 
       <a
-        href="https://twitter.com/intent/tweet?text=O3%20Cache%20Block%20-%20Ruach&url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2FO3-cache-block%2F"
+        href="https://twitter.com/intent/tweet?text=O3%20Cache%20Block%20-%20Ruach&url=https%3A%2F%2Fruach.github.io%2Fposts%2FO3-cache-block%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Twitter"
@@ -1159,7 +1159,7 @@ with set and ways indexing.</p>
       
 
       <a
-        href="https://www.facebook.com/sharer/sharer.php?title=O3%20Cache%20Block%20-%20Ruach&u=http%3A%2F%2Flocalhost%3A4000%2Fposts%2FO3-cache-block%2F"
+        href="https://www.facebook.com/sharer/sharer.php?title=O3%20Cache%20Block%20-%20Ruach&u=https%3A%2F%2Fruach.github.io%2Fposts%2FO3-cache-block%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Facebook"
@@ -1174,7 +1174,7 @@ with set and ways indexing.</p>
       
 
       <a
-        href="https://t.me/share/url?url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2FO3-cache-block%2F&text=O3%20Cache%20Block%20-%20Ruach"
+        href="https://t.me/share/url?url=https%3A%2F%2Fruach.github.io%2Fposts%2FO3-cache-block%2F&text=O3%20Cache%20Block%20-%20Ruach"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Telegram"
@@ -1189,7 +1189,7 @@ with set and ways indexing.</p>
       
 
       <a
-        href="https://www.linkedin.com/sharing/share-offsite/?url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2FO3-cache-block%2F"
+        href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fruach.github.io%2Fposts%2FO3-cache-block%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Linkedin"
@@ -1354,70 +1354,55 @@ with set and ways indexing.</p>
               <!--  The comments switcher -->
 
   
-  <!-- https://giscus.app/ -->
+  <!-- The Disqus lazy loading. -->
+
+<div id="disqus_thread">
+  <p class="text-center text-muted small">Comments powered by <a href="https://disqus.com/">Disqus</a>.</p>
+</div>
+
 <script type="text/javascript">
-  (function () {
-    const origin = 'https://giscus.app';
-    const iframe = 'iframe.giscus-frame';
-    const lightTheme = 'light';
-    const darkTheme = 'dark_dimmed';
+  var disqus_config = function () {
+    this.page.url = 'https://ruach.github.io/posts/O3-cache-block/';
+    this.page.identifier = '/posts/O3-cache-block/';
+  };
 
-    let initTheme = lightTheme;
-    const html = document.documentElement;
+  /* Lazy loading */
+  var disqus_observer = new IntersectionObserver(
+    function (entries) {
+      if (entries[0].isIntersecting) {
+        (function () {
+          var d = document,
+            s = d.createElement('script');
+          s.src = 'https://ruach.disqus.com/embed.js';
+          s.setAttribute('data-timestamp', +new Date());
+          (d.head || d.body).appendChild(s);
+        })();
 
-    if (
-      (html.hasAttribute('data-mode') &&
-        html.getAttribute('data-mode') === 'dark') ||
-      (!html.hasAttribute('data-mode') &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches)
-    ) {
-      initTheme = darkTheme;
-    }
-
-    let giscusAttributes = {
-      src: 'https://giscus.app/client.js',
-      'data-repo': 'Ruach/ruach.github.io',
-      'data-repo-id': '',
-      'data-category': '',
-      'data-category-id': '',
-      'data-mapping': 'pathname',
-      'data-reactions-enabled': '1',
-      'data-emit-metadata': '0',
-      'data-theme': initTheme,
-      'data-input-position': 'bottom',
-      'data-lang': 'en',
-      'data-loading': 'lazy',
-      crossorigin: 'anonymous',
-      async: ''
-    };
-
-    let giscusScript = document.createElement('script');
-    Object.entries(giscusAttributes).forEach(([key, value]) =>
-      giscusScript.setAttribute(key, value)
-    );
-    document.getElementById('tail-wrapper').appendChild(giscusScript);
-
-    addEventListener('message', (event) => {
-      if (
-        event.source === window &&
-        event.data &&
-        event.data.direction === ModeToggle.ID
-      ) {
-        /* global theme mode changed */
-        const mode = event.data.message;
-        const theme = mode === ModeToggle.DARK_MODE ? darkTheme : lightTheme;
-
-        const message = {
-          setConfig: {
-            theme: theme
-          }
-        };
-
-        const giscus = document.querySelector(iframe).contentWindow;
-        giscus.postMessage({ giscus: message }, origin);
+        disqus_observer.disconnect();
       }
-    });
-  })();
+    },
+    { threshold: [0] }
+  );
+
+  disqus_observer.observe(document.querySelector('#disqus_thread'));
+
+  /* Auto switch theme */
+  function reloadDisqus() {
+    if (event.source === window && event.data && event.data.direction === ModeToggle.ID) {
+      /* Disqus hasn't been loaded */
+      if (typeof DISQUS === 'undefined') {
+        return;
+      }
+
+      if (document.readyState == 'complete') {
+        DISQUS.reset({ reload: true, config: disqus_config });
+      }
+    }
+  }
+
+  if (document.querySelector('.mode-toggle')) {
+    window.addEventListener('message', reloadDisqus);
+  }
 </script>
 
 

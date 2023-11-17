@@ -39,8 +39,8 @@
 <meta property="og:locale" content="en" />
 <meta name="description" content="##Dwc3 probing ```c static int dwc3_apple_m1_probe(struct platform_device *pdev) { struct dwc3_apple *da; struct device *dev = &amp;pdev-&gt;dev; struct device_node *np = dev-&gt;of_node; 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 int ret; da = devm_kzalloc(dev, sizeof(*da), GFP_KERNEL); if (!da) return -ENOMEM; platform_set_drvdata(pdev, da); da-&gt;dev = dev; da-&gt;atcphy = of_iomap(np, 0); da-&gt;usbcore = of_iomap(np, 1); if (!da-&gt;atcphy || !da-&gt;usbcore) { pr_err(&quot;%pOFn: %s: failed to map MMIO ranges.&quot;, np, __func__); return -EINVAL; } ret = clk_bulk_get_all(da-&gt;dev, &amp;da-&gt;clks); if (ret &lt; 0) { pr_err(&quot;%pOFn: %s: clk_bulk_get_all failed.&quot;, np, __func__); return ret; } da-&gt;num_clocks = ret; ret = clk_bulk_prepare_enable(da-&gt;num_clocks, da-&gt;clks); if (ret) { pr_err(&quot;%pOFn: %s: clk_bulk_prepare_enable failed.&quot;, np, __func__); return ret; } ret = dwc3_apple_m1_start(da); if(ret) { pr_err(&quot;%pOFn: %s: failed to prepare hardware: %d.&quot;, np, __func__, ret); return ret; } ret = of_platform_populate(np, NULL, NULL, dev); if (ret) goto err_clk_put; pm_runtime_set_active(dev); pm_runtime_enable(dev); pm_runtime_get_sync(dev); return 0;" />
 <meta property="og:description" content="##Dwc3 probing ```c static int dwc3_apple_m1_probe(struct platform_device *pdev) { struct dwc3_apple *da; struct device *dev = &amp;pdev-&gt;dev; struct device_node *np = dev-&gt;of_node; 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 int ret; da = devm_kzalloc(dev, sizeof(*da), GFP_KERNEL); if (!da) return -ENOMEM; platform_set_drvdata(pdev, da); da-&gt;dev = dev; da-&gt;atcphy = of_iomap(np, 0); da-&gt;usbcore = of_iomap(np, 1); if (!da-&gt;atcphy || !da-&gt;usbcore) { pr_err(&quot;%pOFn: %s: failed to map MMIO ranges.&quot;, np, __func__); return -EINVAL; } ret = clk_bulk_get_all(da-&gt;dev, &amp;da-&gt;clks); if (ret &lt; 0) { pr_err(&quot;%pOFn: %s: clk_bulk_get_all failed.&quot;, np, __func__); return ret; } da-&gt;num_clocks = ret; ret = clk_bulk_prepare_enable(da-&gt;num_clocks, da-&gt;clks); if (ret) { pr_err(&quot;%pOFn: %s: clk_bulk_prepare_enable failed.&quot;, np, __func__); return ret; } ret = dwc3_apple_m1_start(da); if(ret) { pr_err(&quot;%pOFn: %s: failed to prepare hardware: %d.&quot;, np, __func__, ret); return ret; } ret = of_platform_populate(np, NULL, NULL, dev); if (ret) goto err_clk_put; pm_runtime_set_active(dev); pm_runtime_enable(dev); pm_runtime_get_sync(dev); return 0;" />
-<link rel="canonical" href="http://localhost:4000/posts/clks/" />
-<meta property="og:url" content="http://localhost:4000/posts/clks/" />
+<link rel="canonical" href="https://ruach.github.io/posts/clks/" />
+<meta property="og:url" content="https://ruach.github.io/posts/clks/" />
 <meta property="og:site_name" content="Ruach" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2021-05-07T00:00:00-04:00" />
@@ -48,7 +48,7 @@
 <meta property="twitter:title" content="Clks" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-05-07T00:00:00-04:00","datePublished":"2021-05-07T00:00:00-04:00","description":"##Dwc3 probing ```c static int dwc3_apple_m1_probe(struct platform_device *pdev) { struct dwc3_apple *da; struct device *dev = &amp;pdev-&gt;dev; struct device_node *np = dev-&gt;of_node; 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 int ret; da = devm_kzalloc(dev, sizeof(*da), GFP_KERNEL); if (!da) return -ENOMEM; platform_set_drvdata(pdev, da); da-&gt;dev = dev; da-&gt;atcphy = of_iomap(np, 0); da-&gt;usbcore = of_iomap(np, 1); if (!da-&gt;atcphy || !da-&gt;usbcore) { pr_err(&quot;%pOFn: %s: failed to map MMIO ranges.&quot;, np, __func__); return -EINVAL; } ret = clk_bulk_get_all(da-&gt;dev, &amp;da-&gt;clks); if (ret &lt; 0) { pr_err(&quot;%pOFn: %s: clk_bulk_get_all failed.&quot;, np, __func__); return ret; } da-&gt;num_clocks = ret; ret = clk_bulk_prepare_enable(da-&gt;num_clocks, da-&gt;clks); if (ret) { pr_err(&quot;%pOFn: %s: clk_bulk_prepare_enable failed.&quot;, np, __func__); return ret; } ret = dwc3_apple_m1_start(da); if(ret) { pr_err(&quot;%pOFn: %s: failed to prepare hardware: %d.&quot;, np, __func__, ret); return ret; } ret = of_platform_populate(np, NULL, NULL, dev); if (ret) goto err_clk_put; pm_runtime_set_active(dev); pm_runtime_enable(dev); pm_runtime_get_sync(dev); return 0;","headline":"Clks","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/posts/clks/"},"url":"http://localhost:4000/posts/clks/"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-05-07T00:00:00-04:00","datePublished":"2021-05-07T00:00:00-04:00","description":"##Dwc3 probing ```c static int dwc3_apple_m1_probe(struct platform_device *pdev) { struct dwc3_apple *da; struct device *dev = &amp;pdev-&gt;dev; struct device_node *np = dev-&gt;of_node; 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 int ret; da = devm_kzalloc(dev, sizeof(*da), GFP_KERNEL); if (!da) return -ENOMEM; platform_set_drvdata(pdev, da); da-&gt;dev = dev; da-&gt;atcphy = of_iomap(np, 0); da-&gt;usbcore = of_iomap(np, 1); if (!da-&gt;atcphy || !da-&gt;usbcore) { pr_err(&quot;%pOFn: %s: failed to map MMIO ranges.&quot;, np, __func__); return -EINVAL; } ret = clk_bulk_get_all(da-&gt;dev, &amp;da-&gt;clks); if (ret &lt; 0) { pr_err(&quot;%pOFn: %s: clk_bulk_get_all failed.&quot;, np, __func__); return ret; } da-&gt;num_clocks = ret; ret = clk_bulk_prepare_enable(da-&gt;num_clocks, da-&gt;clks); if (ret) { pr_err(&quot;%pOFn: %s: clk_bulk_prepare_enable failed.&quot;, np, __func__); return ret; } ret = dwc3_apple_m1_start(da); if(ret) { pr_err(&quot;%pOFn: %s: failed to prepare hardware: %d.&quot;, np, __func__, ret); return ret; } ret = of_platform_populate(np, NULL, NULL, dev); if (ret) goto err_clk_put; pm_runtime_set_active(dev); pm_runtime_enable(dev); pm_runtime_get_sync(dev); return 0;","headline":"Clks","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/clks/"},"url":"https://ruach.github.io/posts/clks/"}</script>
 <!-- End Jekyll SEO tag -->
 
   
@@ -3120,7 +3120,7 @@ The dwc3_apple_m1_start function does this for you.</p>
       
 
       <a
-        href="https://twitter.com/intent/tweet?text=Clks%20-%20Ruach&url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fclks%2F"
+        href="https://twitter.com/intent/tweet?text=Clks%20-%20Ruach&url=https%3A%2F%2Fruach.github.io%2Fposts%2Fclks%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Twitter"
@@ -3135,7 +3135,7 @@ The dwc3_apple_m1_start function does this for you.</p>
       
 
       <a
-        href="https://www.facebook.com/sharer/sharer.php?title=Clks%20-%20Ruach&u=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fclks%2F"
+        href="https://www.facebook.com/sharer/sharer.php?title=Clks%20-%20Ruach&u=https%3A%2F%2Fruach.github.io%2Fposts%2Fclks%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Facebook"
@@ -3150,7 +3150,7 @@ The dwc3_apple_m1_start function does this for you.</p>
       
 
       <a
-        href="https://t.me/share/url?url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fclks%2F&text=Clks%20-%20Ruach"
+        href="https://t.me/share/url?url=https%3A%2F%2Fruach.github.io%2Fposts%2Fclks%2F&text=Clks%20-%20Ruach"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Telegram"
@@ -3165,7 +3165,7 @@ The dwc3_apple_m1_start function does this for you.</p>
       
 
       <a
-        href="https://www.linkedin.com/sharing/share-offsite/?url=http%3A%2F%2Flocalhost%3A4000%2Fposts%2Fclks%2F"
+        href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fruach.github.io%2Fposts%2Fclks%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Linkedin"
@@ -3521,70 +3521,55 @@ struct platform_driver {
               <!--  The comments switcher -->
 
   
-  <!-- https://giscus.app/ -->
+  <!-- The Disqus lazy loading. -->
+
+<div id="disqus_thread">
+  <p class="text-center text-muted small">Comments powered by <a href="https://disqus.com/">Disqus</a>.</p>
+</div>
+
 <script type="text/javascript">
-  (function () {
-    const origin = 'https://giscus.app';
-    const iframe = 'iframe.giscus-frame';
-    const lightTheme = 'light';
-    const darkTheme = 'dark_dimmed';
+  var disqus_config = function () {
+    this.page.url = 'https://ruach.github.io/posts/clks/';
+    this.page.identifier = '/posts/clks/';
+  };
 
-    let initTheme = lightTheme;
-    const html = document.documentElement;
+  /* Lazy loading */
+  var disqus_observer = new IntersectionObserver(
+    function (entries) {
+      if (entries[0].isIntersecting) {
+        (function () {
+          var d = document,
+            s = d.createElement('script');
+          s.src = 'https://ruach.disqus.com/embed.js';
+          s.setAttribute('data-timestamp', +new Date());
+          (d.head || d.body).appendChild(s);
+        })();
 
-    if (
-      (html.hasAttribute('data-mode') &&
-        html.getAttribute('data-mode') === 'dark') ||
-      (!html.hasAttribute('data-mode') &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches)
-    ) {
-      initTheme = darkTheme;
-    }
-
-    let giscusAttributes = {
-      src: 'https://giscus.app/client.js',
-      'data-repo': 'Ruach/ruach.github.io',
-      'data-repo-id': '',
-      'data-category': '',
-      'data-category-id': '',
-      'data-mapping': 'pathname',
-      'data-reactions-enabled': '1',
-      'data-emit-metadata': '0',
-      'data-theme': initTheme,
-      'data-input-position': 'bottom',
-      'data-lang': 'en',
-      'data-loading': 'lazy',
-      crossorigin: 'anonymous',
-      async: ''
-    };
-
-    let giscusScript = document.createElement('script');
-    Object.entries(giscusAttributes).forEach(([key, value]) =>
-      giscusScript.setAttribute(key, value)
-    );
-    document.getElementById('tail-wrapper').appendChild(giscusScript);
-
-    addEventListener('message', (event) => {
-      if (
-        event.source === window &&
-        event.data &&
-        event.data.direction === ModeToggle.ID
-      ) {
-        /* global theme mode changed */
-        const mode = event.data.message;
-        const theme = mode === ModeToggle.DARK_MODE ? darkTheme : lightTheme;
-
-        const message = {
-          setConfig: {
-            theme: theme
-          }
-        };
-
-        const giscus = document.querySelector(iframe).contentWindow;
-        giscus.postMessage({ giscus: message }, origin);
+        disqus_observer.disconnect();
       }
-    });
-  })();
+    },
+    { threshold: [0] }
+  );
+
+  disqus_observer.observe(document.querySelector('#disqus_thread'));
+
+  /* Auto switch theme */
+  function reloadDisqus() {
+    if (event.source === window && event.data && event.data.direction === ModeToggle.ID) {
+      /* Disqus hasn't been loaded */
+      if (typeof DISQUS === 'undefined') {
+        return;
+      }
+
+      if (document.readyState == 'complete') {
+        DISQUS.reset({ reload: true, config: disqus_config });
+      }
+    }
+  }
+
+  if (document.querySelector('.mode-toggle')) {
+    window.addEventListener('message', reloadDisqus);
+  }
 </script>
 
 

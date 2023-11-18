@@ -1,55 +1,65 @@
 ---
 layout: post
-titile: "GEM5, from entry point to simulation loop"
+title: "GEM5, from entry point to simulation loop"
 categories: Gem5, SimObject, pybind11, metaclass
 ---
 
 When you first take a look at the GEM5 source code, it could be confusing 
-because it has python, CPP, and isa files which you might haven't seen before. 
-In GEM5, Most of the simulation logic is implemented as a CPP, but it utilizes
-python heavily for platform configuration and generate CPP class from templates.
-Forget about isa file in this posting! I will go over it in another blog posting. 
+because it has **Python, CPP, and isa files** which you might haven't seen 
+before. In GEM5, Most of the simulation logic is implemented as a CPP, but it 
+utilizes Python heavily for platform configuration and automatic generation of
+CPP class from templates. For example, ISA files define hardware logic with 
+Domain Specific Language (DSL) and will be translated into CPP classes with the 
+help of Python. Forget about isa file in this posting! I will go over it in 
+another blog posting. 
 
-Since the GEM5 execution is a mixture of CPP functions and python 
-scripts, and there are duplicated names for classes and functions in both files,
-it would be very to understand how GEM5 works. This confusion even start from 
-the program execution. let's see the gem5 execution command, particularly for 
-simulating X86 architecture. 
+Since the GEM5 execution is a mixture of CPP functions and Python scripts, and 
+there are duplicated names for classes and functions in both files, it would be 
+tricky to understand how GEM5 works. This confusion even start from the program 
+execution. Let's see the gem5 execution command, particularly for simulating X86
+architecture. If this is first time of using GEM5 please read some articles from
+[GEM5 tutorial](https://www.gem5.org/documentation/learning_gem5/introduction/)
+before reading this post.
 
-> build/X86/gem5.opt \<python script for configuration>
+> build/X86/gem5.opt \<Python script for configuration>
+{: .prompt-info }
 
 The gem5.opt is a **elf binary** compiled from GEM5 CPP code base. However, to 
-run simulation, GEM5 requires additional configuration script written in python. 
+run simulation, GEM5 requires additional configuration script written in **Python.** 
 This script specifies configuration of the platform you want to simulate with 
 GEM5, which includes configuration of CPU, Memory, caches and buses. Wait, I 
 told you most of the simulation logic is implemented as CPP, then why suddenly
-python script is necessary for configuring simulated platform? 
+Python script is necessary for configuring simulated platform? 
 
-I couldn't find any documents explaining about mixing python and CPP to implement 
-GEM5, my guess is to decouple configuration part from the main code base to avoid 
-re-compilation cost. If the user doesn't introduce new component nor want to 
-simulate another architecture, changing configuration of the simulated platform 
-would not need another compilation. 
+I couldn't find any documents detailing the integration of Python and CPP for 
+GEM5 implementation. In my opinion, the idea is to decouple hardware 
+configuration from the main code base to avoid re-compilation cost. If a user
+doesn't introduce new component nor want to simulate another architecture, 
+adjusting the configuration of the simulated platform would not need another 
+compilation. 
 
-Regardless of the reason, as GEM5 make heavy use of Python and CPP at the same
-time, code execution would go back and forth between CPP and python. Also, as 
-the name of the class and its attributes are identical or very similar in python
-and CPP, it would be very confusing to follow the code base. Therefore, please 
-be aware which part of the code it is when you go over this posting. 
+Irrespective of the rationale, since GEM5 extensively utilizes both Python and 
+C++, the execution of code involves frequent transitions between the two 
+languages. Moreover, given that the class names and attributes are either 
+identical or highly similar in both Python and C++, navigating the codebase can 
+be quite confusing. 
 
-### Pybind 11: Allowing python to access CPP definitions
-As python and CPP both needs to access classes and attributes implemented in 
-different language, it must need wrapper/helper. To allow python script to access
-CPP defined classes and struct, GEM5 make heavy use of pybind11. 
-I will not go over details of pybind11 in this posting, so please refer to 
-[pybind11](https://pybind11.readthedocs.io/en/stable/basics.html), before 
-continuing the read. 
+## Allowing Python to access CPP definitions
+Since both Python and C++ require access to classes and attributes implemented 
+in different languages, a wrapper or helper is essential. GEM5 extensively 
+employs pybind11 to facilitate Python scripts in accessing C++-defined classes 
+and structs. Detailed information about pybind11 is not covered in this post, 
+so it is recommended to read 
+[pybind11 documentation](https://pybind11.readthedocs.io/en/stable/basics.html), 
+before proceeding with further reading.
 
-Let's take a look at how GEM5 code base (implemented in CPP) exports its code 
-and data to python. When you run gem5.opt binary, it will first invoke main 
-function defined in CPP. GEM5 defines EmbeddedPython class to provide all 
-functions and attributes for developer to export CPP code and data to python
-through the pybind11.
+### _m5 module exporting CPP to Python
+
+
+GEM5 exports required CPP implementation as the \_m5 Python module through 
+pybind11. Additionally, the sub-modules are organized based on the categories 
+of the C++ implementation. 
+
 
 
 ```cpp
@@ -79,7 +89,7 @@ main(int argc, char **argv)
     // initialize embedded Python interpreter
     Py_Initialize();
 
-    // Initialize the embedded m5 python library
+    // Initialize the embedded m5 Python library
     ret = EmbeddedPython::initAll();
 
     if (ret == 0) {
@@ -95,18 +105,11 @@ main(int argc, char **argv)
 
 ```
 
-
-As depicted in the above code,  **EmbeddedPython::initAll** will expose CPP 
-definitions necessary to run simulation as python module so that python script 
-can utilize CPP implementation. After export, it executes m5Main function to
-transfer control to Python from the executable. Let's first see how GEM5 bind 
-CPP classes to python through EmbeddedPython class.
-
-
-#### Pybind Initialization (export CPP as python module)
-Pybind11 allows python script to access CPP implementation through the format 
-of python module. Therefore, after CPP exports through pybind11, python script 
-can access CPP implementation by exporting python module easily. 
+GEM5 defines EmbeddedPython class in CPP to provide all functions and attributes 
+for developer to export through the pybind11. The **EmbeddedPython::initAll** 
+function exposes the required C++ definitions for running the simulation. Upon 
+export, it then executes the m5Main function, transferring control from the CPP 
+to Python. 
 
 ```cpp
 // src/sim/init.cc
@@ -151,23 +154,42 @@ EmbeddedPyBind::initAll()
 }
 ```
 
-The above function exports CPP definition as '_m5' module and its sub-module 
-such as core, debug, event, and stats. Therefore, if python script wants to 
-access debug related CPP implementation, then it can export '_m5.debug' module.
-The initial few function invocations named as 'pybind_init_xx' exports basic 
-functions and classes necessary for simulation. 
+It exports CPP classes and functions relevant to specific categories as sub
+modules such as core, debug, event, and stats. 
 
-However, it doesn't exports CPP implementations related with actual hardware 
-component simulation. In GEM5, it implements CPP classes to represent hardware 
-components. Therefore to configure the platform through python script, it should 
-be able to access CPP implementations associated with each hardware component.
 
-The reason why I am talking about it separately from binding other CPP classes 
-is that GEM5 automatically generates struct used a parameter to instantiate 
-CPP class object. I bet it is unclear what parameter struct I am talking about,
-you will see what it is soon! Please bare with me! Since those structs are 
-generated automatically, bindings are handled by different functions in the 
-above main function. 'getMap' function returns 
+```cpp
+pybind_init_event(py::module &m_native)
+{
+    py::module m = m_native.def_submodule("event");
+
+    m.def("simulate", &simulate,
+          py::arg("ticks") = MaxTick);
+    m.def("exitSimLoop", &exitSimLoop);
+    m.def("getEventQueue", []() { return curEventQueue(); },
+          py::return_value_policy::reference);
+    m.def("setEventQueue", [](EventQueue *q) { return curEventQueue(q); });
+    m.def("getEventQueue", &getEventQueue,
+          py::return_value_policy::reference);
+
+    py::class_<EventQueue>(m, "EventQueue")
+        .def("name",  [](EventQueue *eq) { return eq->name(); })
+        .def("dump", &EventQueue::dump)
+        .def("schedule", [](EventQueue *eq, PyEvent *e, Tick t) {
+                eq->schedule(e, t);
+            }, py::arg("event"), py::arg("when"))
+        .def("deschedule", &EventQueue::deschedule,
+             py::arg("event"))
+        .def("reschedule", &EventQueue::reschedule,
+             py::arg("event"), py::arg("tick"), py::arg("always") = false)
+        ;
+```
+
+For example, Python function should be able to invoke CPP functions associated 
+with hardware simulation because actual simulation is done by CPP not python. 
+As depicted in the example, it exports simulation-related functions under 
+sub-modules '_m5.event'.
+
 
 ```cpp
 std::map<std::string, EmbeddedPyBind *> &
@@ -204,12 +226,12 @@ you will not be able to find any relevant code instantiating EmbeddedPyBind for
 system component class. The reason is GEM5 automatically generate CPP code 
 snippet and EmbeddedPyBind will be instantiated by that code. I will cover the 
 details soon! Let's assume that all required CPP implementations were exported
-to python through pybind11. 
+to Python through pybind11. 
 
 
 
-#### Transferring execution control to python
-After exporting CPP implementation, now it can finally jumps to GEM5 python 
+### Transferring execution control to Python
+After exporting CPP implementation, now it can finally jumps to GEM5 Python 
 code base. Note that it will not execute the script initially passed to the 
 gem5.opt executable. 
 
@@ -261,7 +283,7 @@ int m5Main(int argc, char **_argv)
     const char **command = m5MainCommands;
 
     // evaluate each command in the m5MainCommands array (basically a
-    // bunch of python statements.
+    // bunch of Python statements.
     while (*command) {
         result = PyRun_String(*command, Py_file_input, dict, dict);
         if (!result) {
@@ -280,20 +302,20 @@ int m5Main(int argc, char **_argv)
     return 0;
 }
 ```
-To transfer execution control to python code, it invokes 
-[PyRun_String](https://docs.python.org/3/c-api/veryhigh.html)
+To transfer execution control to Python code, it invokes 
+[PyRun_String](https://docs.Python.org/3/c-api/veryhigh.html)
 PyRun_String is a function in the Python C API that allows you to execute a 
 Python code snippet from a C program. It takes a string containing the Python 
 code as one of its arguments and executes it within the Python interpreter.
 As depicted in the above CPP string, m5MainCommands, it will invoks m5.main 
 through PyRun_String. 
 
-### GEM5 m5 main python code
-> From this part, the execution is transferred to python snippet.
+## GEM5 m5 main Python code
+> From this part, the execution is transferred to Python snippet.
 
 
-```python
-//src/python/m5/main.py 
+```Python
+//src/Python/m5/main.py 
 
 def main(*args):
     import m5
@@ -351,23 +373,23 @@ def main(*args):
         exec(filecode, scope)
 ```
 
-There are two important initialization code in the above python code: 
-initializing main event queue and execute python snippet originally provided 
+There are two important initialization code in the above Python code: 
+initializing main event queue and execute Python snippet originally provided 
 to gem5.opt. The event queue will be covered in [another blog posting][]. 
 You might remember that we have passed config script defining configuration 
-of one platform we want to simulate. That python script is passed to above 
-python code snippet through 'sys.argv[0]', and compiled and exec. 
+of one platform we want to simulate. That Python script is passed to above 
+Python code snippet through 'sys.argv[0]', and compiled and exec. 
 Therefore, it will not return to CPP, but the execution control is transferred
-to configuration python script!
+to configuration Python script!
 
 
-### How GEM5 nicely orchestrates python script and CPP implementation?
-#### Python platform configuration script
-To understand how python configuration script interacts with CPP implementation 
+## How GEM5 nicely orchestrates Python script and CPP implementation?
+### Python platform configuration script
+To understand how Python configuration script interacts with CPP implementation 
 in simulating one architecture, I will pick very simple configuration script 
 provided by GEM5. Note that it is not complete version of the script. 
 
-```python
+```Python
 # create the system we are going to simulate 
 system = System() 
 
@@ -388,19 +410,19 @@ system.mem_ctrl.dram.range = system.mem_ranges[0]
 system.mem_ctrl.port = system.membus.master
 ```
 
-In the above python configuration script, it instantiates CPU, crossbar, and 
+In the above Python configuration script, it instantiates CPU, crossbar, and 
 DRAM. Also, it connects the CPU to memory through the crossbar. I mentioned that
 GEM5 implements each hardware component as CPP class to simulate it. Then, does
-the above python script instantiates CPP class? or another python class objects?
-For example, GEM5 implements System class in CPP and python both. The answer is 
-python class! I will cover how this python classes used in the script will be 
+the above Python script instantiates CPP class? or another Python class objects?
+For example, GEM5 implements System class in CPP and Python both. The answer is 
+Python class! I will cover how this Python classes used in the script will be 
 transformed into actual CPP classes. Furthermore, I will tell you how these 
 hardware components can be connected each other to provide full system emulation. 
 
-#### Python class as a wrapper for instantiating CPP
-We don't know how python class will instantiate CPP class objects, but when we 
+### Python class as a wrapper for instantiating CPP
+We don't know how Python class will instantiate CPP class objects, but when we 
 look at the implementation of constructor function of the CPP and attributes 
-of python class, we can reason guess python class is relevant with the parameter
+of Python class, we can reason guess Python class is relevant with the parameter
 required for instantiating the CPP class object. Let's see!
 
 ```cpp
@@ -434,7 +456,7 @@ System::System(Params *p)
 
 ```
 
-```python
+```Python
 class System(SimObject):
     type = 'System'
     cxx_header = "sim/system.hh"
@@ -473,15 +495,15 @@ class System(SimObject):
     ......
 ```
 
-For example, cache_line_size is a attribute of the python class, and also it is
+For example, cache_line_size is a attribute of the Python class, and also it is
 used to initialize same name member filed of System CPP class. The automatically
 generated CPP struct previously mentioned in this posting is for generating 
 Param class that will be passed to CPP class to instantiate it. We don't know 
 how this class is automatically generated and used to instantiate CPP class 
-object from python script yet, I will cover the details one by one. 
+object from Python script yet, I will cover the details one by one. 
 
-### Generating Param class
-Let's see what CPP code will be automatically generated from the python class 
+## Generating Param class
+Let's see what CPP code will be automatically generated from the Python class 
 to help us get the big picture. 
 
 ```cpp
@@ -568,19 +590,19 @@ module_init(py::module &m_internal)
 static EmbeddedPyBind embed_obj("System", module_init, "SimObject");
 ```
 
-Also, the automatically generated struct should be accessible from the python
-so that it can generate required parameter from the python class. 
+Also, the automatically generated struct should be accessible from the Python
+so that it can generate required parameter from the Python class. 
 
-#### SimObject python class
+### SimObject Python class
 To understand how GEM5 automatically generate CPP param class and its pybind 
-from python classes, we should understand SimObject class and MetaSimObject 
+from Python classes, we should understand SimObject class and MetaSimObject 
 metaclass. In gem5, a SimObject represents a simulation entity and forms the 
 basis for modeling components within the system being simulated. In other words, 
-all system component related classes instantiated in the python configuration 
+all system component related classes instantiated in the Python configuration 
 script should be inherited from the SimObject class. 
 
-```python
-# gem5/src/python/m5/SimbObject.py
+```Python
+# gem5/src/Python/m5/SimbObject.py
 
 @add_metaclass(MetaSimObject)
 class SimObject(object):
@@ -592,20 +614,20 @@ class SimObject(object):
 
 Although SimObject is the fundamental building block of GEM5 simulation in 
 defining hardware components, its metaclass, MetaSibObject is the most important
-in terms of bridging python to CPP. 
+in terms of bridging Python to CPP. 
 
-#### MetaSimObject: metaclass of SimObject 
-When one python class has metaclass, functions defined in metaclass can 
-pre-process newly defined class. For example, attributes of python class having 
+### MetaSimObject: metaclass of SimObject 
+When one Python class has metaclass, functions defined in metaclass can 
+pre-process newly defined class. For example, attributes of Python class having 
 metaclass can be audited by metaclasss functions such as '__init__, __new__ or, 
 __call__'. Since metaclass can access class and its attributes (dictionary), it 
 can modify or introduce particular attribute and logic during the class 
 instantiation. For further details of metaclass, please refer to 
-[python-metaclass](https://realpython.com/python-metaclasses/).
+[Python-metaclass](https://realPython.com/Python-metaclasses/).
 
 
-```python
-#src/python/m5/SimObject.py
+```Python
+#src/Python/m5/SimObject.py
 
 class MetaSimObject(type):
     # Attributes that can be set only at initialization time
@@ -626,29 +648,29 @@ class MetaSimObject(type):
 ```
 
 Also, remind that actual system components simulating architecture is 
-implemented C++ code not python code. I will say python classes are interface 
+implemented C++ code not Python code. I will say Python classes are interface 
 or wrapper for actual implementation of simulation logic in C++. Therefore, 
-each python system components should be able to access C++ functions matching 
-python classes. 
+each Python system components should be able to access C++ functions matching 
+Python classes. 
 
-#### Generate CPP Param struct and its pybind {#cpp-auto}
-When you look at the python class for System, you can find that there are some 
-python attributes not related with the CPP System class. We only need to filter
-out python class attributes that is necessary for communication with CPP class
-counterpart. If it reminds you of python metaclass, you don't need to study 
-more about python metaclass. As I told you, because python metaclass allows it 
+### Generate CPP Param struct and its pybind {#cpp-auto}
+When you look at the Python class for System, you can find that there are some 
+Python attributes not related with the CPP System class. We only need to filter
+out Python class attributes that is necessary for communication with CPP class
+counterpart. If it reminds you of Python metaclass, you don't need to study 
+more about Python metaclass. As I told you, because Python metaclass allows it 
 to access all attributes of class having it as metaclass, so it would be a nice
 place to **filter out only necessary attributes!**
 
 Before we take a look at how metaclass helps us filter out only interesting 
-attributes from the python class, let's take a look at the python code that 
+attributes from the Python class, let's take a look at the Python code that 
 automatically generates Param struct to get idea about which attributes of the 
-python classes should be filtered out to generate CPP code. 
-As most of the python based automatic code generation utilize python string and
+Python classes should be filtered out to generate CPP code. 
+As most of the Python based automatic code generation utilize Python string and
 substitution, you can easily find the function by searching some of the generated 
 code logic in CPP.
 
-```python
+```Python
     def cxx_param_decl(cls, code):
         params = list(map(lambda k_v: k_v[1], sorted(cls._params.local.items())))
         ports = cls._ports.local
@@ -706,12 +728,12 @@ code logic in CPP.
 ```
 
 When you compare above code with the automatically generated struct, then you 
-can easily figure out which parts of the python code generate which parts of the
-CPP implementation. Below is the python code for generating CPP function to 
-export automatically generated struct to python through pybind. 
+can easily figure out which parts of the Python code generate which parts of the
+CPP implementation. Below is the Python code for generating CPP function to 
+export automatically generated struct to Python through pybind. 
 
 
-```python
+```Python
     def pybind_predecls(cls, code):
         code('#include "${{cls.cxx_header}}"')
     
@@ -729,7 +751,7 @@ export automatically generated struct to python through pybind.
 #include "pybind11/stl.h"
 
 #include "params/$cls.hh"
-#include "python/pybind11/core.hh"
+#include "Python/pybind11/core.hh"
 #include "sim/init.hh"
 #include "sim/sim_object.hh"
 
@@ -773,7 +795,7 @@ module_init(py::module &m_internal)
             exp.export(code, "%sParams" % cls)
 ```
 
-``` python
+``` Python
 class PyBindProperty(PyBindExport):
     def __init__(self, name, cxx_name=None, writable=True):
         self.name = name
@@ -785,16 +807,16 @@ class PyBindProperty(PyBindExport):
         code('.${export}("${{self.name}}", &${cname}::${{self.cxx_name}})')
 ```
 
-When you carefully compare the automatically generated code and python code side
-by side, you can figure out that port and param related python attributes are 
+When you carefully compare the automatically generated code and Python code side
+by side, you can figure out that port and param related Python attributes are 
 important in both generating CPP implementation of Param struct and its pybind.
 
 
-##### __init__ of MetaSimObject
+#### __init__ of MetaSimObject
 Let's see how metaclass help us filter out param and port related attribute 
-from python classes inheriting SimObject. 
+from Python classes inheriting SimObject. 
 
-```python
+```Python
     def __init__(cls, name, bases, dict):                                       
         super(MetaSimObject, cls).__init__(name, bases, dict)                   
                                                                                 
@@ -843,14 +865,14 @@ from python classes inheriting SimObject.
 ```
 
 Thanks to metaclass, the above __init__ function of the MetaSimObject meta class
-will be invoked for any python classes inheriting SimObject because SimObject 
+will be invoked for any Python classes inheriting SimObject because SimObject 
 set MetaSimObject as its metaclass. It iterates all attributes in the class and 
 check if it is either **ParamDesc or Port** instance. Based on which instance 
 it is, it will invoke '_new_param' or 'new_port' which put the attribute in 
 '_params' and '_ports' dictionary of the class (i.e., filtering out two 
 attributes in the dictionary).
 
-```python
+```Python
     def _new_param(cls, name, pdesc):
         # each param desc should be uniquely assigned to one variable
         assert(not hasattr(pdesc, 'name'))
@@ -870,9 +892,9 @@ attributes in the dictionary).
 When you take a look at the [code](cpp-auto) once again, you can understand how
 these two newly introduced dictionaries are used as a key for automatically 
 generating CPP implementation for Param struct and its pybind code. One last note
-is it is developer's role to define python class attributes corresponding to 
+is it is developer's role to define Python class attributes corresponding to 
 CPP implementation so that Param struct and pybind method can be automatically
-generated to connect CPP implementation to python.
+generated to connect CPP implementation to Python.
 
 ```cpp
 class System(SimObject):
@@ -890,30 +912,30 @@ class System(SimObject):
     mem_mode = Param.MemoryMode('atomic', "The mode the memory system is in")
 ```
 
-For example to connect python attribute mem_mode to Enums::MemoryMode mem_mode
-filed of the CPP implementation, developer should define python attributes 
+For example to connect Python attribute mem_mode to Enums::MemoryMode mem_mode
+filed of the CPP implementation, developer should define Python attributes 
 properly with Param class. 
 
-#### Collected Params to CPP variable. 
+### Collected Params to CPP variable. 
 Python Param class is a placeholder for any parameter that should be translated 
-into CPP from python attribute. Compared with python which doesn't need a strict
+into CPP from Python attribute. Compared with Python which doesn't need a strict
 type for attribute, CPP need clear and distinct type for all variables. Therefore,
-to translate python attribute to CPP variable, GEM5 should manage value and type
+to translate Python attribute to CPP variable, GEM5 should manage value and type
 altogether, which is done by ParamDesc class. 
 
-```python
-# python/m5/params.py
+```Python
+# Python/m5/params.py
 
 class ParamDesc(object):
     def cxx_decl(self, code):
         code('${{self.ptype.cxx_type}} ${{self.name}};')
 ```
 
-The 'cxx_decl' method is invoked when GEM5 automatically translate python 
+The 'cxx_decl' method is invoked when GEM5 automatically translate Python 
 attributes (instance of ParamDesc) to CPP variable. You might wonder why it is
-ParamDesc not Param previously used to define attributes in python class.
+ParamDesc not Param previously used to define attributes in Python class.
 
-```python
+```Python
 Param = ParamFactory(ParamDesc)
 ```
 
@@ -921,7 +943,7 @@ The trick is assigning another class ParamFactory to Param so that developer
 can easily instantiate ParamDesc object per attribute, required for generating 
 CPP class parameter. 
 
-```python
+```Python
 class ParamFactory(object):
     def __init__(self, param_desc_class, ptype_str = None):
         self.param_desc_class = param_desc_class
@@ -943,9 +965,9 @@ class ParamFactory(object):
         return self.param_desc_class(self.ptype_str, ptype, *args, **kwargs)
 ```
 
-For example let's assume you have below python attribute.
+For example let's assume you have below Python attribute.
 
-```python
+```Python
     cache_line_size = Param.Unsigned(64, "Cache line size in bytes")
 ```
 
@@ -957,7 +979,7 @@ in the parentheses. As it is treated as function call, it will further invoke
 dictionary mapped to ptype_str which will be Unsigned in this case. Therefore,
 allParams dictionary should be generated before the ParamFactory is utilized. 
 
-```python
+```Python
 class MetaParamValue(type):
     def __new__(mcls, name, bases, dct):
         cls = super(MetaParamValue, mcls).__new__(mcls, name, bases, dct)
@@ -967,9 +989,9 @@ class MetaParamValue(type):
         allParams[name] = cls
         return cls 
 ```
-To add allParams dictionary, GEM5 utilize another python metaclass.
+To add allParams dictionary, GEM5 utilize another Python metaclass.
 
-```python
+```Python
 class Unsigned(CheckedInt): cxx_type = 'unsigned'; size = 32; unsigned = True
 
 class CheckedIntType(MetaParamValue):
@@ -1003,20 +1025,20 @@ metaclasses and its functions further. If you want to understand how this
 returned class object is used to instantiate proper object, recommend you to 
 take a look at more details of metaclasses of CheckedInt.
 
-#### XXX
-```python
+### XXX
+```Python
 class System(SimObject):
     ......
     mem_mode = Param.MemoryMode('atomic', "The mode the memory system is in")
     ......
 ```
-However, when you take a look at the python classes, it doesn't utilize pybind 
-directly to access CPP objects. All python attributes related with Params are 
-accessed as if it is vanilla python attributes. However, what we want is the 
+However, when you take a look at the Python classes, it doesn't utilize pybind 
+directly to access CPP objects. All Python attributes related with Params are 
+accessed as if it is vanilla Python attributes. However, what we want is the 
 access to attributes relevant with Param is translated into CPP object accesses
 through the pybind!
 
-```python
+```Python
     # Get C++ object corresponding to this object, calling C++ if
     # necessary to construct it.  Does *not* recursively create
     # children.
@@ -1039,16 +1061,16 @@ through the pybind!
 
 ```
 
-#### Sconscript: generating files for CPP implementation 
-Now we can understand where the python code is located and how the data required
-for generating CPP implementation can be gathered from each python class. Then,
-some program should invoke the python method to generate actual CPP and header
+### Sconscript: generating files for CPP implementation 
+Now we can understand where the Python code is located and how the data required
+for generating CPP implementation can be gathered from each Python class. Then,
+some program should invoke the Python method to generate actual CPP and header
 file containing automatically generated CPP implementation. That is done at the 
 compile time by scone. SCons is a build automation tool that uses Python scripts
 for configuration and build control. 
 
 
-```python
+```Python
 # gem5/src/SConscript
 
 # Generate all of the SimObject param C++ struct header files
@@ -1087,7 +1109,7 @@ if env['USE_PYTHON']:
     for name,simobj in sorted(sim_objects.iteritems()):
         py_source = PySource.modules[simobj.__module__]
         extra_deps = [ py_source.tnode ]
-        cc_file = File('python/_m5/param_%s.cc' % name)
+        cc_file = File('Python/_m5/param_%s.cc' % name)
         env.Command(cc_file, Value(name),
                     MakeAction(createSimObjectPyBindWrapper,
                                Transform("SO PyBind")))
@@ -1104,21 +1126,21 @@ def createSimObjectPyBindWrapper(target, source, env):
 ```
 
 When you take a look at the main SConScript located in the root src directory,
-there are two locations invoking python methods that you must be familiar with
+there are two locations invoking Python methods that you must be familiar with
 (obj.pybind_decl and obj.cxx_param_decl). One thing not clear in the SConscript 
 is **sim_objects**. 
 
-```python
+```Python
 # gem5/src/SConscript  
 
 sim_objects = m5.SimObject.allClasses
 ```
 
-In the SConscript, it is defined as attribute from m5.SibObject python module. 
+In the SConscript, it is defined as attribute from m5.SibObject Python module. 
 Then what is allClasses? The answer is in the MetaSimObject!
 
-```python
-# python/m5/SimObject.py
+```Python
+# Python/m5/SimObject.py
 
 # list of all SimObject classes
 allClasses = {}
@@ -1144,13 +1166,13 @@ class MetaSimObject(type):
 As depicted in the above code, the __new__ method generate dictionary consisting
 of its name and actual class object and assign it to allClasses attribute in the
 m5.SimObject. However, to make MetaSimObject to invoke __new__ method for all
-python classes inheriting from SimObject and fill out allClasses dictionary,
-all python classes should be imported first. 
+Python classes inheriting from SimObject and fill out allClasses dictionary,
+all Python classes should be imported first. 
 
 
-```python
+```Python
 class SimObject(PySource):
-    '''Add a SimObject python file as a python source object and add
+    '''Add a SimObject Python file as a Python source object and add
     it to a list of sim object modules'''
 
     fixed = False
@@ -1169,18 +1191,18 @@ for modname in SimObject.modnames:
     exec('from m5.objects import %s' % modname)
 ```
 
-To import relevant python classes, root SConscript defines SimObject class and 
-import the classes to the python environment where SConscript is being executed. 
+To import relevant Python classes, root SConscript defines SimObject class and 
+import the classes to the Python environment where SConscript is being executed. 
 
 > Note that SimObject class is not identical to SimObject class having
 > MetaSimObject as its metaclass used for defining simulated components. 
 
 Then who instantiates above SimObjects? SConscript can exist in subdirectories 
 to handle the build details. Let's take a look at the sub-directory containing 
-python code defining python classes inheriting SimObject. 
+Python code defining Python classes inheriting SimObject. 
 
 
-```python
+```Python
 # /gem5/src/sim/SConscript
 
 Import('*')
@@ -1199,41 +1221,41 @@ SimObject('PowerState.py')
 SimObject('PowerDomain.py')
 ```
 
-As shown in the above script, it instantiates SimObject to import python classes
+As shown in the above script, it instantiates SimObject to import Python classes
 defining hardware simulation building block. You might wonder how this exported 
-CPP implementation can be utilized by python classes, but please bear with me!
+CPP implementation can be utilized by Python classes, but please bear with me!
 I will give you details after covering Port!
 
 
-### Port
+## Port
 While going through Params and its pybind, you may have noticed that 
-MetaSimObject filter out Port attributes from python classes separately as well
+MetaSimObject filter out Port attributes from Python classes separately as well
 as the ParamDesc instance. Since GEM5 is a full system simulator, it requires
 not only various hardware components such as CPU and memory controller 
 consisting of the platform, but also the wires connecting these hardware. To 
 enable communication between different hardware components, GEM5 introduce 
-port concept and embed it in each python class representing any hardware 
+port concept and embed it in each Python class representing any hardware 
 components. 
 
 
-#### Python port to represent component relationship
+### Python port to represent component relationship
 The Port classes are utilized to represent connection between hardware components.
-However, since all simulation logic is implemented in CPP not in python, the
-connectivity presented in python code should be transformed into CPP and generate
+However, since all simulation logic is implemented in CPP not in Python, the
+connectivity presented in Python code should be transformed into CPP and generate
 connection between CPP class objects representing hardware components. Therefore,
 we need to understand how this transformation happens.
 
-```python
+```Python
 class System(SimObject):                                                        
     type = 'System'                                                             
     cxx_header = "sim/system.hh"                                                
     system_port = RequestPort("System port")   
 ```
 
-To define attributes related with port, GEM5 has python class Port and others 
+To define attributes related with port, GEM5 has Python class Port and others 
 inheriting the Port. 
 
-```python
+```Python
 class Port(object):
     ......
     def __init__(self, role, desc, is_source=False):
@@ -1256,11 +1278,11 @@ class ResponsePort(Port):
 
 ```
 
-Let's see how python script generates connection between two different hardware
+Let's see how Python script generates connection between two different hardware
 components through the port. 
 
 
-```python
+```Python
 # create the system we are going to simulate
 system = System()
 
@@ -1279,7 +1301,7 @@ SimObject. SimObject class defines __getattr__ and __setattr__ functions to
 assist special attribute access and assignment. Let's see one by one in detail.
 
 
-```python
+```Python
     def __setattr__(self, attr, value):
         # normal processing for private attributes
         if attr.startswith('_'):
@@ -1338,7 +1360,7 @@ be invoked when new attribute is added to the object. As the value added to the
 object is another SimObject class object retrieved from SystemXBar(), it will be
 handled as child of the system. 
 
-```python
+```Python
     # Add a new child to this object.
     def add_child(self, name, child):
         child = coerceSimObjectOrVector(child)
@@ -1361,7 +1383,7 @@ System is a class representing entire simulated system, logically the crossbar
 connecting hardware components in the system should be child of the system. 
 Now let's see what happens if it tries to access system.membus.slave!
 
-```python
+```Python
     def __getattr__(self, attr):
         if attr in self._deprecated_params:
             dep_param = self._deprecated_params[attr]
@@ -1400,7 +1422,7 @@ invoked to access membus attribute. As membus has been registered as child of th
 system, SystemXBar class object will be retrieved first. Also, as it is SimObject,
 when slave attribute is accessed, it will invoke another __getattr__ function.
 Because slave attribute is declared as Port in BaseXBar class which is the base
-python class of SystemXBar, it should have been filtered out as '_ports' when the 
+Python class of SystemXBar, it should have been filtered out as '_ports' when the 
 SystemXBar is defined, thanks to metaclass. When the attribute is related with 
 Port, then it will invoke '_get_port_ref' to return reference of that port
 
@@ -1420,7 +1442,7 @@ SimObject has cache for reference of Port, self_port_refs. If it is the first
 time to access this attribute, then the cache should be empty and will invoke
 makeRef function of the system_port object. 
 
-```python
+```Python
 class Port(object):                                                             
     ......
     # Port("role", "description") 
@@ -1435,14 +1457,14 @@ You can find that it generates instance of PortRef. Port is a wrapper class
 for conveying information about the port and actual reference to the Port 
 is defined by the PortRef class. Also retrieved PortRef instance will be stored
 in the '_ports' attribute of the SimObject. This will be utilized later to 
-transfer python presented connectivity between the hardware components to CPP! 
+transfer Python presented connectivity between the hardware components to CPP! 
 Anyway the RHS of the assignment is transformed into object of PortRef!
 
 
 To assign it to 'system.system_port' (LHS) it will invoke another '__setattr__'
 of the SimObject!
 
-```python
+```Python
         if attr in self._ports:                                                 
             # set up port connection                                            
             self._get_port_ref(attr).connect(value)                             
@@ -1456,7 +1478,7 @@ actually invokes 'connect' function! As the '_get_port_ref' returns another
 PortRef of the system_port, it will connect PortRef of system_port and slave. 
 
 
-```python
+```Python
 class PortRef(object): 
     def connect(self, other):
         if isinstance(other, VectorPortRef):
@@ -1482,15 +1504,15 @@ class PortRef(object):
             other.connect(self)
 ```
 
-### Python to CPP transformation 
-Whoa! it was quite intense cause GEM5 make heavy use of python classes to 
+## Python to CPP transformation 
+Whoa! it was quite intense cause GEM5 make heavy use of Python classes to 
 present and organize hardware components. However, the most important question 
-has not been answered yet! Since the python is just a wrapper for CPP classes
-used in actual simulation, the configuration specified as python should be 
+has not been answered yet! Since the Python is just a wrapper for CPP classes
+used in actual simulation, the configuration specified as Python should be 
 translated into CPP implementation including CPP class instantiating and 
 connection between them. 
 
-```python
+```Python
 # set up the root SimObject and start the simulation
 root = Root(full_system = False, system = system)
 # instantiate all of the objects we've created above
@@ -1498,10 +1520,10 @@ m5.instantiate()
 ```
 
 When you finish configuration, you should instantiate Root class and invoke 
-instantiate function to transform your python configurations into CPP implementation.
+instantiate function to transform your Python configurations into CPP implementation.
 
 
-```python
+```Python
 class Root(SimObject):
     
     _the_instance = None
@@ -1539,13 +1561,13 @@ class Root(SimObject):
             Param.Clock("100us", "when less than this much time is left, spin")
 ```
 
-The Root python class utilize singleton design pattern that restricts the 
+The Root Python class utilize singleton design pattern that restricts the 
 instantiation of a class to only one instance and provides a global point of 
 access to that instance. The getInstance returns singleton object.
 
-#### Time to instantiate CPP implementation
+### Time to instantiate CPP implementation
 
-```python
+```Python
 def instantiate(ckpt_dir=None):
     from m5 import options
     
@@ -1585,7 +1607,7 @@ required information to instantiate CPP classes (e.g., Params) and connectivity
 between the hardware components (e.g., Ports), its role is invoking proper 
 CPP functions to finalize set-up!
 
-```python
+```Python
     def descendants(self):
         yield self
         # The order of the dict is implementation dependent, so sort
@@ -1596,12 +1618,12 @@ CPP functions to finalize set-up!
                 yield obj
 ```
 
-One thing to note is because Root python class is also SimObject, but the root
+One thing to note is because Root Python class is also SimObject, but the root
 node in hierarchy, it can access other system components through 'descendants' 
 method provided by the SimObject. It just iterates all SimObject!
 
-#### Create CPP objects!
-```python
+### Create CPP objects!
+```Python
     # Call C++ to create C++ object corresponding to this object
     def createCCObject(self):
         self.getCCParams()
@@ -1613,7 +1635,7 @@ the information required for initializing this class is conveyed to the class
 constructor, so first of all it needs the Param struct. And then, we need to 
 instantiate the CPP class representing the hardware component.
 
-```python
+```Python
     def getCCParams(self):
         if self._ccParams:
             return self._ccParams
@@ -1664,17 +1686,17 @@ As we have all required information to generate and initialize Param struct, we
 should utilize it! First of all, we need to instantiate the Param struct associated
 with the class that we want to instantiate to simulate one hardware component.
 We've seen that the automatically generated pybind code exports the Param struct
-to python. 
+to Python. 
 
-```python
-# gem5/src/python/m5/internal/params.py
+```Python
+# gem5/src/Python/m5/internal/params.py
 
 for name, module in inspect.getmembers(_m5):
     if name.startswith('param_') or name.startswith('enum_'):
         exec("from _m5.%s import *" % name)
 ```
 
-As all CPP implementations are exported to python as a module of '_m5' the 
+As all CPP implementations are exported to Python as a module of '_m5' the 
 Struct mapped for Param that we need to instantiate the CPP class should be 
 accessible from importing '_m5' module. 
 
@@ -1695,14 +1717,14 @@ module_init(py::module &m_internal)
 ```
 For example, BaseTLBParams CPP struct will be exported as '_m5.param_BaseTLB'.
 Therefore all pybind exported CPP implementation will be imported to 
-m5.internal.params module and 'cc_params_struct' will get the python Class
+m5.internal.params module and 'cc_params_struct' will get the Python Class
 object of the Param struct. By instantiating it, cc_params will have the instance
 of the class, and will be initialized based on the values previously collected 
-from the python class BaseTLB. After initializing all fields of the struct, it 
+from the Python class BaseTLB. After initializing all fields of the struct, it 
 assign the object to the '_ccParams'. 
 
 
-```python
+```Python
     def getCCObject(self):
         if not self._ccObject:
             # Make sure this object is in the configuration hierarchy
@@ -1744,16 +1766,16 @@ Each create method for hardware component should instantiate the CPP class
 associated with the component. Also note that it passes **this** to the System 
 constructor which is the SystemParams passing all information required to 
 initialize the class! Finally you can retrieve CPP class object instantiated 
-with Param configured based on python script. 
+with Param configured based on Python script. 
 
 
-#### Connect Ports in CPP
-As we've seen in previous python code, we established all connectivity between
-hardware components in python, not in actual CPP simulation. It is time to 
-transfer this connection implemented in python to CPP implementations to 
+### Connect Ports in CPP
+As we've seen in previous Python code, we established all connectivity between
+hardware components in Python, not in actual CPP simulation. It is time to 
+transfer this connection implemented in Python to CPP implementations to 
 establish actual connection between simulated hardware components. 
 
-```python
+```Python
 class SimObject(object):  
     def connectPorts(self):
         # Sort the ports based on their attribute name to ensure the
@@ -1776,13 +1798,13 @@ class PortRef(object):
     
         self.ccConnected = True 
 ```
-Since PortRef python class have all information required to establish connection
+Since PortRef Python class have all information required to establish connection
 between two components (two end ports, self and peer), the remaining task is 
 invoking proper CPP functions to establish the connection as described by the 
-python PortRef. First of all, it needs information about two end-ports that 
+Python PortRef. First of all, it needs information about two end-ports that 
 should be connected to each other in CPP implementation. 
 
-```python 
+```Python 
 class SimObject(object): 
     @cxxMethod(return_value_policy="reference")
     def getPort(self, if_name, idx):
@@ -1835,10 +1857,10 @@ def cxxMethod(*args, **kwargs):
         raise TypeError("One argument and no kwargs, or only kwargs expected")
 ```
 
-GEM5 defines decorator function cxxMethod which bridge the python function call
+GEM5 defines decorator function cxxMethod which bridge the Python function call
 to corresponding CPP function call. I will not cover details of decorator in 
-python. Please refer to this 
-[blog posting for further details](https://realpython.com/primer-on-python-decorators/).
+Python. Please refer to this 
+[blog posting for further details](https://realPython.com/primer-on-Python-decorators/).
 The important thing is when you invoke getPort, it will invoke getPort member 
 function defined in the CPP class representing hardware component having the 
 port. Let's see the example.
@@ -1863,10 +1885,10 @@ BaseXBar::getPort(const std::string &if_name, PortID idx)
 ```
 
 BaseXBar has three member fields describing hardware ports. Therefore, when the 
-getPort is invoked from the python class, for example SystemXBar inheriting the 
+getPort is invoked from the Python class, for example SystemXBar inheriting the 
 BaseXBar, it will invoke the getPort of the BaseXBar. Also, based on the passed
 string, and index (for vectored ports), it will return CPP port member field of 
-the class to python! Since the returned object is CPP object not python, the 
+the class to Python! Since the returned object is CPP object not Python, the 
 bind function will be invoked from CPP. 
 
 
@@ -1914,17 +1936,17 @@ Binding should be done in bi-directional, so the above function establish the
 connection in two different ports (request and response). 
 
 
-### Final remarks
+## Final remarks
 At the first outlook, it must be very confusing to understand why GEM5 has 
-python script and CPP defining similar classes, which makes you misunderstand 
+Python script and CPP defining similar classes, which makes you misunderstand 
 what is the role of each classes defined in different languages. However, the 
 the points is the actual simulation is mostly achieved by CPP implementation, 
-and the python is a wrapper for those CPP implementation. In detail, the python
+and the Python is a wrapper for those CPP implementation. In detail, the Python
 is utilized to configure hardware parameters such as cache size, data size, and
 whatnot. 
-I covered several python specific concepts such as metaclass and pybind to allow
-GEM5 automatically generate several CPP implementations and its binding to python
-so that python script can instantiate the CPP class object for actual simulation.
+I covered several Python specific concepts such as metaclass and pybind to allow
+GEM5 automatically generate several CPP implementations and its binding to Python
+so that Python script can instantiate the CPP class object for actual simulation.
 Hope that this posting can help you understand mysterious configuration of GEM5.
 
 

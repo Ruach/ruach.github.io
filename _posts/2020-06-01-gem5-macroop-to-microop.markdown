@@ -1,7 +1,7 @@
 ---
 layout: post
 titile: "Macroop to Microops"
-categories: GEM5, Macroop, Microops, PLY
+categories: [GEM5, Macroop, Microops, PLY]
 ---
 
 Let's begin by examining the translation of macroops into microops by first 

@@ -20,7 +20,7 @@ to initiate simulation. Since actual simulation will be handled by the CPP,
 Let's see how this python code will transfer execution control to the CPP 
 implementation.
 
-### Overview of simulation loop
+## Overview of simulation loop
 ```python
 def simulate(*args, **kwargs):
     global need_startup
@@ -199,7 +199,7 @@ the event of program termination due to an unhandled fault, GEM5 schedules the
 not face the exit_event and process events through the **serviceOne** function 
 of the EventQueue.
 
-### EventQueue: managing all Events
+## EventQueue: managing all Events
 EventQueue manages several functions to manage generated Events, such as 
 inserting and deleting the Event object from the queue. The main simulation loop
 utilize this Queue to simulate hardware events. 
@@ -207,7 +207,7 @@ utilize this Queue to simulate hardware events.
 >EventQueue class is defined as friend class of Event class so it can access 
 private and protected members of the Event objects managed by the queue. 
 
-#### serviceOne: handle scheduled event
+### serviceOne: handle scheduled event
 Before deviling into the details of event, to grab the idea about how GEM5 
 utilize this event for simulation, it would be helpful to go over below function.
 
@@ -259,7 +259,7 @@ to execute the task associated with that event by invoking the event's
 **process** function. The process function describe the hardware logic that needs
 to be simulated. 
 
-#### Other operations of EventQueue
+### Other operations of EventQueue
 The most important method of the EventQueue is **serviceOne** function. Because
 it actually executes the hardware simulation logic. 
 
@@ -377,7 +377,7 @@ it evaluates the priority of events in cases where two events are scheduled to
 be executed during the same cycle.
 
 
-### Event: the basic unit of execution on GEM5 simulation 
+## Event: the basic unit of execution on GEM5 simulation 
 As a cycle-level simulator, GEM5 simulates hardware logic for each cycle. To
 enable the execution of specific logic at precise points in the cycle, it should
 be able to know which hardware component needs to be simulated at which cycle. 
@@ -386,7 +386,7 @@ which event should be simulated at which specific cycle. The generated events
 are managed by the EventQueue where the main simulation loop fetches the event 
 from and execute simulation logic.
 
-#### Event class  
+### Event class  
 The Event class defines fundamental operations necessary for the execution of 
 GEM5 events, crucial for simulating architecture. Each hardware component can 
 communicate with simulation loop through the Event.
@@ -581,7 +581,7 @@ As GEM5 comprehensively simulates each system tick, multiple events can occur
 simultaneously in the same cycle. In such cases, the order of event processing 
 depends on the event type and is influencedby the priority assigned to each event.
 
-#### How hardware component generates event?
+### How hardware component generates event?
 I explained that through the event each hardware component can communicate with
 main simulation loop, especially providing the logic and time (clock cycle) 
 specifying when the simulation should be processed. Then how each hardware 
@@ -628,7 +628,7 @@ emulation loop. It's essential to note that the process function in this class
 simply invokes the provided callback. 
 
 
-#### How to schedule generated event?
+### How to schedule generated event?
 We've seen that the generated event can be inserted to the queue through the 
 schedule function of the queue. Then it would be reasonable to think that each
 CPP classes simulating hardware component should have the access to the queue 
@@ -717,7 +717,7 @@ SimObject::SimObject(const Params *p)
 As shown in constructor of SimObject, it initializes the EventManager with 
 return value from getEventQueue function, which is the EventQueue pointer.  
 
-#### Generating EventQueue
+### Generating EventQueue
 As GEM5 can have multiple mainEventQueue, EventQueue objects should be generated 
 at runtime as much as it needs. The new EventQueue generation and its retrieval 
 can be handled both by the 'getEventQueue' function
@@ -772,7 +772,7 @@ Also, when you look at the invocation of doSimLoop, mainEventQueue[0] is passed
 as its paramter, which makes the simulation loop and all SimObjects presenting
 hardware components can communicate through the mainEventQueue[0]. 
 
-### Event scheduling action!
+## Event scheduling action!
 Now all CPP classes inheriting SimObject can utilize schedule function to 
 schedule any events to the queue so that GEM5 simulation loop (doSimLoop) can 
 fetches the event and simulate hardware logic at designated clock cycle. Let's 
@@ -803,7 +803,7 @@ This implies that when the tickEvent is scheduled and retrieved from the
 EventQueue, it will execute the tick() function. 
 
 
-#### Tick! Tick! Tick!
+### Tick! Tick! Tick!
 ```cpp
 template <class Impl>
 void
@@ -874,7 +874,7 @@ cycle. Therefore, the tick function simulating the O3CPU will be invoked at
 every clock cycle and simulate the entire processor pipeline!
 
 
-#### Initial activation
+### Initial activation
 To start the CPU, initial tick event should be scheduled. I will not cover the 
 details here, but if you are interested in it pleas take carefully look at the 
 below functions !

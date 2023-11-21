@@ -772,7 +772,7 @@ Also, when you look at the invocation of doSimLoop, mainEventQueue[0] is passed
 as its paramter, which makes the simulation loop and all SimObjects presenting
 hardware components can communicate through the mainEventQueue[0]. 
 
-## Event scheduling action!
+## Event scheduling in action
 Now all CPP classes inheriting SimObject can utilize schedule function to 
 schedule any events to the queue so that GEM5 simulation loop (doSimLoop) can 
 fetches the event and simulate hardware logic at designated clock cycle. Let's 

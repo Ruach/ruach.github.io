@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "GEM5, from entry point to simulation loop"
-categories: Gem5, SimObject, pybind11, metaclass
+categories: [Gem5, SimObject, pybind11, metaclass]
 ---
 
 ## Complexity of Gem5: mix of CPP and Python 

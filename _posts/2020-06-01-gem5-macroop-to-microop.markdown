@@ -4,66 +4,113 @@ titile: "Macroop to Microops"
 categories: [GEM5, Macroop, Microops, PLY]
 ---
 
-Let's begin by examining the translation of macroops into microops by first 
-focusing on the well-known 'mov' instructions in the x86 architecture.
+## Macroop and Microop in Computer Architecture                                
+
+1. **Macroop (Macro-operation):**
+   - A macroop is a high-level instruction or operation that is part of the
+     instruction set architecture (ISA) of a processor. It represents a single
+     operation that a program wants to perform, such as adding two numbers or
+     loading a value from memory.
+   - Macroops are what programmers typically interact with when writing code, as 
+     they correspond to the instructions in the assembly language or machine
+     code.
+
+2. **Microop (Micro-operation or μop):**
+   - A microop is a low-level operation that a processor's control unit
+     decomposes a macroop into during the execution phase. It is a fundamental 
+     operation that the processor can execute directly.
+   - Processors often use micro-operations internally to break down complex
+     macroops into simpler, more manageable tasks. These tasks are then executed 
+     in the processor's pipeline.
+
+In summary, the execution of a program involves the translation of macroops
+(high-level instructions in the ISA) into a sequence of microops (low-level
+operations) that the processor can execute efficiently. This translation allows 
+for more parallel and optimized execution within the processor's pipeline.
+
+### Mov macroop implementation in GEM5
+As an illustration of defining each macroop based on microops, let's see the
+how Mov instruction in the X86 architecture can be implemented with microops. 
 
 ```python
-gem5/src/arch/x86/isa/insts/general_purpose/data_transfer/move.py
-{% raw %}
- 38 microcode = '''
- 39
- 40 #
- 41 # Regular moves
- 42 #
- 43
- 44 def macroop MOV_R_MI {
- 45     limm t1, imm, dataSize=asz
- 46     ld reg, seg, [1, t0, t1]
- 47 };
- 48
- 49 def macroop MOV_MI_R {
- 50     limm t1, imm, dataSize=asz
- 51     st reg, seg, [1, t0, t1]
- 52 };
-{% endraw %}
-```
-Since x86 offers various formats of 'mov' instructions depending on their 
-operands, GEM5 incorporates multiple macroops for the 'mov' mnemonic. As depicted
-in the provided code snippet, two distinct macroops are defined for the 'mov' 
-instruction, each composed of different microops. In this posting, I will 
-explore the process of parsing macroops and converting them into microop 
-invocations. Before delving into the details, it's essential to grasp some
-fundamental tools necessary for parsing GEM5 macroops.
+# gem5/src/arch/x86/isa/insts/general_purpose/data_transfer/move.py
 
-### Python-Lex-Yacc(PLY) for macroop parsing
-GEM5 employs domain-specific languages (DSL) built upon the Python framework to 
-create architecture-independent grammars for defining both macroops and microops.
-When you define an ISA for a specific architecture using the predefined DSL, 
-GEM5 automatically translates your ISA specification into C++ classes.
-This translation process relies on the MicroAssembler Python class provided by 
-GEM5. The MicroAssembler class uses lexer and parser classes offered by the 
-Python-Lex-Yacc (PLY) package. To facilitate these lexer and parser, you need to
-provide tokens, a context-free grammar, and an input file for parsing the GEM5 
-DSL. We will delve into how these components are defined and supplied.
+microcode = '''
+
+#
+# Regular moves
+#
+
+def macroop MOV_R_MI {
+    limm t1, imm, dataSize=asz
+    ld reg, seg, [1, t0, t1]
+};
+
+def macroop MOV_MI_R {
+    limm t1, imm, dataSize=asz
+    st reg, seg, [1, t0, t1]
+};
+```
+
+As depicted in the provided code, every macrooperation (macroop) is composed of
+several microoperations (microops). Consequently, the processor transforms the 
+macroop into a series of microops and proceeds to execute these microops rather
+than the original macroop. You may wonder about the process by which these
+macroop definitions are parsed and interpreted as the microoperations, allowing 
+the processor to execute them within the pipeline. I will give you the details 
+in this posting!
+
+## Python-Lex-Yacc(PLY) for GEM5 DSL parsing
+You may notice a resemblance between the code that defines the macroop semantics 
+and Python syntax; nevertheless, it's crucial to clarify that the code is not 
+written in Python. GEM5 utilizes domain-specific languages (DSL) constructed on
+the Python framework to establish architecture-independent grammars. These 
+grammars are employed for defining the semantics of both macroops and microops.
+GEM5 automatically converts an ISA implemented with the predefined DSL into 
+corresponding C++ classes. This translation process is dependent on the 
+MicroAssembler Python class. The MicroAssembler class, in turn, utilizes lexer 
+and parser classes provided by the Python-Lex-Yacc (PLY) package. It is essential 
+to supply tokens, a context-free grammar, and an input file for parsing the GEM5
+DSL. In the following sections, we will explore all of those inputs one by one. 
+
 
 ### MicroAssembler Class <a name="microassembler"></a>
+
 ```python
-gem5/src/arch/micro_asm.py
-{% raw %}
-484 class MicroAssembler(object):
-485
-486     def __init__(self, macro_type, microops,
-487         rom = None, rom_macroop_type = None):
-488         self.lexer = lex.lex()
-489         self.parser = yacc.yacc()
-490         self.parser.macro_type = macro_type
-491         self.parser.macroops = {}
-492         self.parser.microops = microops
-493         self.parser.rom = rom
-494         self.parser.rom_macroop_type = rom_macroop_type
-495         self.parser.symbols = {}
-496         self.symbols = self.parser.symbols
-{% endraw %}
+#gem5/src/arch/x86/isa/microasm.isa
+
+let {
+    import sys
+    sys.path[0:0] = ["src/arch/x86/isa/"]
+    from insts import microcode
+    # print microcode
+    from micro_asm import MicroAssembler, Rom_Macroop
+    mainRom = X86MicrocodeRom('main ROM')
+    assembler = MicroAssembler(X86Macroop, microopClasses, mainRom, Rom_Macroop)
+```
+
+As demonstrated in line 10, the **MicroAssembler** class object is instantiated
+and assigned to assembler. 
+The X86Macroop and microopClasses play a pivotal role in the translation of macroops
+into microops, particularly when working in conjunction with yacc.
+Let's now explore the details of the information offered by these classes and 
+how each component can be assembled to construct a MicroAssembler instance.
+```python
+#gem5/src/arch/micro_asm.py
+
+class MicroAssembler(object):
+
+    def __init__(self, macro_type, microops,
+        rom = None, rom_macroop_type = None):
+        self.lexer = lex.lex()
+        self.parser = yacc.yacc()
+        self.parser.macro_type = macro_type
+        self.parser.macroops = {}
+        self.parser.microops = microops
+        self.parser.rom = rom
+        self.parser.rom_macroop_type = rom_macroop_type
+        self.parser.symbols = {}
+        self.symbols = self.parser.symbols
 ```
 The MicroAssembler class contains the essential information necessary for 
 parsing a specific ISA. Given that GEM5 supports emulation for various 
@@ -75,26 +122,6 @@ including Macroops, Microops, and ROM code. Since our focus is on the x86 ISA,
 let's examine the MicroAssembler instance tailored for the X86 architecture.
 
 
-```python
-gem5/src/arch/x86/isa/microasm.isa
-{% raw %}
- 52 let {{
- 53     import sys
- 54     sys.path[0:0] = ["src/arch/x86/isa/"]
- 55     from insts import microcode
- 56     # print microcode
- 57     from micro_asm import MicroAssembler, Rom_Macroop
- 58     mainRom = X86MicrocodeRom('main ROM')
- 59     assembler = MicroAssembler(X86Macroop, microopClasses, mainRom, Rom_Macroop)
-{% endraw %}
-```
-As demonstrated in line 59, the **MicroAssembler** object for X86 is created, 
-incorporating architecture-specific metadata for the x86 ISA, which includes 
-elements such as X86Macroop, microopClasses, mainRom, and Rom_Macroop. The 
-X86Macroop and microopClasses play a pivotal role in the translation of macroops
-into microops, particularly when working in conjunction with yacc.
-Let's now explore the details of the information offered by these classes and 
-how each component can be assembled to construct a MicroAssembler instance.
 
 ### X86Macroop Class <a name="x86macroop"></a>
 ```python

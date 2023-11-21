@@ -3435,6 +3435,18 @@ are implemented as a result of replacing op_wb.</p>
 
   
 
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
 
 
 
@@ -3450,7 +3462,7 @@ are implemented as a result of replacing op_wb.</p>
     <nav class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4 mb-4">
       
         <article class="col">
-          <a href="/posts/gem5-memaccess/" class="post-preview card h-100">
+          <a href="/posts/gem5-macroop-to-microop/" class="post-preview card h-100">
             <div class="card-body">
               <!--
   Date format snippet
@@ -3462,14 +3474,14 @@ are implemented as a result of replacing op_wb.</p>
 
 <time
   
-  data-ts="1591329600"
+  data-ts="1590984000"
   data-df="ll"
   
 >
-  Jun  5, 2020
+  Jun  1, 2020
 </time>
 
-              <h4 class="pt-0 my-2">Gem5 Memaccess</h4>
+              <h4 class="pt-0 my-2">Gem5 Macroop To Microop</h4>
               <div class="text-muted">
                 <p>
                   
@@ -3478,9 +3490,10 @@ are implemented as a result of replacing op_wb.</p>
 
 
 
-                  In my previous post, I discussed the automatic generation of C++ classes for 
-macroops and microops using various GEM5 tools, including a Python-based parser 
-and string-based template substitution...
+                  Let’s begin by examining the translation of macroops into microops by first 
+focusing on the well-known ‘mov’ instructions in the x86 architecture.
+
+gem5/src/arch/x86/isa/insts/general_purpose/data...
                 </p>
               </div>
             </div>

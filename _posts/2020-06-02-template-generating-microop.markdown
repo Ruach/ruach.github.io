@@ -75,10 +75,45 @@ macroop and microop blocks.
 
 ## let block and def template 
 When you open the isa files in src/arch/x86/isa/microops/ directory, you will 
-notice that it has two different types of statements defining the microop: let 
-block and def template. Let's take a look at the grammar rule for let block. 
+notice that it has two different types of statements defining the microop: **let 
+block and def template**. Let's take a look at the grammar rule for let block. 
 
 ### let \{\{ ... \}\};
+#### let block example
+```python
+let {
+    class LdStOp(X86Microop):
+        def __init__(self, data, segment, addr, disp,
+                dataSize, addressSize, baseFlags, atCPL0, prefetch, nonSpec,
+                implicitStack, uncacheable):
+            self.data = data
+            [self.scale, self.index, self.base] = addr
+            self.disp = disp
+            self.segment = segment
+            self.dataSize = dataSize
+            self.addressSize = addressSize
+            self.memFlags = baseFlags
+            if atCPL0:
+                self.memFlags += " | (CPL0FlagBit << FlagShift)"
+            self.instFlags = ""
+            if prefetch:
+                self.memFlags += " | Request::PREFETCH"
+                self.instFlags += " | (1ULL << StaticInst::IsDataPrefetch)"
+            if nonSpec:
+                self.instFlags += " | (1ULL << StaticInst::IsNonSpeculative)"
+            if uncacheable:
+                self.instFlags += " | (Request::UNCACHEABLE)"
+            # For implicit stack operations, we should use *not* use the 
+            # alternative addressing mode for loads/stores if the prefix is set
+            if not implicitStack:
+                self.memFlags += " | (machInst.legacy.addr ? " + \ 
+                                 "(AddrSizeFlagBit << FlagShift) : 0)"
+
+            ......
+}
+```
+
+#### let block grammar rule
 ```python
     def p_global_let(self, t):
         'global_let : LET CODELIT SEMI'
@@ -118,10 +153,10 @@ del wrap
 ```
 
 If the parser encounters tokens consisting of let {{ }} block, then it invokes 
-p_global_let function. Note that it defines a python string defining the grammar
-for let block. The most important part of parsing let block is invoking GenCode
-function to generate CPP files required for defining the macroop and microop 
-classes.
+**p_global_let** function. Note that it defines a python string defining the 
+grammar for let block. The most important part of parsing let block is invoking 
+GenCode function to generate CPP files required for defining the macroop and 
+microop classes.
 
 ```python
 class GenCode(object):
@@ -150,8 +185,33 @@ class GenCode(object):
 ```
 
 ### def template ID {...};
-One important *def_or_output*
-When parser encounters block def template,
+#### def template example
+```python
+def template MicroLeaExecute {
+    Fault %(class_name)s::execute(ExecContext *xc,
+          Trace::InstRecord *traceData) const
+    {
+        Fault fault = NoFault;
+        Addr EA;
+
+        %(op_decl)s;
+        %(op_rd)s;
+        %(ea_code)s;
+        DPRINTF(X86, "%s : %s: The address is %#x\n", instMnem, mnemonic, EA);
+
+        %(code)s;
+        if(fault == NoFault)
+        {
+            %(op_wb)s;
+        }
+
+        return fault;
+    }
+};
+
+```
+
+#### def template grammar rule
 ```python
 *gem5/src/arch/isa_parser.py*
 

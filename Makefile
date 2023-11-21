@@ -29,7 +29,7 @@ posts:
 
 deploy: build
 	@rm -rf $(GH_PAGES_DIR)/*
-	@cp -r ./$(CHIRPY_DIR)/_site/* $(GH_PAGES_DIR)/
+	@cp -r $(CHIRPY_DIR)/_site/* $(GH_PAGES_DIR)/
 	@cd $(GH_PAGES_DIR) && git add --all
 	@cd $(GH_PAGES_DIR) && git commit -m "Deployed on $(DEPLOY_DATE)"
 	@cd $(GH_PAGES_DIR) && git push

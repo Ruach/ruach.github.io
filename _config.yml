@@ -16,7 +16,7 @@ timezone: America/New_York
 
 title: Ruach # the main title
 
-tagline: Security Researcher at Gatech # it will display as the sub-title
+tagline: Jaehyuk Lee # it will display as the sub-title
 
 description: >- # used by seo meta and the atom feed
   A minimal, responsive and feature-rich Jekyll theme for technical writing.

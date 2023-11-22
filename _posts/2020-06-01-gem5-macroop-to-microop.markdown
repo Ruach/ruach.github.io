@@ -124,172 +124,192 @@ let's examine the MicroAssembler instance tailored for the X86 architecture.
 
 
 ### X86Macroop Class <a name="x86macroop"></a>
+Just like a unique CPP class serves as a representation of a hardware component, 
+to define each macroop and execute them in the pipeline, GEM5 introduce unique 
+CPP class per macroops. 
+
 ```python
-gem5/src/arch/x86/isa/macroop.isa
-{% raw %}
-136     class X86Macroop(Combinational_Macroop):
-137         def add_microop(self, mnemonic, microop):
-138             microop.mnemonic = mnemonic
-139             microop.micropc = len(self.microops)
-140             self.microops.append(microop)
-141         def setAdjustEnv(self, val):
-142             self.adjust_env = val
-143         def adjustImm(self, val):
-144             self.adjust_imm += val
-145         def adjustDisp(self, val):
-146             self.adjust_disp += val
-147         def serializeBefore(self):
-148             self.serialize_before = True
-149         def serializeAfter(self):
-150             self.serialize_after = True
-151
-152         def function_call(self):
-153             self.function_call = True
-154         def function_return(self):
-155             self.function_return = True
-156
-157         def __init__(self, name):
-158             super(X86Macroop, self).__init__(name)
-159             self.directives = {
-160                 "adjust_env" : self.setAdjustEnv,
-161                 "adjust_imm" : self.adjustImm,
-162                 "adjust_disp" : self.adjustDisp,
-163                 "serialize_before" : self.serializeBefore,
-164                 "serialize_after" : self.serializeAfter,
-165                 "function_call" : self.function_call,
-166                 "function_return" : self.function_return
-167             }
-168             self.declared = False
-169             self.adjust_env = ""
-170             self.init_env = ""
-171             self.adjust_imm = '''
-172                 uint64_t adjustedImm = IMMEDIATE;
-173                 //This is to pacify gcc in case the immediate isn't used.
-174                 adjustedImm = adjustedImm;
-175             '''
-176             self.adjust_disp = '''
-177                 uint64_t adjustedDisp = DISPLACEMENT;
-178                 //This is to pacify gcc in case the displacement isn't used.
-179                 adjustedDisp = adjustedDisp;
-180             '''
-181             self.serialize_before = False
-182             self.serialize_after = False
-183             self.function_call = False
-184             self.function_return = False
-185 
-186         def getAllocator(self, env):
-187             return "new X86Macroop::%s(machInst, %s)" % \
-188                     (self.name, env.getAllocator())
-189         def getMnemonic(self):
-190             mnemonic = self.name.lower()
-191             mnemonic = re.match(r'[^_]*', mnemonic).group(0)
-192             return mnemonic
-193         def getDeclaration(self):
-194             #FIXME This first parameter should be the mnemonic. I need to
-195             #write some code which pulls that out
-196             declareLabels = ""
-197             for (label, microop) in self.labels.items():
-198                 declareLabels += "const static uint64_t label_%s = %d;\n" \
-199                                   % (label, microop.micropc)
-200             iop = InstObjParams(self.getMnemonic(), self.name, "Macroop",
-201                     {"code" : "",
-202                      "declareLabels" : declareLabels
-203                     })
-204             return MacroDeclare.subst(iop);
-205         def getDefinition(self, env):
-206             #FIXME This first parameter should be the mnemonic. I need to
-207             #write some code which pulls that out
-208             numMicroops = len(self.microops)
-209             allocMicroops = ''
-210             micropc = 0
-211             for op in self.microops:
-212                 flags = ["IsMicroop"]
-213                 if micropc == 0:
-214                     flags.append("IsFirstMicroop")
-215 
-216                     if self.serialize_before:
-217                         flags.append("IsSerializing")
-218                         flags.append("IsSerializeBefore")
-219 
-220                 if micropc == numMicroops - 1:
-221                     flags.append("IsLastMicroop")
-222 
-223                     if self.serialize_after:
-224                         flags.append("IsSerializing")
-225                         flags.append("IsSerializeAfter")
-226 
-227                     if self.function_call:
-228                         flags.append("IsCall")
-229                         flags.append("IsUncondControl")
-230                     if self.function_return:
-231                         flags.append("IsReturn")
-232                         flags.append("IsUncondControl")
-233                 else:
-234                     flags.append("IsDelayedCommit")
-235 
-236                 allocMicroops += \
-237                     "microops[%d] = %s;\n" % \
-238                     (micropc, op.getAllocator(flags))
-239                 micropc += 1
-240             if env.useStackSize:
-241                 useStackSize = "true"
-242             else:
-243                 useStackSize = "false"
-244             if env.memoryInst:
-245                 memoryInst = "true"
-246             else:
-247                 memoryInst = "false"
-248             regSize = '''(%s || (env.base == INTREG_RSP && %s) ?
-249                          env.stackSize :
-250                          env.dataSize)''' % (useStackSize, memoryInst)
-251             iop = InstObjParams(self.getMnemonic(), self.name, "Macroop",
-252                                 {"code" : "", "num_microops" : numMicroops,
-253                                  "alloc_microops" : allocMicroops,
-254                                  "adjust_env" : self.adjust_env,
-255                                  "adjust_imm" : self.adjust_imm,
-256                                  "adjust_disp" : self.adjust_disp,
-257                                  "disassembly" : env.disassembly,
-258                                  "regSize" : regSize,
-259                                  "init_env" : self.initEnv})
-260             return MacroConstructor.subst(iop) + \
-261                    MacroDisassembly.subst(iop);
-{% endraw %}
+#gem5/src/arch/x86/isa/macroop.isa
+class X86Macroop(Combinational_Macroop):
+    def add_microop(self, mnemonic, microop):
+        microop.mnemonic = mnemonic
+        microop.micropc = len(self.microops)
+        self.microops.append(microop)
+    def setAdjustEnv(self, val):
+        self.adjust_env = val
+    def adjustImm(self, val):
+        self.adjust_imm += val
+    def adjustDisp(self, val):
+        self.adjust_disp += val
+    def serializeBefore(self):
+        self.serialize_before = True
+    def serializeAfter(self):
+        self.serialize_after = True
+
+    def function_call(self):
+        self.function_call = True
+    def function_return(self):
+        self.function_return = True
+
+    def __init__(self, name):
+        super(X86Macroop, self).__init__(name)
+        self.directives = {
+            "adjust_env" : self.setAdjustEnv,
+            "adjust_imm" : self.adjustImm,
+            "adjust_disp" : self.adjustDisp,
+            "serialize_before" : self.serializeBefore,
+            "serialize_after" : self.serializeAfter,
+            "function_call" : self.function_call,
+            "function_return" : self.function_return
+        }
+        self.declared = False
+        self.adjust_env = ""
+        self.init_env = ""
+        self.adjust_imm = '''
+            uint64_t adjustedImm = IMMEDIATE;
+            //This is to pacify gcc in case the immediate isn't used.
+            adjustedImm = adjustedImm;
+        '''
+        self.adjust_disp = '''
+            uint64_t adjustedDisp = DISPLACEMENT;
+            //This is to pacify gcc in case the displacement isn't used.
+            adjustedDisp = adjustedDisp;
+        '''
+        self.serialize_before = False
+        self.serialize_after = False
+        self.function_call = False
+        self.function_return = False
+
+    def getAllocator(self, env):
+        return "new X86Macroop::%s(machInst, %s)" % \
+                (self.name, env.getAllocator())
+    def getMnemonic(self):
+        mnemonic = self.name.lower()
+        mnemonic = re.match(r'[^_]*', mnemonic).group(0)
+        return mnemonic
+    def getDeclaration(self):
+        #FIXME This first parameter should be the mnemonic. I need to
+        #write some code which pulls that out
+        declareLabels = ""
+        for (label, microop) in self.labels.items():
+            declareLabels += "const static uint64_t label_%s = %d;\n" \
+                              % (label, microop.micropc)
+        iop = InstObjParams(self.getMnemonic(), self.name, "Macroop",
+                {"code" : "",
+                 "declareLabels" : declareLabels
+                })
+        return MacroDeclare.subst(iop);
+    def getDefinition(self, env):
+        #FIXME This first parameter should be the mnemonic. I need to
+        #write some code which pulls that out
+        numMicroops = len(self.microops)
+        allocMicroops = ''
+        micropc = 0
+        for op in self.microops:
+            flags = ["IsMicroop"]
+            if micropc == 0:
+                flags.append("IsFirstMicroop")
+
+                if self.serialize_before:
+                    flags.append("IsSerializing")
+                    flags.append("IsSerializeBefore")
+
+            if micropc == numMicroops - 1:
+                flags.append("IsLastMicroop")
+
+                if self.serialize_after:
+                    flags.append("IsSerializing")
+                    flags.append("IsSerializeAfter")
+
+                if self.function_call:
+                    flags.append("IsCall")
+                    flags.append("IsUncondControl")
+                if self.function_return:
+                    flags.append("IsReturn")
+                    flags.append("IsUncondControl")
+            else:
+                flags.append("IsDelayedCommit")
+
+            allocMicroops += \
+                "microops[%d] = %s;\n" % \
+                (micropc, op.getAllocator(flags))
+            micropc += 1
+        if env.useStackSize:
+            useStackSize = "true"
+        else:
+            useStackSize = "false"
+        if env.memoryInst:
+            memoryInst = "true"
+        else:
+            memoryInst = "false"
+        regSize = '''(%s || (env.base == INTREG_RSP && %s) ?
+                     env.stackSize :
+                     env.dataSize)''' % (useStackSize, memoryInst)
+        iop = InstObjParams(self.getMnemonic(), self.name, "Macroop",
+                            {"code" : "", "num_microops" : numMicroops,
+                             "alloc_microops" : allocMicroops,
+                             "adjust_env" : self.adjust_env,
+                             "adjust_imm" : self.adjust_imm,
+                             "adjust_disp" : self.adjust_disp,
+                             "disassembly" : env.disassembly,
+                             "regSize" : regSize,
+                             "init_env" : self.initEnv})
+        return MacroConstructor.subst(iop) + \
+               MacroDisassembly.subst(iop);
 ```
 
-The class definition might seem lengthy, but it essentially serves as an 
-abstract representation of a single X86Macroop mnemonic. For instance, if you 
-define your custom 'mov' instruction as 'CUST_MOV,' an X86Macroop class instance
-for 'CUST_MOV' will be automatically generated to represent that macroop. 
-Crucially, it's worth highlighting that this class includes a method called 
+The primary purpose of **X86Macroop** is to provide an abstract representation 
+of an unique macroop. Since macroops are defined in the ISA file with GEM5 DSL,
+it should be translated into CPP later to be utilized by the simulator, which means
+to be executed by the processor pipeline. Therefore, GEM5 collects all infomration
+from the isa file required to generate CPP class definitions of the macroop.
+For example, it's worth highlighting that this class includes a method called 
 'add_microop.' Since X86 architecture macroops typically comprise multiple 
-microops, the MicroAssembler can use this method to incorporate microop objects 
-into the respective macroop object.
+microops, the MicroAssembler can use this method to incorporate microop 
+information into the X86Macroop class object. The provided information will be 
+used to generate CPP class and its member function later!
 
 ### microopClasses <a name="microopDict"></a>
-In X86 archiecture, one macroop can consist of multiple microops. Therefore, to 
-parse the macroop, parser should be aware of which microops exist in that 
+Since one macroop can consists of multiple microops, parsing one macroop is 
+closely related with parsing microops consisting of the macroop. Therefore, 
+the macroop parser should be aware of which microops exists in the target 
 architecture. That's the reason why it is passed to the MicroAssembler. 
+
 ```python
-src/arch/x86/isa/microops/base.isa
-{% raw %}
-let {{
+#src/arch/x86/isa/microops/base.isa
+
+let {
     # This will be populated with mappings between microop mnemonics and
     # the classes that represent them.
     microopClasses = {}
-}};
-{% endraw %}
+};
 ```
-microopClasses is a Python dictionary that comprises pairs of microop mnemonic 
-strings along with their associated class definitions. It's important to 
-emphasize that each microop operation is itself represented as a class. 
-The provided microopClasses dictionary will be assigned to the 'microops' member
-field of the MicroAssembler. We'll soon explore how the GEM5 parser will populate
-this dictionary.
 
-# Parse macroops with python yacc
+The microopClasses is a Python dictionary containing pairs of microop mnemonic 
+strings and their corresponding class definitions. It's crucial to highlight 
+that each microop operation is expressed as a distinct class. The microopClasses
+dictionary, once provided, will be designated to the 'microops' attribute of the
+MicroAssembler.
+
+```python
+#gem5/src/arch/x86/isa/microops/limop.isa
+
+let {
+    class LimmOp(X86Microop):
+    ......
+    microopClasses["limm"] = LimmOp                                             
+```
+
+As depicted in the code, every isa file defines the classes that can be employed 
+to represent a microop. Additionally, it inserts an entry to the microopClasses 
+dictionary, linking the string identifier of the microop (i.e., mnemonic of the 
+microop) to the corresponding class that represents the microop. In the upcoming
+exploration, we will delve into how GEM5 parser utilizes this dictionary to XX
+
+## Paring macroop in action
 Now that you might grasp the need for architecture-specific classes defining 
 both macroop operations and the corresponding microops dictionary. It's time to
-delve into how the MicroAssembler class effectively employs these classes to 
+delve into how the MicroAssembler class effectively utilize these classes to 
 parse macroops within a specific architecture.
 
 *gem5/src/arch/micro_asm.py*
@@ -666,46 +686,44 @@ microop, the associated template class used is 'LoadOp' instead of 'Ld'.
 Similarly, for the 'limm' microop instruction, an 'LimmOp' class will represent
 this microop. The explanation for this behavior can be found in the 'let' block.
 
-*gem5/src/arch/x86/isa/microops/limop.isa*
 ```python
-{% raw %}
-105 let {{
-106     class LimmOp(X86Microop):
-107         def __init__(self, dest, imm, dataSize="env.dataSize"):
-108             self.className = "Limm"
-109             self.mnemonic = "limm"
-110             self.dest = dest
-111             if isinstance(imm, (int, long)):
-112                 imm = "ULL(%d)" % imm
-113             self.imm = imm
-114             self.dataSize = dataSize
-115
-116         def getAllocator(self, microFlags):
-117             allocString = '''
-118                 (%(dataSize)s >= 4) ?
-119                     (StaticInstPtr)(new %(class_name)sBig(machInst,
-120                         macrocodeBlock, %(flags)s, %(dest)s, %(imm)s,
-121                         %(dataSize)s)) :
-122                     (StaticInstPtr)(new %(class_name)s(machInst,
-123                         macrocodeBlock, %(flags)s, %(dest)s, %(imm)s,
-124                         %(dataSize)s))
-125             '''
-126             allocator = allocString % {
-127                 "class_name" : self.className,
-128                 "mnemonic" : self.mnemonic,
-129                 "flags" : self.microFlagsText(microFlags),
-130                 "dest" : self.dest, "imm" : self.imm,
-131                 "dataSize" : self.dataSize}
-132             return allocator
-133
-134     microopClasses["limm"] = LimmOp
-......
-159 }};
-{% endraw %}
+#gem5/src/arch/x86/isa/microops/limop.isa
+
+let {
+    class LimmOp(X86Microop):
+        def __init__(self, dest, imm, dataSize="env.dataSize"):
+            self.className = "Limm"
+            self.mnemonic = "limm"
+            self.dest = dest
+            if isinstance(imm, (int, long)):
+                imm = "ULL(%d)" % imm
+            self.imm = imm
+            self.dataSize = dataSize
+
+        def getAllocator(self, microFlags):
+            allocString = '''
+                (%(dataSize)s >= 4) ?
+                    (StaticInstPtr)(new %(class_name)sBig(machInst,
+                        macrocodeBlock, %(flags)s, %(dest)s, %(imm)s,
+                        %(dataSize)s)) :
+                    (StaticInstPtr)(new %(class_name)s(machInst,
+                        macrocodeBlock, %(flags)s, %(dest)s, %(imm)s,
+                        %(dataSize)s))
+            '''
+            allocator = allocString % {
+                "class_name" : self.className,
+                "mnemonic" : self.mnemonic,
+                "flags" : self.microFlagsText(microFlags),
+                "dest" : self.dest, "imm" : self.imm,
+                "dataSize" : self.dataSize}
+            return allocator
+
+    microopClasses["limm"] = LimmOp
+    ......
 ```
 
 A key takeaway from the 'let' block above is that it associates the class
-'LimmOp' with its corresponding mnemonic ('limm') within the Python dictionary 
+rLimmOp' with its corresponding mnemonic ('limm') within the Python dictionary 
 called 'microopClasses'. Consequently, when the dictionary is queried using a
 microop's mnemonic, such as 'limm,' it will return the related Python class, 
 'LimmOp.'

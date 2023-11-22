@@ -14,6 +14,7 @@ local: chirpy gh-pages posts
 chirpy: 
 	@if [ ! -d "$(CHIRPY_DIR)" ]; then \
 		git worktree add --guess-remote chirpy; \
+		bundle install --gemfile=$(CHIRPY_DIR)/Gemfile \
 	fi
 
 gh-pages:

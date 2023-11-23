@@ -60,21 +60,37 @@ macroop definitions are parsed and interpreted as the microoperations, allowing
 the processor to execute them within the pipeline. I will give you the details 
 in this posting!
 
-## Python-Lex-Yacc(PLY) for GEM5 DSL parsing
+## GEM5 Domain Specific Language (DSL) and Python-Lex-Yacc (PLY)
 You may notice a resemblance between the code that defines the macroop semantics 
 and Python syntax; nevertheless, it's crucial to clarify that the code is not 
-written in Python. GEM5 utilizes domain-specific languages (DSL) constructed on
-the Python framework to establish architecture-independent grammars. These 
-grammars are employed for defining the semantics of both macroops and microops.
-GEM5 automatically converts an ISA implemented with the predefined DSL into 
-corresponding C++ classes. This translation process is dependent on the 
-MicroAssembler Python class. The MicroAssembler class, in turn, utilizes lexer 
-and parser classes provided by the Python-Lex-Yacc (PLY) package. It is essential 
-to supply tokens, a context-free grammar, and an input file for parsing the GEM5
-DSL. In the following sections, we will explore all of those inputs one by one. 
-
+written in Python. GEM5 utilizes Domain-Specific Languages (DSL) to implement 
+macroops and microops. As it is another language, it should be parsed by the 
+PLY. Based on the predefined rule, GEM5 converts the macroops and microops
+implemented in the predefined DSL into corresponding python classes. To help the
+parsing and translation, GEM5 introduces MicroAssembler class which coordinates
+PLY lexer and parser.
 
 ### MicroAssembler Class <a name="microassembler"></a>
+```python
+#gem5/src/arch/micro_asm.py
+
+class MicroAssembler(object):
+    def __init__(self, macro_type, microops,
+        rom = None, rom_macroop_type = None):
+        self.lexer = lex.lex()
+        self.parser = yacc.yacc()
+        self.parser.macro_type = macro_type
+        self.parser.macroops = {}
+        self.parser.microops = microops
+        self.parser.rom = rom
+        self.parser.rom_macroop_type = rom_macroop_type
+        self.parser.symbols = {}
+        self.symbols = self.parser.symbols
+```
+
+As depicted in the code, it generates PLY lexer and parser automatically when
+the MicroAssembler object is instantiated. However, to parse the GEM5 DSL, it
+requires additional information associated with the target architecture. 
 
 ```python
 #gem5/src/arch/x86/isa/microasm.isa
@@ -89,44 +105,16 @@ let {
     assembler = MicroAssembler(X86Macroop, microopClasses, mainRom, Rom_Macroop)
 ```
 
-As demonstrated in line 10, the **MicroAssembler** class object is instantiated
-and assigned to assembler. 
-The X86Macroop and microopClasses play a pivotal role in the translation of macroops
-into microops, particularly when working in conjunction with yacc.
-Let's now explore the details of the information offered by these classes and 
-how each component can be assembled to construct a MicroAssembler instance.
-```python
-#gem5/src/arch/micro_asm.py
+Since we want to translate the macroop implemented with GEM5 DSL into corresponding
+python class after the parsing, X86Macroop python class is passed. Additionally,
+since the macrooperation comprises more than one microoperation, information of 
+the microops defined in the target architecture need to be conveyed to the 
+MicroAssembler.
 
-class MicroAssembler(object):
+### X86Macroop Python class <a name="x86macroop"></a>
+One of the result of parsing of x86 macroop is the instance of X86Macroop class 
+dedicated for parsed macroop. 
 
-    def __init__(self, macro_type, microops,
-        rom = None, rom_macroop_type = None):
-        self.lexer = lex.lex()
-        self.parser = yacc.yacc()
-        self.parser.macro_type = macro_type
-        self.parser.macroops = {}
-        self.parser.microops = microops
-        self.parser.rom = rom
-        self.parser.rom_macroop_type = rom_macroop_type
-        self.parser.symbols = {}
-        self.symbols = self.parser.symbols
-```
-The MicroAssembler class contains the essential information necessary for 
-parsing a specific ISA. Given that GEM5 supports emulation for various 
-architectures, it requires a versatile interface capable of conveying 
-architecture-specific details. The MicroAssembler Python class in GEM5 
-encompasses not only instances of parser and lexer but also 
-architecture-specific metadata crucial for comprehending specific ISAs, 
-including Macroops, Microops, and ROM code. Since our focus is on the x86 ISA, 
-let's examine the MicroAssembler instance tailored for the X86 architecture.
-
-
-
-### X86Macroop Class <a name="x86macroop"></a>
-Just like a unique CPP class serves as a representation of a hardware component, 
-to define each macroop and execute them in the pipeline, GEM5 introduce unique 
-CPP class per macroops. 
 
 ```python
 #gem5/src/arch/x86/isa/macroop.isa
@@ -258,22 +246,22 @@ class X86Macroop(Combinational_Macroop):
                MacroDisassembly.subst(iop);
 ```
 
-The primary purpose of **X86Macroop** is to provide an abstract representation 
-of an unique macroop. Since macroops are defined in the ISA file with GEM5 DSL,
-it should be translated into CPP later to be utilized by the simulator, which means
-to be executed by the processor pipeline. Therefore, GEM5 collects all infomration
-from the isa file required to generate CPP class definitions of the macroop.
-For example, it's worth highlighting that this class includes a method called 
-'add_microop.' Since X86 architecture macroops typically comprise multiple 
-microops, the MicroAssembler can use this method to incorporate microop 
-information into the X86Macroop class object. The provided information will be 
-used to generate CPP class and its member function later!
+The primary purpose of generating **X86Macroop** instance for parsed macroop is
+to provide an information about the parsed macroop. The end goal of parsing the 
+macroop is to generate CPP implementation for that macroop that can be executed
+by the processor pipeline. Therefore, macroop defined in DSA format is parsed to
+python class, and this python class will be translated into CPP implementation 
+at the end. Therefore, GEM5 collects all information about the macroop such as 
+microops consisting of the macroop and utilize them to generated CPP class. 
+It's worth highlighting that X86Macroop Python class defines a method called 
+'add_microop.'
 
 ### microopClasses <a name="microopDict"></a>
 Since one macroop can consists of multiple microops, parsing one macroop is 
 closely related with parsing microops consisting of the macroop. Therefore, 
-the macroop parser should be aware of which microops exists in the target 
-architecture. That's the reason why it is passed to the MicroAssembler. 
+the assembler should be aware of which microops exists in the target architecture.
+That's the reason why **microopClasses** python dictionary is passed to the 
+MicroAssembler. 
 
 ```python
 #src/arch/x86/isa/microops/base.isa
@@ -285,11 +273,11 @@ let {
 };
 ```
 
-The microopClasses is a Python dictionary containing pairs of microop mnemonic 
-strings and their corresponding class definitions. It's crucial to highlight 
-that each microop operation is expressed as a distinct class. The microopClasses
-dictionary, once provided, will be designated to the 'microops' attribute of the
-MicroAssembler.
+This Python dictionary containing pairs of microop mnemonic strings and their
+corresponding class definitions. It's crucial to highlight that each microop 
+operation is expressed as a distinct Python class. The microopClasses dictionary, 
+once provided, will be assigned to the 'microops' attribute of the MicroAssembler.
+Then how this dictionary is generated?
 
 ```python
 #gem5/src/arch/x86/isa/microops/limop.isa
@@ -301,48 +289,64 @@ let {
 ```
 
 As depicted in the code, every isa file defines the classes that can be employed 
-to represent a microop. Additionally, it inserts an entry to the microopClasses 
-dictionary, linking the string identifier of the microop (i.e., mnemonic of the 
-microop) to the corresponding class that represents the microop. In the upcoming
-exploration, we will delve into how GEM5 parser utilizes this dictionary to XX
+to represent a microop. Additionally, it generates an entry to the microopClasses 
+dictionary, linking the string identifier of the microop to the corresponding 
+class that represents the microop. In the above example, generated dictionary 
+in the microopClasses associates string "limm" to class "LimOp".
 
 ## Paring macroop in action
-Now that you might grasp the need for architecture-specific classes defining 
-both macroop operations and the corresponding microops dictionary. It's time to
-delve into how the MicroAssembler class effectively utilize these classes to 
-parse macroops within a specific architecture.
+In this section, I will explain how the MicroAssembler class effectively utilizes
+X86Macroop python class and microopClasses dictionary in parsing DSL and generating 
+python classes that will be used for automatic CPP code generation. Also, as 
+GEM5 makes use of PLY for parsing, I will briefly explain about GEM5 DSL and how
+they can be parsed. 
 
-*gem5/src/arch/micro_asm.py*
 ```python
-489 class MicroAssembler(object):
-490
-491     def __init__(self, macro_type, microops,
-492             rom = None, rom_macroop_type = None):
-493         self.lexer = lex.lex()
-494         self.parser = yacc.yacc()
-495         self.parser.macro_type = macro_type
-496         self.parser.macroops = {}
-497         self.parser.microops = microops
-498         self.parser.rom = rom
-499         self.parser.rom_macroop_type = rom_macroop_type
-500         self.parser.symbols = {}
-501         self.symbols = self.parser.symbols
-502
-503     def assemble(self, asm):
-504         self.parser.parse(asm, lexer=self.lexer)
-505         macroops = self.parser.macroops
-506         self.parser.macroops = {}
-507         return macroops
+#gem5/src/arch/micro_asm.py
+class MicroAssembler(object):
+
+    def __init__(self, macro_type, microops,
+            rom = None, rom_macroop_type = None):
+        self.lexer = lex.lex()
+        self.parser = yacc.yacc()
+        self.parser.macro_type = macro_type
+        self.parser.macroops = {}
+        self.parser.microops = microops
+        self.parser.rom = rom
+        self.parser.rom_macroop_type = rom_macroop_type
+        self.parser.symbols = {}
+        self.symbols = self.parser.symbols
+
+    def assemble(self, asm):
+        self.parser.parse(asm, lexer=self.lexer)
+        macroops = self.parser.macroops
+        self.parser.macroops = {}
+        return macroops
 ```
 
 Upon revisiting the MicroAssembler class, we find a single function definition 
 called assemble. This function processes assembly code using the yacc parser and 
 produce macroops as its output. 
 
-## Python Yacc
+## Python Yacc (Lexer + Parser)
 To comprehend how GEM5 leverages Yacc for assembly parsing, we need to grasp the 
 essential components of the Yacc parser and the metadata required for parsing,
 which includes lexer definitions, grammar rules, and the input to be parsed.
+
+### Lexer definition for tokenization
+It's important to keep in mind that GEM5 utilizes DSL to define macroops. While
+these macroops are implemented with Python-like semantics, they don't conform to
+actual Python syntax. Consequently, to convert this Python-like syntax into code 
+that a compiler or inrpreter can comprehend, the lexer must be able to recognize
+the language-specific keywords defined within the DSL.
+
+To illustrate, just as the def keyword in standard Python syntax translates to a 
+function definition, the lexer should be capable of recognizing **macroop** as 
+another keyword whenever it encounters def macroop block. In this context, this 
+definition of a keyword is referred to as a "token." All the lexer definitions 
+necessary for parsing the microcode of macroops are specified in 
+'gem5/src/arch/micro_asm.py.' The syntax for the Python lexer can be found in
+[here](https://www.dabeaz.com/ply/ply.html#ply_nn0).
 
 ### What to parse? microcode implementation of macroops
 What is the asm input of the assemble function?
@@ -358,18 +362,18 @@ What is the asm input of the assemble function?
 {% endraw %}
 ```
 
-When we examine the location where the 'assemble' function is called, it becomes 
-apparent that the 'asm' represents a microcode. Despite its potentially 
-misleading name, it's important to clarify that 'microcode' is a long 
-concatenated string object of all macroops in that specific architecture. Each
-macroop string in the 'microcode' represents one instruction. These microcode 
-strings are gathered from individual ISA files found in the 'isa/insts'
-directory, where all the architecture specific macroops are defined. 
+Upon inspecting the point where the 'assemble' function is invoked, it becomes 
+evident that a microcode is passed to the assemble function. Despite its name 
+possibly causing confusion, it is crucial to clarify that 'microcode' is a 
+lengthy concatenated python string having all **macroop** definitions in GEM5 DSL
+syntax. These microcode strings are collected from individual ISA files located 
+in the 'isa/insts' directory, where architecture-specific macroops are defined.
+ Each macrooperation string in the 'microcode' corresponds to a single instruction. 
 
 
-
-*src/arch/x86/isa/inst/general_purpose/data_transfer/move.py*
 ```python
+# src/arch/x86/isa/inst/general_purpose/data_transfer/move.py
+
 microcode = '''
 
 #
@@ -387,42 +391,35 @@ def macroop MOV_MI_R {
 };
 ```
 
-As indicated in the code, each ISA file defines a string for each macroop, 
-describing how a specific macroop is composed of microops. 
+As specified in the code, a microcode string is defined for each macroop mnemonic,
+encapsulating the macroop definitions implemented in GEM5 DSL. Since the 
+microcode strings are distributed across individual ISA files for each macroop, 
+all microcode string should be collected from multiple ISA files.
 
-*gem5/src/arch/x86/isa/insts/general_purpose/data_transfer/__init__.py*
 ```python
- 38 categories = ["conditional_move",
- 39               "move",
- 40               "stack_operations",
- 41               "xchg"]
- 42
- 43 microcode = ""
- 44 for category in categories:
- 45     exec "import %s as cat" % category
- 46     microcode += cat.microcode
+#gem5/src/arch/x86/isa/insts/general_purpose/data_transfer/__init__.py
+
+categories = ["conditional_move",
+              "move",
+              "stack_operations",
+              "xchg"]
+
+microcode = ""
+for category in categories:
+    exec "import %s as cat" % category
+    microcode += cat.microcode
  ``` 
 
-Within each instruction category, the '__init__.py' file in the corresponding
-directory iterates through each ISA file, gathering architecture-specific 
-macroops defined as strings. Since different directories define different 
-types of instruction (macroop) defined in that architecture, the generated 
-microcode string used by the assembler represents entirety of macroops. 
 
-### Lexer definition for tokenization
-It's important to keep in mind that GEM5 utilizes DSL to define macroops. While
-these macroops are implemented with Python-like semantics, they don't conform to
-actual Python syntax. Consequently, to convert this Python-like syntax into code 
-that a compiler, in GEM5's case C++ statements, can comprehend, the lexer must
-be able to recognize the language-specific keywords defined within the DSL.
+Every ISA file defining the macrooperations for the x86 architecture is located 
+under the 'src/arch/x86/isa/insts/' directory, categorized based on the 
+instruction type. The '__init__.py' file in each category directory collects the 
+microcode string from ISA files located in that directory. As depicted in the 
+code, each 'init.py' declares the ISA files in the directory as categories and 
+imports microcode from all those specified ISA files, then concatenates the 
+strings into the microcode. Consequently, the microcode will have all macroop 
+definitions implemented in GEM5 DSL. 
 
-To illustrate, just as the def keyword in standard Python syntax translates to a 
-function definition, the lexer should be capable of recognizing **macroop** as 
-another keyword whenever it encounters def macroop block. In this context, this 
-definition of a keyword is referred to as a "token." All the lexer definitions 
-necessary for parsing the microcode of macroops are specified in 
-'gem5/src/arch/micro_asm.py.' The syntax for the Python lexer can be found in
-[here](https://www.dabeaz.com/ply/ply.html#ply_nn0).
 
 ### Context-free grammar for X86 macroop
 ```python

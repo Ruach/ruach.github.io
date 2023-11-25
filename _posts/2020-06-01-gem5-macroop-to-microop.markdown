@@ -64,17 +64,20 @@ in this posting!
 You may notice a resemblance between the code that defines the macroop semantics 
 and Python syntax; nevertheless, it's crucial to clarify that the code is not 
 written in Python. GEM5 utilizes Domain-Specific Languages (DSL) to implement 
-macroops and microops. As it is another language, it should be parsed by the 
-PLY. Based on the predefined rule, GEM5 converts the macroops and microops
+macroops and microops. As it is another language, PLY generates lexer and parser
+to interpret the GEM5 DSL stored in the isa files. It is highly recommended to
+read [this tutorial about PLY][1] before starting reading this posting.
+
+Based on the predefined rule, GEM5 converts the macroops and microops
 implemented in the predefined DSL into corresponding python classes. As similar
 to how GEM5 generates CPP implementations for Params required for instantiating
 the hardware module in CPP, the goal of the parsing ISA is generating CPP 
 implementations that can be utilized during simulation, for example to decode 
-instruction and execute them in the processor pipeline. It is highly recommended
-to read [this tutorial about PLY][1] before starting reading this posting.
+instruction and execute them in the processor pipeline. 
 
 
 ### Parsing Instruction Set Architecture (ISA)
+
 ```python
 #gem5/src/arch/SConscript
 parser_py = File('isa_parser.py')
@@ -152,6 +155,17 @@ called. The run_parser function generates **ISAParser** python class object and
 invokes the **parse_isa_desc** function that actually parses the ISA files. To 
 give the information about the input ISA files that needs to be parsed, **desc**
 string passed to the ISADesc function will be utilized. 
+
+Additionally, observe that the **isa_parser.py and micro_asm.py** files are 
+provided to the ISADescrBuilder. These files contain essential functions and 
+classes for utilizing PLY and initializing the parsing process. Since this 
+SConscript is executed irrespective of the target architecture, it implies that 
+all architectures utilize the same GEM5 DSL to define their respective ISAs.
+
+The GEM5 DSL is sufficiently adaptable to support the implementation of ISAs for
+diverse architectures, including x86, arm, power, mips, and sparc. As a result, 
+there is generally no need to introduce additional rules for parsing most of the 
+time.
 
 ```python
 #gem5/src/arch/x86/SConscript
@@ -381,17 +395,27 @@ cover the details of them.
 The top rule is the **specification**. It means that content in the all isa files
 can be interpreted as specification which can comprise of *opt_defs_and_outputs* 
 and *top_level_decode_block*. We will mainly take a look at 'opt_defs_and_outputs'
-because it can be further parsed down into macroop and microop blocks. 
+because it can be further parsed down into macroop and microop blocks. As depicted
+in its grammar, it can be further parsed down to another defs_and_outputs and 
+another def_or_output block. The *def_or_output_block* is the block that we will
+specifically take a look at in detail in few sections.
 
-## let block and def template 
+### let block and def template 
+The *def_or_output_blocks* can be further narrowed down into multiple different 
+blocks, but the most important blocks related with defining macroops are starting 
+with **let and def**. 
+
 When you open the isa files in src/arch/x86/isa/microops/ directory, you will 
 notice that it has two different types of statements defining the microop: **let 
 block and def template**. Let's take a look at the grammar rule for let block. 
 
-### let \{\{ ... \}\};
+#### let \{\{ ... \}\};
+Although actual simulation is achieved through the CPP implementations, GEM5 
+utilizes python to generate the CPP implementation automatically based on what 
+the python classes define about each ISA. Therefore, the ISA file is usually 
+defines the python class required for representing ISA, especially the macroop 
+and microop in our X86 case. 
 
-
-#### let block example
 ```python
 let {
     class LdStOp(X86Microop):
@@ -425,7 +449,9 @@ let {
 }
 ```
 
-#### let block grammar rule
+For example, to define 
+
+
 ```python
     def p_global_let(self, t):
         'global_let : LET CODELIT SEMI'
@@ -466,10 +492,13 @@ del wrap
 
 If the parser encounters tokens consisting of let {{ }} block, then it invokes 
 **p_global_let** function. Note that it defines a python string defining the 
-grammar for let block. The most important part of parsing let block is invoking 
-GenCode function to generate CPP files required for defining the macroop and 
-microop classes.
+grammar for let block. The let block serves two crucial roles in parsing ISA 
+files. First of all, it executes python code literal for declaring python based 
+classes required for parsing. And then to get the CPP implementations for the ISA,
+it invokes the GenCode function. In our example, it will generates macroop and 
+microops consisting of the ISA of X86 architecture. 
 
+#### GenCode: Generating CPP implementation for ISA
 ```python
 class GenCode(object):
     # Constructor.

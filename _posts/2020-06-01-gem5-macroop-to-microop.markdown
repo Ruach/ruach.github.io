@@ -184,8 +184,8 @@ provided to the ISADescrBuilder. These files contain essential functions and
 classes for utilizing PLY and initializing the parsing process. As depicted in 
 the run_parser function, it generates **ISAParser** python class object that 
 actually handles ISA parsing utilizing the PLY. Note that this class is defined
-in the isa_parser.py file passed to the XX. Also **parse_isa_desc** is invoked
-through the ISAParser to initiate the parsing. 
+in the isa_parser.py file. Also **parse_isa_desc** is invoked through the
+ISAParser to initiate the parsing. 
 
 #### ISAParser (isa_parser.py)
 The ISAParser class is the most important python class that has two crucial roles
@@ -521,8 +521,14 @@ class GenCode(object):
             self.parser.get_file('decode_block').write(self.decode_block)
 ```
 
-NEED EXPLANATION
-
+During each iteration of the let block, **header_output**, **decoder_output**, 
+**exec_output**, and **decode_block** are initially set to empty values before 
+the let block is executed. The let block then fills these attributes as necessary. 
+Additionally, the content stored in each attribute is generated through the 
+execution of the let block, such as parsing the macroop. The GenCode class's emit 
+function write these automatically generated CPP implementations into files. 
+We will see how decoder_output can be generated after parsing the macroop in 
+[the later section](#translating-parsed-macroop).
 
 ## Parsing X86 Macroops 
 In this section, I will go over how GEM5 parses macroop definitions of X86 
@@ -1110,7 +1116,7 @@ After the successful parsing of a macroop, the corresponding macroop container
 is saved in the 'parser.macroops' dictionary. It will be returned to the assemble 
 function and stored in the 'macroopDict' attribute.
 
-## Translating parsed macroop into C++ class
+## Translating parsed macroop into C++ class <a name="translating-parsed-macroop"></a>
 >The parsed macroops and its microops are instantiated as Python objects, not 
 C++ class instances.
 {: .prompt-info }
@@ -1357,6 +1363,7 @@ there should be a corresponding 'Limm' C++ class that can be instantiated. The
 
 ```cpp
 //gem5/build/X86/arch/x86/generated/decoder-ns.hh.inc
+
     class Limm : public X86ISA::X86MicroopBase
     {
       protected:
@@ -1400,7 +1407,7 @@ def template MacroConstructor {
         }       
 };         
 
-def template MacroDisassembly {{
+def template MacroDisassembly {
     std::string
     X86Macroop::%(class_name)s::generateDisassembly(
             Addr pc, const Loader::SymbolTable *symtab) const
@@ -1414,7 +1421,7 @@ def template MacroDisassembly {{
         regSize = regSize;
         return out.str();
     }
-}};
+};
 
 
     class X86Macroop(Combinational_Macroop): 
@@ -1444,7 +1451,7 @@ If you are interested in def template block, please bear with me I will explain
 the details of the def template in the next post.
 
 
-### Appendix
+## Appendix
 #### Symbols of parser
 When discussing the translation of microop's operands, I didn't delve into the 
 details of how this translation takes place. As mentioned earlier, 
@@ -1454,8 +1461,6 @@ operands like 'rax,' 'rbx,' 't1,' 't2,' and so on. However, these operands must
 be converted into the appropriate code statements for register references, such
 as 'InstRegIndex(NUM_INTREGS+1).' The mapping between one register to code 
 referencing it is defined within the 'parser.symbols' dictionary.
-
-
 
 ```python
 #gem5/src/arch/x86/isa/microasm.isa

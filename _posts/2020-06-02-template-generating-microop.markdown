@@ -15,6 +15,53 @@ defines ISA, and how they are automatically translated into CPP classes, you
 should understand how PLY works. It is highly recommended to read 
 [this link][1].
 
+
+When you open the isa files in src/arch/x86/isa/microops/ directory, you will   
+notice that it has two different types of statements defining the microop: **let 
+block and def template**. Let's take a look at the grammar rule for let block.  
+
+
+Although actual simulation is achieved through the CPP implementations, GEM5    
+utilizes python to generate the CPP implementation automatically based on what   
+the python classes define about each ISA. Therefore, the ISA file is usually    
+defines the python class required for representing ISA, especially the macroop  
+and microop in our X86 case.                                                    
+                                                                                
+```python                                                                       
+let {                                                                           
+    class LdStOp(X86Microop):                                                   
+        def __init__(self, data, segment, addr, disp,                           
+                dataSize, addressSize, baseFlags, atCPL0, prefetch, nonSpec,    
+                implicitStack, uncacheable):                                    
+            self.data = data                                                    
+            [self.scale, self.index, self.base] = addr                          
+            self.disp = disp                                                    
+            self.segment = segment                                              
+            self.dataSize = dataSize                                            
+            self.addressSize = addressSize                                      
+            self.memFlags = baseFlags                                           
+            if atCPL0:                                                          
+                self.memFlags += " | (CPL0FlagBit << FlagShift)"                
+            self.instFlags = ""                                                 
+            if prefetch:                                                        
+                self.memFlags += " | Request::PREFETCH"                         
+                self.instFlags += " | (1ULL << StaticInst::IsDataPrefetch)"     
+            if nonSpec:                                                         
+                self.instFlags += " | (1ULL << StaticInst::IsNonSpeculative)"   
+            if uncacheable:                                                     
+                self.instFlags += " | (Request::UNCACHEABLE)"                   
+            # For implicit stack operations, we should use *not* use the        
+            # alternative addressing mode for loads/stores if the prefix is set 
+            if not implicitStack:                                               
+                self.memFlags += " | (machInst.legacy.addr ? " + \              
+                                 "(AddrSizeFlagBit << FlagShift) : 0)"          
+                                                                                
+            ......                                                              
+}                                                                               
+```                                                                             
+                                                                                
+
+
 ### def template ID {...};
 #### def template example
 ```python

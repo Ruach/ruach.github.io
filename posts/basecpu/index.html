@@ -141,7 +141,7 @@
     <h1 class="site-title">
       <a href="/">Ruach</a>
     </h1>
-    <p class="site-subtitle fst-italic mb-0">Security Researcher at Gatech</p>
+    <p class="site-subtitle fst-italic mb-0">Jaehyuk Lee</p>
   </header>
   <!-- .profile-wrapper -->
 
@@ -1261,18 +1261,6 @@ X86TLB class, it will invoke the SimObject’s constructor.</p>
 
   
 
-  
-
-  
-
-  
-
-  
-
-  
-
-  
-
 
 
 
@@ -1354,10 +1342,13 @@ CPP classes that actually simulate hardwar...
 
 
 
-                  Let’s begin by examining the translation of macroops into microops by first 
-focusing on the well-known ‘mov’ instructions in the x86 architecture.
+                  Macroop and Microop in Computer Architecture
 
-gem5/src/arch/x86/isa/insts/general_purpose/data...
+
+  Macroop (Macro-operation):
+    
+      A macroop is a high-level instruction or operation that is part of the
+instruction set architecture (ISA) of a...
                 </p>
               </div>
             </div>
@@ -1365,7 +1356,7 @@ gem5/src/arch/x86/isa/insts/general_purpose/data...
         </article>
       
         <article class="col">
-          <a href="/posts/template-generating-microop/" class="post-preview card h-100">
+          <a href="/posts/O3-CPU-GEM5/" class="post-preview card h-100">
             <div class="card-body">
               <!--
   Date format snippet
@@ -1377,14 +1368,14 @@ gem5/src/arch/x86/isa/insts/general_purpose/data...
 
 <time
   
-  data-ts="1591070400"
+  data-ts="1622001600"
   data-df="ll"
   
 >
-  Jun  2, 2020
+  May 26, 2021
 </time>
 
-              <h4 class="pt-0 my-2">Template Generating Microop</h4>
+              <h4 class="pt-0 my-2">O3 Cpu Gem5</h4>
               <div class="text-muted">
                 <p>
                   
@@ -1393,9 +1384,10 @@ gem5/src/arch/x86/isa/insts/general_purpose/data...
 
 
 
-                  Automatic CPP Class Generation for Macroop and Microop
-In this post, we will continue to make use of the parser and the grammar defined 
-to understand the Domain Specific Language (DSL) of GEM5. Be...
+                  Python derives O3CPU through DerivO3CPU class
+To understand particular processor in the GEM5, 
+it is easy to start from the script that instantiate the processor. 
+We can easily find that lots of G...
                 </p>
               </div>
             </div>
@@ -1507,7 +1499,7 @@ to understand the Domain Specific Language (DSL) of GEM5. Be...
 >
   <p>
     ©
-    <time>2023</time>
+    <time>2024</time>
     <a href="https://ruach.github.io">Jaehyuk Lee</a>.
     
       <span

@@ -4,7 +4,7 @@
   <id>https://ruach.github.io/</id>
   <title>Ruach</title>
   <subtitle>A minimal, responsive and feature-rich Jekyll theme for technical writing.</subtitle>
-  <updated>2023-11-21T00:19:43-05:00</updated>
+  <updated>2024-02-18T11:41:09-05:00</updated>
   <author>
     <name>Jaehyuk Lee</name>
     <uri>https://ruach.github.io/</uri>
@@ -13,7 +13,7 @@
   <link rel="alternate" type="text/html" hreflang="en"
     href="https://ruach.github.io/"/>
   <generator uri="https://jekyllrb.com/" version="4.3.2">Jekyll</generator>
-  <rights> © 2023 Jaehyuk Lee </rights>
+  <rights> © 2024 Jaehyuk Lee </rights>
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 

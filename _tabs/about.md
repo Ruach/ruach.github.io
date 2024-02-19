@@ -4,10 +4,11 @@ icon: fas fa-info-circle
 order: 4
 title: ""
 ---
-<div class="center-container">
-    <img src="/assets/img/jaehyuk.png" alt="Jaehyuk" class="center-image">
-</div>
 
+<!-- image slides -->
+{% include_relative slides.html %}
+
+<link rel="stylesheet" href="/assets/css/styles.css">
 <h4 class="post-text shimmer">
     <img src="/assets/img/ruach.svg" alt="Ruach" class="post-image">
     Ruach (Hebrew <a href="https://www.youtube.com/watch?v=zMaNEurciu8" title="ruach_pronunciation">[רוּחַ]</a>)
@@ -17,11 +18,10 @@ Ruach is the Hebrew word translated as breath ([Ezekiel 37:5-6][5]) and wind
 ([John 3:8][4]) in the Scripture. In the context 
 of Christianity, it is commonly interpreted as a representation of the 
 [Holy Spirit][3] ([Genesis 1:2][2]).
-
+<br>
 <h4 class="post-text">
   My Confession-Study Hard to Give
 </h4>
-
 <div style="text-align: justify;">
 Initially, my educational journey was driven by the desire to use the knowledge
 I gained to benefit others. However, as I immersed myself in the world of 
@@ -47,8 +47,7 @@ I aspire for this blog post not to come across as a boast about my knowledge but
 rather to offer a small but meaningful assistance to anyone who may find it helpful.
 I would like to end my confession by sharing my most cherished Bible verse.
 </div>
-
-
+<br>
 <blockquote>
   <p>Some trust in chariots and some in horses, but we trust in the name of the LORD our God.</p>
   <cite>Psalm 20:7 (NIV)</cite>
@@ -62,32 +61,4 @@ I would like to end my confession by sharing my most cherished Bible verse.
 [3]: <https://en.wikipedia.org/wiki/Holy_Spirit_in_Christianity#:~:text=The%20Holy%20Spirit%20enables%20Christian,particularly%20in%20times%20of%20trial.> "holy_spirit"
 [4]: <https://www.bible.com/bible/111/JHN.3.8.NIV> "John 3:8"
 [5]: <https://www.bible.com/bible/111/EZK.37.5-6.NIV>> "Ezekiel 37:5-6"
-
-
-
-<style>
-    .center-container {
-        text-align: center;
-    }
-    .center-image {
-        max-width: 50%;
-        max-height: 50%;
-        animation: none !important;
-        transition: none !important;
-    }
-    .post-text {
-        display: flex;
-        align-items: center;
-        margin: 0;
-        padding: 0;
-    }
-    .post-image {
-        max-width:32px;
-        max-height:32px;
-        margin-right: 10px;
-    }
-    .post-text a {
-        margin-left: 5px;
-    }
-</style>
 

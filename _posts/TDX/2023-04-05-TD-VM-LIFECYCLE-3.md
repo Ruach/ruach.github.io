@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "TD VM Life Cycle Part 1"
+title: "TD VM Life Cycle Part 3"
 categories: [Confidential Computing, Intel TDX]
 ---
 
@@ -104,7 +104,6 @@ static int tdx_init_mem_region(struct kvm *kvm, struct kvm_tdx_cmd *cmd)
 ```
 
 
-### I DON"T KNOW WHY VCPU SHOULD BE LOADED Here..  
 ```cpp
 static void vt_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
@@ -810,8 +809,7 @@ is the address of the source page containing data/code. Note that the source_pa
 points to the QEMU page containing TDVF image. gpa is the EPT mapping address 
 inside the TDX Module. Recall that the main loop for S-EPT updates base_gfn to 
 the updates S-EPT entry. hpa is the destination page that will be added to the 
-TD VM (TODO: Need to understand where the hpa parameter comes from.. it should
-have been allocated by the VMM before..)
+TD VM.
 
 ## KVM_TDX_FINALIAZE_VM
 After the initial set of pages is added and extended, the VMM can finalize the 

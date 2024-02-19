@@ -1,3 +1,10 @@
+---
+layout: post
+title: "TDX Module Life Cycle Part 0 (SEAMLDR)"
+categories: [Confidential Computing, Intel TDX]
+---
+
+# New CPU privileges and software layer for Intel TDX
 Secure Arbitration Mode (SEAM) is an extension of Virtual Machines Extension 
 (VMX). It introduces new VMX root mode called SEAM root. The primary goal of 
 this new root mode is to host a CPU-attested module, called TDX module, to 
@@ -24,7 +31,7 @@ root mode through SEAMCALL to execute P_SEAMLDR for loading TDX Module. The TDX
 module is loaded to the MODULE_RANGE by the P_SEAMLDR and provides functions to
 build and manages TD-VMs. 
 
-[[https://github.gatech.edu/sslab/tdx/blob/main/img/SEAMLDR.png]]
+![SEAMLDR](/assets/img/TDX//SEAMLDR.png)
 
 
 
@@ -52,7 +59,8 @@ Intel P-SEAMLDR module into the Persistent SEAMLDR range in SEAMRR:
 6. Update the load status of the Intel P-SEAMLDR module.
 7. Exit to OS using the GETSEC[EXITAC] instruction
 
-[[https://github.gatech.edu/sslab/tdx/blob/main/img/SEAMCALL_ENTER.png]]
+![SEAMCALL_ENTER](/assets/img/TDX//SEAMCALL_ENTER.png)
+
 ### VMCS as a gateway connecting VMM & SEAM
 VMCS has been used for entering and exiting the VM from host VMM. However, Intel
 TDX repurposes the VMCS so that it can be utilized during CPU mode changes 
@@ -483,7 +491,7 @@ void Target64 (SEAMLDR_COM64_DATA *pCom64)
 ```
 
 
-### XXX
+### SeamldrAcm
 ```cpp
 void SeamldrAcm(SEAMLDR_COM64_DATA *pCom64, PT_CTX* PtCtx) {
     ......

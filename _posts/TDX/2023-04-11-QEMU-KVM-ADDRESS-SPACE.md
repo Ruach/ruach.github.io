@@ -1,3 +1,10 @@
+---
+layout: post
+title: "QEMU Side Memory Management for VM with RAMBLOCK"
+categories: [KVM, QEMU, Intel TDX] 
+---
+
+
 ## QEMU side memory management 
 >**The MemoryRegion is the link between guest physical address space and the 
 >RAMBlocks containing the memory**. Each MemoryRegion has the ram_addr_t offset 

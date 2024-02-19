@@ -1,3 +1,10 @@
+---
+layout: post
+title: "MEMSLOT in QEMU"
+categories: [Confidential Computing, Intel TDX, KVM] 
+---
+
+
 ## Managing guest VM memory in KVM side 
 ### Generate memslots for gpa->hva mapping for KVM module 
 To handle guest VM's memory, KVM module needs memslot providing information 

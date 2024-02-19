@@ -1,3 +1,16 @@
+---
+layout: post
+title: "TDX Module Life Cycle Part 2"
+categories: [Confidential Computing, Intel TDX, KVM, QEMU] 
+---
+
+In previous posts, I discussed the initialization of the TDX module using 
+TDH_SYS_INIT SEAMCALL. As depicted in the image below, several additional 
+configuration steps are necessary for the TDX module initialization sequence, 
+which will be addressed in this post.
+
+![TDX_MODULE_INIT](/assets/img/TDX//tdx-module-init.png)
+
 ## TDX Module Global Configuration 
 After initializing all logical processors on the platform, global data structure
 for TDX module should be configured and initialized. This includes TDMR, PAMT 
@@ -52,7 +65,7 @@ non-reserved parts of a TDMR are required to be inside CMRs, which means the
 reserved area can be located outside of CMR. Why? Sometimes one TDMR cannot be 
 covered by one CMR because of lack of memory space in that CMR. 
 
-[[https://github.gatech.edu/sslab/tdx/blob/main/img/cmr_vs_tdmr.png]]
+![CMR_TDMR](/assets/img/TDX//cmr_vs_tdmr.png)
 
 ## VMM Populates TDMRs for TDX Module
 ```cpp
@@ -1390,12 +1403,12 @@ _STATIC_INLINE_ void* map_pa_with_hkid(void* pa, uint16_t hkid, mapping_type_t m
 ```
 
 
+<!--
 
-[[https://github.gatech.edu/sslab/tdx/blob/main/img/tdx-module-init.png]]
+[[/assets/img/TDX//tdcs-mm-alloc.png]]
 
-[[https://github.gatech.edu/sslab/tdx/blob/main/img/tdcs-mm-alloc.png]]
-
-[[https://github.gatech.edu/sslab/tdx/blob/main/img/tdmr-resource-reclam.png]]
+[[/assets/img/TDX//tdmr-resource-reclam.png]]
+-->
 
 
 

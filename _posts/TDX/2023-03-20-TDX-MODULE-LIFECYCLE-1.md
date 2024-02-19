@@ -1,8 +1,15 @@
+---
+layout: post
+title: "TDX Module Life Cycle Part 1"
+categories: [Confidential Computing, Intel TDX] 
+---
+
+
 # Initialize TDX module
 TDX module requires few initialization steps to start service as intermediary of
 the TD and VMM. To this end, TDX module requires multiple SEAMCALLs to be 
 invoked, as shown in the below figure, on multiple processors and packages. 
-[[https://github.gatech.edu/sslab/tdx/blob/main/img/TDX_MODULE_INIT.png]]
+![TDX_MODULE_INIT](/assets/img/TDX//TDX_MODULE_INIT.png)
 
 All logical CPUs should be online during the TDX module initialization, which is 
 implemented by the **__tdx_init** host kernel function. KVM is the only user of 
@@ -556,9 +563,10 @@ tdx_static_assert(sizeof(cmr_info_entry_t) == 16, cmr_info_entry_t);
 ```
 
 
+<!--
 ### Why host needs those information? 
 Q: If the TDX module already has the information, why the host kvm needs those information? 
-
+-->
 
 ### Map physical address belongs to the host kvm 
 Although the required information will be all filled out by the TDX module, the

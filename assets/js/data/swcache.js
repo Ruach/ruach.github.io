@@ -13,9 +13,9 @@ const resource = [
   
     '/categories/',
   
-    '/tags/',
-  
     '/archives/',
+  
+    '/Professional-Career/',
   
     '/about/',
   

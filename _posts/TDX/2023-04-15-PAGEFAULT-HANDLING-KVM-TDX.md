@@ -1,3 +1,10 @@
+---
+layout: post
+title: "KVM page-fault handling for TDX"
+categories: [Confidential Computing, Intel TDX, KVM] 
+---
+
+
 ### Basic idea to implement private page 
 >Because shared EPT is the same as the existing EPT, use the existing logic for
 >shared EPT.  On the other hand, secure EPT requires additional operations

@@ -1,0 +1,25 @@
+.center-container {
+    text-align: center;
+}
+.center-image {
+    max-width: 50%;
+    max-height: 50%;
+    animation: none !important;
+    transition: none !important;
+}
+.post-text {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    padding: 0;
+}
+.post-image {
+    max-width:32px;
+    max-height:32px;
+    margin-right: 10px;
+}
+.post-text a {
+    margin-left: 5px;
+}
+
+

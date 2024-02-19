@@ -380,7 +380,7 @@ static int __direct_map(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault)
 To resolve this TDX page fault, we needs to handle two important things. The 
 first is generating S-EPT mapping. The second is adding page to TD-VM. 
 
-[[https://github.gatech.edu/sslab/tdx/blob/main/img/ADD_PRIVATE_PAGE.png]]
+![PRIVATE_PAGE](/assets/img/TDX//ADD_PRIVATE_PAGE.png)
 
 ## Add S-EPT for private page translation (TDH_MEM_SEPT_ADD)
 To translate private page belong to TD-VM, it needs SPTE for non-leaf and leaf.
@@ -800,7 +800,7 @@ If the target TD-VM has been already finalized, the page can only be inserted
 as the TDH_MEM_PAGE_AUG SEAMCALL, but if not, TDH_MEM_PAGE_ADD SEAMCALL allows 
 it to have new private page. 
 
-[[https://github.gatech.edu/sslab/tdx/blob/main/img/TDH_MEM_PAGE_ADD.png]]
+![MEM_PAGE_ADD](/assets/img/TDX//TDH_MEM_PAGE_ADD.png)
 
 This SEAMCALL requires four important information about the addresses to add new
 page to the TD VM. The first is the EPT mapping information which we already

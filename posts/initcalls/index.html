@@ -37,8 +37,8 @@
 <meta name="generator" content="Jekyll v4.3.2" />
 <meta property="og:title" content="Initcalls" />
 <meta property="og:locale" content="en" />
-<meta name="description" content="#do_initcalls 1 2 3 4 5 6 7 8 9 static void __init do_basic_setup(void) { cpuset_init_smp(); driver_init(); init_irq_proc(); do_ctors(); usermodehelper_enable(); do_initcalls(); } Now let’s go back to previous setup function do_basic_setup. Because rest of the init functions are not important in this posting, so we will directly jump into do_initcalls function." />
-<meta property="og:description" content="#do_initcalls 1 2 3 4 5 6 7 8 9 static void __init do_basic_setup(void) { cpuset_init_smp(); driver_init(); init_irq_proc(); do_ctors(); usermodehelper_enable(); do_initcalls(); } Now let’s go back to previous setup function do_basic_setup. Because rest of the init functions are not important in this posting, so we will directly jump into do_initcalls function." />
+<meta name="description" content="do_initcalls 1 2 3 4 5 6 7 8 9 static void __init do_basic_setup(void) { cpuset_init_smp(); driver_init(); init_irq_proc(); do_ctors(); usermodehelper_enable(); do_initcalls(); } Now let’s go back to previous setup function do_basic_setup. Because rest of the init functions are not important in this posting, so we will directly jump into do_initcalls function." />
+<meta property="og:description" content="do_initcalls 1 2 3 4 5 6 7 8 9 static void __init do_basic_setup(void) { cpuset_init_smp(); driver_init(); init_irq_proc(); do_ctors(); usermodehelper_enable(); do_initcalls(); } Now let’s go back to previous setup function do_basic_setup. Because rest of the init functions are not important in this posting, so we will directly jump into do_initcalls function." />
 <link rel="canonical" href="https://ruach.github.io/posts/initcalls/" />
 <meta property="og:url" content="https://ruach.github.io/posts/initcalls/" />
 <meta property="og:site_name" content="Ruach" />
@@ -48,7 +48,7 @@
 <meta property="twitter:title" content="Initcalls" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-04-28T00:00:00-04:00","datePublished":"2021-04-28T00:00:00-04:00","description":"#do_initcalls 1 2 3 4 5 6 7 8 9 static void __init do_basic_setup(void) { cpuset_init_smp(); driver_init(); init_irq_proc(); do_ctors(); usermodehelper_enable(); do_initcalls(); } Now let’s go back to previous setup function do_basic_setup. Because rest of the init functions are not important in this posting, so we will directly jump into do_initcalls function.","headline":"Initcalls","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/initcalls/"},"url":"https://ruach.github.io/posts/initcalls/"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-04-28T00:00:00-04:00","datePublished":"2021-04-28T00:00:00-04:00","description":"do_initcalls 1 2 3 4 5 6 7 8 9 static void __init do_basic_setup(void) { cpuset_init_smp(); driver_init(); init_irq_proc(); do_ctors(); usermodehelper_enable(); do_initcalls(); } Now let’s go back to previous setup function do_basic_setup. Because rest of the init functions are not important in this posting, so we will directly jump into do_initcalls function.","headline":"Initcalls","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/initcalls/"},"url":"https://ruach.github.io/posts/initcalls/"}</script>
 <!-- End Jekyll SEO tag -->
 
   
@@ -510,7 +510,7 @@
   </header>
 
   <div class="content">
-    <p>#do_initcalls</p>
+    <h1 id="do_initcalls">do_initcalls</h1>
 <div class="language-c highlighter-rouge"><div class="code-header">
         <span data-label-text="C"><i class="fas fa-code fa-fw small"></i></span>
       <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1

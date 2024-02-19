@@ -4,7 +4,7 @@
   <id>https://ruach.github.io/</id>
   <title>Ruach</title>
   <subtitle>A minimal, responsive and feature-rich Jekyll theme for technical writing.</subtitle>
-  <updated>2024-02-19T11:12:20-05:00</updated>
+  <updated>2024-02-19T14:09:05-05:00</updated>
   <author>
     <name>Jaehyuk Lee</name>
     <uri>https://ruach.github.io/</uri>
@@ -17,6 +17,180 @@
   <icon>/assets/img/favicons/favicon.ico</icon>
   <logo>/assets/img/favicons/favicon-96x96.png</logo>
 
+
+  
+  <entry>
+    <title>TDX Specification Introduction</title>
+    <link href="https://ruach.github.io/posts/tdx-intro/" rel="alternate" type="text/html" title="TDX Specification Introduction" />
+    <published>2023-06-15T00:00:00-04:00</published>
+  
+    <updated>2023-06-15T00:00:00-04:00</updated>
+  
+    <id>https://ruach.github.io/posts/tdx-intro/</id>
+    <content src="https://ruach.github.io/posts/tdx-intro/" />
+    <author>
+      <name>Jaehyuk Lee</name>
+    </author>
+
+  
+    
+    <category term="Confidential Computing" />
+    
+    <category term="Intel TDX" />
+    
+  
+
+  
+    <summary>
+      
+
+
+
+
+
+      This slide provides an overview of Intel TDX, which I presented to my colleagues. 
+It delves into the general architecture of Intel TDX and highlights its capability 
+to ensure confidentiality and integrity for confidential virtual machines.
+
+
+
+
+  This is an embedded Microsoft Office presentation, powered by Office.
+
+
+
+    </summary>
+  
+
+  </entry>
+
+  
+  <entry>
+    <title>TD VM Life Cycle Part 1</title>
+    <link href="https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/" rel="alternate" type="text/html" title="TD VM Life Cycle Part 1" />
+    <published>2023-04-05T00:00:00-04:00</published>
+  
+    <updated>2023-04-05T00:00:00-04:00</updated>
+  
+    <id>https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/</id>
+    <content src="https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/" />
+    <author>
+      <name>Jaehyuk Lee</name>
+    </author>
+
+  
+    
+    <category term="Confidential Computing" />
+    
+    <category term="Intel TDX" />
+    
+  
+
+  
+    <summary>
+      
+
+
+
+
+
+      TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND)
+In the previous postings, we built the meta data required for launching TD VM 
+such as TDR, TDCS and VMCS of VCPU. However, to actually run code inside the TD,
+we need memory pages and its mappings. We will see how TDX Module builds up the 
+Secure EPT for private memories and add initial set of TD private pages using 
+TDH.MEM.SEPT.ADD and TD...
+    </summary>
+  
+
+  </entry>
+
+  
+  <entry>
+    <title>TD VM Life Cycle Part 2</title>
+    <link href="https://ruach.github.io/posts/TD-VM-LIFECYCLE-2/" rel="alternate" type="text/html" title="TD VM Life Cycle Part 2" />
+    <published>2023-04-03T00:00:00-04:00</published>
+  
+    <updated>2023-04-03T00:00:00-04:00</updated>
+  
+    <id>https://ruach.github.io/posts/TD-VM-LIFECYCLE-2/</id>
+    <content src="https://ruach.github.io/posts/TD-VM-LIFECYCLE-2/" />
+    <author>
+      <name>Jaehyuk Lee</name>
+    </author>
+
+  
+    
+    <category term="Confidential Computing" />
+    
+    <category term="Intel TDX" />
+    
+  
+
+  
+    <summary>
+      
+
+
+
+
+
+      Deep dive into TD VCPU creation (TDH_VP_CREATE-TDH_VP_INIT)
+Instantiating TD VCPU
+After the VM has been initialized, note that it has not been finalized yet, it 
+can generate VCPUs assigned to the generated TD instance. The logistics of TD 
+VCPU generation consists of two parts mainly: generate VCPU (KVM_CREATE_VCPU) 
+and initialize the generated VCPU as TDX VCPU (KVM_TDX_INIT_VCPU) through 
+th...
+    </summary>
+  
+
+  </entry>
+
+  
+  <entry>
+    <title>TD VM Life Cycle Part 1</title>
+    <link href="https://ruach.github.io/posts/TD-VM-LIFECYCLE-1/" rel="alternate" type="text/html" title="TD VM Life Cycle Part 1" />
+    <published>2023-04-01T00:00:00-04:00</published>
+  
+    <updated>2023-04-01T00:00:00-04:00</updated>
+  
+    <id>https://ruach.github.io/posts/TD-VM-LIFECYCLE-1/</id>
+    <content src="https://ruach.github.io/posts/TD-VM-LIFECYCLE-1/" />
+    <author>
+      <name>Jaehyuk Lee</name>
+    </author>
+
+  
+    
+    <category term="Confidential Computing" />
+    
+    <category term="Intel TDX" />
+    
+  
+
+  
+    <summary>
+      
+
+
+
+
+
+      Deep dive into TD-VM creation (TDH_MNG_CREATE SEAMCALL-TDH_MNG_INIT)
+
+
+This article will follow the steps described in this figure. It is good to check
+this figure when you want to check which part of the TD VM creation you are
+dealing with. Before we delve into the details, lets first check new data 
+structures required to generate and initialize the TD VM: TDR, TDCS.
+
+Trust Domain Root (TDR)
+...
+    </summary>
+  
+
+  </entry>
 
   
   <entry>
@@ -58,196 +232,6 @@ Interrupt makes the commit stage stop further instructions fetching
 
 
  788 template &amp;lt;class Im...
-    </summary>
-  
-
-  </entry>
-
-  
-  <entry>
-    <title>Basecpu</title>
-    <link href="https://ruach.github.io/posts/basecpu/" rel="alternate" type="text/html" title="Basecpu" />
-    <published>2021-08-08T00:00:00-04:00</published>
-  
-    <updated>2021-08-08T00:00:00-04:00</updated>
-  
-    <id>https://ruach.github.io/posts/basecpu/</id>
-    <content src="https://ruach.github.io/posts/basecpu/" />
-    <author>
-      <name>Jaehyuk Lee</name>
-    </author>
-
-  
-    
-    <category term="GEM5" />
-    
-  
-
-  
-    <summary>
-      
-
-
-
-
-
-      gem5/src/cpu/BaseCPU.py
- 65 if buildEnv['TARGET_ISA'] == 'alpha':
- 66     from m5.objects.AlphaTLB import AlphaDTB as ArchDTB, AlphaITB as ArchITB
- 67     from m5.objects.AlphaInterrupts import AlphaInterrupts as ArchInterrupts
- 68     from m5.objects.AlphaISA import AlphaISA as ArchISA
- 69     ArchISAsParam = VectorParam.AlphaISA
- 70 elif buildEnv['TARGET_ISA'] == 'sparc':
- 71     from m5.obje...
-    </summary>
-  
-
-  </entry>
-
-  
-  <entry>
-    <title>O3 Cache Block</title>
-    <link href="https://ruach.github.io/posts/O3-cache-block/" rel="alternate" type="text/html" title="O3 Cache Block" />
-    <published>2021-06-11T00:00:00-04:00</published>
-  
-    <updated>2021-06-11T00:00:00-04:00</updated>
-  
-    <id>https://ruach.github.io/posts/O3-cache-block/</id>
-    <content src="https://ruach.github.io/posts/O3-cache-block/" />
-    <author>
-      <name>Jaehyuk Lee</name>
-    </author>
-
-  
-    
-  
-
-  
-    <summary>
-      
-
-
-
-
-
-      
-Cache internal class hierarchies in GEM5
-  92 /**
-  93  * A basic cache interface. Implements some common functions for speed.
-  94  */
-  95 class BaseCache : public ClockedObject
-  96 {
-......
- 349     /** Tag and data Storage */
- 350     BaseTags *tags;
-
-
- 70 /**
- 71  * A common base class of Cache tagstore objects.
- 72  */
- 73 class BaseTags : public ClockedObject
- 74 {
-......
- 88     /** I...
-    </summary>
-  
-
-  </entry>
-
-  
-  <entry>
-    <title>O3 Cache Recv</title>
-    <link href="https://ruach.github.io/posts/O3-cache-recv/" rel="alternate" type="text/html" title="O3 Cache Recv" />
-    <published>2021-06-10T00:00:00-04:00</published>
-  
-    <updated>2021-06-10T00:00:00-04:00</updated>
-  
-    <id>https://ruach.github.io/posts/O3-cache-recv/</id>
-    <content src="https://ruach.github.io/posts/O3-cache-recv/" />
-    <author>
-      <name>Jaehyuk Lee</name>
-    </author>
-
-  
-    
-  
-
-  
-    <summary>
-      
-
-
-
-
-
-      Cache receive
-2510 bool
-2511 BaseCache::MemSidePort::recvTimingResp(PacketPtr pkt)
-2512 {
-2513     cache-&amp;gt;recvTimingResp(pkt);
-2514     return true;
-2515 }
-
-
-BaseCache::recvTimingResp
- 419 void
- 420 BaseCache::recvTimingResp(PacketPtr pkt)
- 421 {
- 422     assert(pkt-&amp;gt;isResponse());
- 423 
- 424     // all header delay should be paid for by the crossbar, unless
- 425     // this is a prefetch...
-    </summary>
-  
-
-  </entry>
-
-  
-  <entry>
-    <title>O3 Cpu Commit</title>
-    <link href="https://ruach.github.io/posts/O3-CPU-commit/" rel="alternate" type="text/html" title="O3 Cpu Commit" />
-    <published>2021-06-04T00:00:00-04:00</published>
-  
-    <updated>2021-06-04T00:00:00-04:00</updated>
-  
-    <id>https://ruach.github.io/posts/O3-CPU-commit/</id>
-    <content src="https://ruach.github.io/posts/O3-CPU-commit/" />
-    <author>
-      <name>Jaehyuk Lee</name>
-    </author>
-
-  
-    
-    <category term="GEM5" />
-    
-    <category term="Pipeline" />
-    
-    <category term="O3" />
-    
-  
-
-  
-    <summary>
-      
-
-
-
-
-
-      Memory read and write of the O3 CPU
-
-Memory read
-621 LSQUnit&amp;lt;Impl&amp;gt;::read(LSQRequest *req, int load_idx)
-622 {
-623     LQEntry&amp;amp; load_req = loadQueue[load_idx];
-624     const DynInstPtr&amp;amp; load_inst = load_req.instruction();
-625 
-626     load_req.setRequest(req);
-627     assert(load_inst);
-628 
-629     assert(!load_inst-&amp;gt;isExecuted());
-630 
-631     // Make sure this isn't a strictl...
     </summary>
   
 

@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "TDX Specification Introduction"
+title: "TDX Architecture Introduction"
 categories: [Confidential Computing, Intel TDX]
 ---
 

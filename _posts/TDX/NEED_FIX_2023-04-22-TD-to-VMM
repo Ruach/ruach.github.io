@@ -1,3 +1,10 @@
+---
+layout: post
+title: "Exit From TD VM to VMM"
+categories: [Confidential Computing, Intel TDX]
+---
+
+
 ### Common Routine of VM Run and Exit
 ```cpp
  9731 static int vcpu_enter_guest(struct kvm_vcpu *vcpu)

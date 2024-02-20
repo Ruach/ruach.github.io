@@ -1,3 +1,9 @@
+---
+layout: post
+title: "QEMU to VMM for TD creation"
+categories: [Confidential Computing, Intel TDX, KVM, QEMU]
+---
+
 # KVM TDX creation flow
 In addition to KVM normal flow, new TDX ioctls need to be called. The control flow
 looks like as follows (from virt/kvm/intel-tdx.rst).

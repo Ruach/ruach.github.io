@@ -1,3 +1,10 @@
+---
+layout: post
+title: "Enter TD VM from VMM"
+categories: [Confidential Computing, Intel TDX]
+---
+
+
 # Basic KVM Flow
 For x86 architecture, VMX is the main initialization module that provides 
 initialization related functions to KVM module. Because KVM can be used by 

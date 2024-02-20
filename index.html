@@ -442,7 +442,7 @@
 
         <div class="col-md-12">
           <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">TDX Specification Introduction</h1>
+            <h1 class="card-title my-2 mt-md-0">TDX Architecture Introduction</h1>
 
             <div class="card-text content mt-0 mb-3">
               <p>
@@ -501,6 +501,280 @@ to ensure confidentiality and ...
     </article>
   
     <article class="card-wrapper card">
+      <a href="/posts/PAGEFAULT-HANDLING-KVM-TDX/" class="post-preview row g-0 flex-md-row-reverse">
+        
+
+        
+
+        <div class="col-md-12">
+          <div class="card-body d-flex flex-column">
+            <h1 class="card-title my-2 mt-md-0">KVM page-fault handling for TDX</h1>
+
+            <div class="card-text content mt-0 mb-3">
+              <p>
+                
+
+
+
+
+
+                Basic idea to implement private page
+
+  Because shared EPT is the same as the existing EPT, use the existing logic for
+shared EPT.  On the other hand, secure EPT requires additional operations
+inst...
+              </p>
+            </div>
+
+            <div class="post-meta flex-grow-1 d-flex align-items-end">
+              <div class="me-auto">
+                <!-- posted date -->
+                <i class="far fa-calendar fa-fw me-1"></i>
+                <!--
+  Date format snippet
+  See: ${JS_ROOT}/utils/locale-dateime.js
+-->
+
+
+
+
+<time
+  
+  data-ts="1681531200"
+  data-df="ll"
+  
+>
+  Apr 15, 2023
+</time>
+
+
+                <!-- categories -->
+                
+                  <i class="far fa-folder-open fa-fw me-1"></i>
+                  <span class="categories">
+                    
+                      Confidential Computing,
+                      Intel TDX,
+                      KVM
+                  </span>
+                
+              </div>
+
+              
+            </div>
+            <!-- .post-meta -->
+          </div>
+          <!-- .card-body -->
+        </div>
+      </a>
+    </article>
+  
+    <article class="card-wrapper card">
+      <a href="/posts/PAGEFAULT-HANDLING-KVM/" class="post-preview row g-0 flex-md-row-reverse">
+        
+
+        
+
+        <div class="col-md-12">
+          <div class="card-body d-flex flex-column">
+            <h1 class="card-title my-2 mt-md-0">KVM page-fault handling</h1>
+
+            <div class="card-text content mt-0 mb-3">
+              <p>
+                
+
+
+
+
+
+                EPT violation exit and handle
+The logistics of KVM’s page fault handling is like below: 
+__vmx_handle_exit -&amp;gt; handle_ept_violation -&amp;gt; __vmx_handle_ept_violation -&amp;gt;
+kvm_mmu_page_fault -&amp;gt;...
+              </p>
+            </div>
+
+            <div class="post-meta flex-grow-1 d-flex align-items-end">
+              <div class="me-auto">
+                <!-- posted date -->
+                <i class="far fa-calendar fa-fw me-1"></i>
+                <!--
+  Date format snippet
+  See: ${JS_ROOT}/utils/locale-dateime.js
+-->
+
+
+
+
+<time
+  
+  data-ts="1681272000"
+  data-df="ll"
+  
+>
+  Apr 12, 2023
+</time>
+
+
+                <!-- categories -->
+                
+                  <i class="far fa-folder-open fa-fw me-1"></i>
+                  <span class="categories">
+                    
+                      Confidential Computing,
+                      KVM
+                  </span>
+                
+              </div>
+
+              
+            </div>
+            <!-- .post-meta -->
+          </div>
+          <!-- .card-body -->
+        </div>
+      </a>
+    </article>
+  
+    <article class="card-wrapper card">
+      <a href="/posts/QEMU-KVM-ADDRESS-SPACE/" class="post-preview row g-0 flex-md-row-reverse">
+        
+
+        
+
+        <div class="col-md-12">
+          <div class="card-body d-flex flex-column">
+            <h1 class="card-title my-2 mt-md-0">QEMU Side Memory Management for VM with RAMBLOCK</h1>
+
+            <div class="card-text content mt-0 mb-3">
+              <p>
+                
+
+
+
+
+
+                QEMU side memory management
+
+  The MemoryRegion is the link between guest physical address space and the 
+RAMBlocks containing the memory. Each MemoryRegion has the ram_addr_t offset 
+of the RAMBlo...
+              </p>
+            </div>
+
+            <div class="post-meta flex-grow-1 d-flex align-items-end">
+              <div class="me-auto">
+                <!-- posted date -->
+                <i class="far fa-calendar fa-fw me-1"></i>
+                <!--
+  Date format snippet
+  See: ${JS_ROOT}/utils/locale-dateime.js
+-->
+
+
+
+
+<time
+  
+  data-ts="1681185600"
+  data-df="ll"
+  
+>
+  Apr 11, 2023
+</time>
+
+
+                <!-- categories -->
+                
+                  <i class="far fa-folder-open fa-fw me-1"></i>
+                  <span class="categories">
+                    
+                      KVM,
+                      QEMU,
+                      Intel TDX
+                  </span>
+                
+              </div>
+
+              
+            </div>
+            <!-- .post-meta -->
+          </div>
+          <!-- .card-body -->
+        </div>
+      </a>
+    </article>
+  
+    <article class="card-wrapper card">
+      <a href="/posts/SPT-AND-MEMSLOT/" class="post-preview row g-0 flex-md-row-reverse">
+        
+
+        
+
+        <div class="col-md-12">
+          <div class="card-body d-flex flex-column">
+            <h1 class="card-title my-2 mt-md-0">Shadow Page Table (SPT) and MEMSLOT</h1>
+
+            <div class="card-text content mt-0 mb-3">
+              <p>
+                
+
+
+
+
+
+                Shadow Page Table (SPT)
+Before the introduction of TDP, shadow paging has been utilized to translate
+GPA to HPA. The KVM module utilize a unified concept to abstract the 
+structure managing this tr...
+              </p>
+            </div>
+
+            <div class="post-meta flex-grow-1 d-flex align-items-end">
+              <div class="me-auto">
+                <!-- posted date -->
+                <i class="far fa-calendar fa-fw me-1"></i>
+                <!--
+  Date format snippet
+  See: ${JS_ROOT}/utils/locale-dateime.js
+-->
+
+
+
+
+<time
+  
+  data-ts="1681099200"
+  data-df="ll"
+  
+>
+  Apr 10, 2023
+</time>
+
+
+                <!-- categories -->
+                
+                  <i class="far fa-folder-open fa-fw me-1"></i>
+                  <span class="categories">
+                    
+                      Confidential Computing,
+                      Intel TDX,
+                      KVM,
+                      QEMU
+                  </span>
+                
+              </div>
+
+              
+            </div>
+            <!-- .post-meta -->
+          </div>
+          <!-- .card-body -->
+        </div>
+      </a>
+    </article>
+  
+    <article class="card-wrapper card">
       <a href="/posts/TD-VM-LIFECYCLE-3/" class="post-preview row g-0 flex-md-row-reverse">
         
 
@@ -508,7 +782,7 @@ to ensure confidentiality and ...
 
         <div class="col-md-12">
           <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">TD VM Life Cycle Part 1</h1>
+            <h1 class="card-title my-2 mt-md-0">TD VM Life Cycle Part 3</h1>
 
             <div class="card-text content mt-0 mb-3">
               <p>
@@ -702,14 +976,14 @@ this figure when you want to check which part...
     </article>
   
     <article class="card-wrapper card">
-      <a href="/posts/gem5-interrupt-handling-o3/" class="post-preview row g-0 flex-md-row-reverse">
+      <a href="/posts/TDX-MODULE-LIFECYCLE-2/" class="post-preview row g-0 flex-md-row-reverse">
         
 
         
 
         <div class="col-md-12">
           <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">Gem5 Interrupt Handling O3</h1>
+            <h1 class="card-title my-2 mt-md-0">TDX Module Life Cycle Part 2</h1>
 
             <div class="card-text content mt-0 mb-3">
               <p>
@@ -719,14 +993,9 @@ this figure when you want to check which part...
 
 
 
-                
-Interrupt makes the commit stage stop further instructions fetching
- 813 template &amp;lt;class Impl&amp;gt;
- 814 void
- 815 DefaultCommit&amp;lt;Impl&amp;gt;::commit()
- 816 {
- 817     if (FullSystem) {
- 818      ...
+                In previous posts, I discussed the initialization of the TDX module using 
+TDH_SYS_INIT SEAMCALL. As depicted in the image below, several additional 
+configuration steps are necessary for the TDX m...
               </p>
             </div>
 
@@ -744,71 +1013,11 @@ Interrupt makes the commit stage stop further instructions fetching
 
 <time
   
-  data-ts="1640408400"
+  data-ts="1679544000"
   data-df="ll"
   
 >
-  Dec 25, 2021
-</time>
-
-
-                <!-- categories -->
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/basecpu/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">Basecpu</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                gem5/src/cpu/BaseCPU.py
- 65 if buildEnv[&#39;TARGET_ISA&#39;] == &#39;alpha&#39;:
- 66     from m5.objects.AlphaTLB import AlphaDTB as ArchDTB, AlphaITB as ArchITB
- 67     from m5.objects.AlphaInterrupts import Alp...
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1628395200"
-  data-df="ll"
-  
->
-  Aug  8, 2021
+  Mar 23, 2023
 </time>
 
 
@@ -817,7 +1026,10 @@ Interrupt makes the commit stage stop further instructions fetching
                   <i class="far fa-folder-open fa-fw me-1"></i>
                   <span class="categories">
                     
-                      GEM5
+                      Confidential Computing,
+                      Intel TDX,
+                      KVM,
+                      QEMU
                   </span>
                 
               </div>
@@ -832,14 +1044,14 @@ Interrupt makes the commit stage stop further instructions fetching
     </article>
   
     <article class="card-wrapper card">
-      <a href="/posts/O3-cache-block/" class="post-preview row g-0 flex-md-row-reverse">
+      <a href="/posts/TDX-MODULE-LIFECYCLE-1/" class="post-preview row g-0 flex-md-row-reverse">
         
 
         
 
         <div class="col-md-12">
           <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cache Block</h1>
+            <h1 class="card-title my-2 mt-md-0">TDX Module Life Cycle Part 1</h1>
 
             <div class="card-text content mt-0 mb-3">
               <p>
@@ -849,15 +1061,10 @@ Interrupt makes the commit stage stop further instructions fetching
 
 
 
-                
-Cache internal class hierarchies in GEM5
-  92 /**
-  93  * A basic cache interface. Implements some common functions for speed.
-  94  */
-  95 class BaseCache : public ClockedObject
-  96 {
-......
- 3...
+                Initialize TDX module
+TDX module requires few initialization steps to start service as intermediary of
+the TD and VMM. To this end, TDX module requires multiple SEAMCALLs to be 
+invoked, as shown i...
               </p>
             </div>
 
@@ -875,142 +1082,11 @@ Cache internal class hierarchies in GEM5
 
 <time
   
-  data-ts="1623384000"
+  data-ts="1679284800"
   data-df="ll"
   
 >
-  Jun 11, 2021
-</time>
-
-
-                <!-- categories -->
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/O3-cache-recv/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cache Recv</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                Cache receive
-2510 bool
-2511 BaseCache::MemSidePort::recvTimingResp(PacketPtr pkt)
-2512 {
-2513     cache-&amp;gt;recvTimingResp(pkt);
-2514     return true;
-2515 }
-
-
-BaseCache::recvTimingResp
- 419 void
-...
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1623297600"
-  data-df="ll"
-  
->
-  Jun 10, 2021
-</time>
-
-
-                <!-- categories -->
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/O3-CPU-commit/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cpu Commit</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                Memory read and write of the O3 CPU
-
-Memory read
-621 LSQUnit&amp;lt;Impl&amp;gt;::read(LSQRequest *req, int load_idx)
-622 {
-623     LQEntry&amp;amp; load_req = loadQueue[load_idx];
-624     const DynInstPtr&amp;amp...
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1622779200"
-  data-df="ll"
-  
->
-  Jun  4, 2021
+  Mar 20, 2023
 </time>
 
 
@@ -1019,68 +1095,9 @@ Memory read
                   <i class="far fa-folder-open fa-fw me-1"></i>
                   <span class="categories">
                     
-                      GEM5,
-                      Pipeline,
-                      O3
+                      Confidential Computing,
+                      Intel TDX
                   </span>
-                
-              </div>
-
-              
-            </div>
-            <!-- .post-meta -->
-          </div>
-          <!-- .card-body -->
-        </div>
-      </a>
-    </article>
-  
-    <article class="card-wrapper card">
-      <a href="/posts/O3-CPU-commit/" class="post-preview row g-0 flex-md-row-reverse">
-        
-
-        
-
-        <div class="col-md-12">
-          <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">O3 Cpu Commit</h1>
-
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                
-
-
-
-
-
-                Commit (Commit::commitInsts()). Once the instruction reaches the head of ROB, it will be committed and released from ROB.
-
-              </p>
-            </div>
-
-            <div class="post-meta flex-grow-1 d-flex align-items-end">
-              <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                <!--
-  Date format snippet
-  See: ${JS_ROOT}/utils/locale-dateime.js
--->
-
-
-
-
-<time
-  
-  data-ts="1622606400"
-  data-df="ll"
-  
->
-  Jun  2, 2021
-</time>
-
-
-                <!-- categories -->
                 
               </div>
 
@@ -1169,11 +1186,29 @@ Memory read
         </li>
       
     
+      
+      
+      
+      
+      
+
+      
+
+      
+        <!-- show number -->
+        <li class="page-item ">
+          <a
+            class="page-link"
+            href="/page4"
+          >4</a>
+        </li>
+      
+    
 
     <!-- mobile pagination -->
     <li class="page-index align-middle">
       <span>1</span>
-      <span class="text-muted">/ 3</span>
+      <span class="text-muted">/ 4</span>
     </li>
 
     <!-- right arrow -->

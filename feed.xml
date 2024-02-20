@@ -4,7 +4,7 @@
   <id>https://ruach.github.io/</id>
   <title>Ruach</title>
   <subtitle>A minimal, responsive and feature-rich Jekyll theme for technical writing.</subtitle>
-  <updated>2024-02-19T14:09:05-05:00</updated>
+  <updated>2024-02-19T19:13:57-05:00</updated>
   <author>
     <name>Jaehyuk Lee</name>
     <uri>https://ruach.github.io/</uri>
@@ -20,8 +20,8 @@
 
   
   <entry>
-    <title>TDX Specification Introduction</title>
-    <link href="https://ruach.github.io/posts/tdx-intro/" rel="alternate" type="text/html" title="TDX Specification Introduction" />
+    <title>TDX Architecture Introduction</title>
+    <link href="https://ruach.github.io/posts/tdx-intro/" rel="alternate" type="text/html" title="TDX Architecture Introduction" />
     <published>2023-06-15T00:00:00-04:00</published>
   
     <updated>2023-06-15T00:00:00-04:00</updated>
@@ -66,14 +66,14 @@ to ensure confidentiality and integrity for confidential virtual machines.
 
   
   <entry>
-    <title>TD VM Life Cycle Part 1</title>
-    <link href="https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/" rel="alternate" type="text/html" title="TD VM Life Cycle Part 1" />
-    <published>2023-04-05T00:00:00-04:00</published>
+    <title>KVM page-fault handling for TDX</title>
+    <link href="https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM-TDX/" rel="alternate" type="text/html" title="KVM page-fault handling for TDX" />
+    <published>2023-04-15T00:00:00-04:00</published>
   
-    <updated>2023-04-05T00:00:00-04:00</updated>
+    <updated>2023-04-15T00:00:00-04:00</updated>
   
-    <id>https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/</id>
-    <content src="https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/" />
+    <id>https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM-TDX/</id>
+    <content src="https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM-TDX/" />
     <author>
       <name>Jaehyuk Lee</name>
     </author>
@@ -81,6 +81,96 @@ to ensure confidentiality and integrity for confidential virtual machines.
   
     
     <category term="Confidential Computing" />
+    
+    <category term="Intel TDX" />
+    
+    <category term="KVM" />
+    
+  
+
+  
+    <summary>
+      
+
+
+
+
+
+      Basic idea to implement private page
+
+  Because shared EPT is the same as the existing EPT, use the existing logic for
+shared EPT.  On the other hand, secure EPT requires additional operations
+instead of directly reading/writing of the EPT entry.
+
+  On EPT violation, The KVM mmu walks down the EPT tree from the root, determines
+the EPT entry to operate, and updates the entry. If necessary, a TL...
+    </summary>
+  
+
+  </entry>
+
+  
+  <entry>
+    <title>KVM page-fault handling</title>
+    <link href="https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM/" rel="alternate" type="text/html" title="KVM page-fault handling" />
+    <published>2023-04-12T00:00:00-04:00</published>
+  
+    <updated>2023-04-12T00:00:00-04:00</updated>
+  
+    <id>https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM/</id>
+    <content src="https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM/" />
+    <author>
+      <name>Jaehyuk Lee</name>
+    </author>
+
+  
+    
+    <category term="Confidential Computing" />
+    
+    <category term="KVM" />
+    
+  
+
+  
+    <summary>
+      
+
+
+
+
+
+      EPT violation exit and handle
+The logistics of KVM’s page fault handling is like below: 
+__vmx_handle_exit -&amp;gt; handle_ept_violation -&amp;gt; __vmx_handle_ept_violation -&amp;gt;
+kvm_mmu_page_fault -&amp;gt; kvm_mmu_do_page_fault -&amp;gt; mmu.page_fault(), 
+kvm_tdp_page_fault (when tdp is enabled) -&amp;gt; direct_page_fault
+
+EPT violation exit reason interpretation
+static inline int __vmx_handle_ept_violation(...
+    </summary>
+  
+
+  </entry>
+
+  
+  <entry>
+    <title>QEMU Side Memory Management for VM with RAMBLOCK</title>
+    <link href="https://ruach.github.io/posts/QEMU-KVM-ADDRESS-SPACE/" rel="alternate" type="text/html" title="QEMU Side Memory Management for VM with RAMBLOCK" />
+    <published>2023-04-11T00:00:00-04:00</published>
+  
+    <updated>2023-04-11T00:00:00-04:00</updated>
+  
+    <id>https://ruach.github.io/posts/QEMU-KVM-ADDRESS-SPACE/</id>
+    <content src="https://ruach.github.io/posts/QEMU-KVM-ADDRESS-SPACE/" />
+    <author>
+      <name>Jaehyuk Lee</name>
+    </author>
+
+  
+    
+    <category term="KVM" />
+    
+    <category term="QEMU" />
     
     <category term="Intel TDX" />
     
@@ -94,12 +184,13 @@ to ensure confidentiality and integrity for confidential virtual machines.
 
 
 
-      TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND)
-In the previous postings, we built the meta data required for launching TD VM 
-such as TDR, TDCS and VMCS of VCPU. However, to actually run code inside the TD,
-we need memory pages and its mappings. We will see how TDX Module builds up the 
-Secure EPT for private memories and add initial set of TD private pages using 
-TDH.MEM.SEPT.ADD and TD...
+      QEMU side memory management
+
+  The MemoryRegion is the link between guest physical address space and the 
+RAMBlocks containing the memory. Each MemoryRegion has the ram_addr_t offset 
+of the RAMBlock and each RAMBlock has a MemoryRegion pointer.
+Note that MemoryRegion is more general than just RAM. It can also represent I/O
+memory where read/write callback functions are invoked on access. This ...
     </summary>
   
 
@@ -107,14 +198,14 @@ TDH.MEM.SEPT.ADD and TD...
 
   
   <entry>
-    <title>TD VM Life Cycle Part 2</title>
-    <link href="https://ruach.github.io/posts/TD-VM-LIFECYCLE-2/" rel="alternate" type="text/html" title="TD VM Life Cycle Part 2" />
-    <published>2023-04-03T00:00:00-04:00</published>
+    <title>Shadow Page Table (SPT) and MEMSLOT</title>
+    <link href="https://ruach.github.io/posts/SPT-AND-MEMSLOT/" rel="alternate" type="text/html" title="Shadow Page Table (SPT) and MEMSLOT" />
+    <published>2023-04-10T00:00:00-04:00</published>
   
-    <updated>2023-04-03T00:00:00-04:00</updated>
+    <updated>2023-04-10T00:00:00-04:00</updated>
   
-    <id>https://ruach.github.io/posts/TD-VM-LIFECYCLE-2/</id>
-    <content src="https://ruach.github.io/posts/TD-VM-LIFECYCLE-2/" />
+    <id>https://ruach.github.io/posts/SPT-AND-MEMSLOT/</id>
+    <content src="https://ruach.github.io/posts/SPT-AND-MEMSLOT/" />
     <author>
       <name>Jaehyuk Lee</name>
     </author>
@@ -125,47 +216,9 @@ TDH.MEM.SEPT.ADD and TD...
     
     <category term="Intel TDX" />
     
-  
-
-  
-    <summary>
-      
-
-
-
-
-
-      Deep dive into TD VCPU creation (TDH_VP_CREATE-TDH_VP_INIT)
-Instantiating TD VCPU
-After the VM has been initialized, note that it has not been finalized yet, it 
-can generate VCPUs assigned to the generated TD instance. The logistics of TD 
-VCPU generation consists of two parts mainly: generate VCPU (KVM_CREATE_VCPU) 
-and initialize the generated VCPU as TDX VCPU (KVM_TDX_INIT_VCPU) through 
-th...
-    </summary>
-  
-
-  </entry>
-
-  
-  <entry>
-    <title>TD VM Life Cycle Part 1</title>
-    <link href="https://ruach.github.io/posts/TD-VM-LIFECYCLE-1/" rel="alternate" type="text/html" title="TD VM Life Cycle Part 1" />
-    <published>2023-04-01T00:00:00-04:00</published>
-  
-    <updated>2023-04-01T00:00:00-04:00</updated>
-  
-    <id>https://ruach.github.io/posts/TD-VM-LIFECYCLE-1/</id>
-    <content src="https://ruach.github.io/posts/TD-VM-LIFECYCLE-1/" />
-    <author>
-      <name>Jaehyuk Lee</name>
-    </author>
-
-  
+    <category term="KVM" />
     
-    <category term="Confidential Computing" />
-    
-    <category term="Intel TDX" />
+    <category term="QEMU" />
     
   
 
@@ -177,61 +230,12 @@ th...
 
 
 
-      Deep dive into TD-VM creation (TDH_MNG_CREATE SEAMCALL-TDH_MNG_INIT)
-
-
-This article will follow the steps described in this figure. It is good to check
-this figure when you want to check which part of the TD VM creation you are
-dealing with. Before we delve into the details, lets first check new data 
-structures required to generate and initialize the TD VM: TDR, TDCS.
-
-Trust Domain Root (TDR)
-...
-    </summary>
-  
-
-  </entry>
-
-  
-  <entry>
-    <title>Gem5 Interrupt Handling O3</title>
-    <link href="https://ruach.github.io/posts/gem5-interrupt-handling-o3/" rel="alternate" type="text/html" title="Gem5 Interrupt Handling O3" />
-    <published>2021-12-25T00:00:00-05:00</published>
-  
-    <updated>2021-12-25T00:00:00-05:00</updated>
-  
-    <id>https://ruach.github.io/posts/gem5-interrupt-handling-o3/</id>
-    <content src="https://ruach.github.io/posts/gem5-interrupt-handling-o3/" />
-    <author>
-      <name>Jaehyuk Lee</name>
-    </author>
-
-  
-    
-  
-
-  
-    <summary>
-      
-
-
-
-
-
-      
-Interrupt makes the commit stage stop further instructions fetching
- 813 template &amp;lt;class Impl&amp;gt;
- 814 void
- 815 DefaultCommit&amp;lt;Impl&amp;gt;::commit()
- 816 {
- 817     if (FullSystem) {
- 818         // Check if we have a interrupt and get read to handle it
- 819         if (cpu-&amp;gt;checkInterrupts(cpu-&amp;gt;tcBase(0)))
- 820             propagateInterrupt();
- 821     }
-
-
- 788 template &amp;lt;class Im...
+      Shadow Page Table (SPT)
+Before the introduction of TDP, shadow paging has been utilized to translate
+GPA to HPA. The KVM module utilize a unified concept to abstract the 
+structure managing this translation (GPA-&amp;gt;HPA), called Shadow Page Table (SPT). 
+Although it reminds of shadow paging, the emulated page table based 
+translation before the invention TDP, now it represents the table handlin...
     </summary>
   
 

@@ -2256,7 +2256,91 @@ of init_tdx_module.</p>
   
 
   
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
     
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
 
 
 
@@ -2272,7 +2356,7 @@ of init_tdx_module.</p>
     <nav class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4 mb-4">
       
         <article class="col">
-          <a href="/posts/TD-VM-LIFECYCLE-2/" class="post-preview card h-100">
+          <a href="/posts/TDX-SEAMLDR/" class="post-preview card h-100">
             <div class="card-body">
               <!--
   Date format snippet
@@ -2284,14 +2368,14 @@ of init_tdx_module.</p>
 
 <time
   
-  data-ts="1680494400"
+  data-ts="1678424400"
   data-df="ll"
   
 >
-  Apr  3, 2023
+  Mar 10, 2023
 </time>
 
-              <h4 class="pt-0 my-2">TD VM Life Cycle Part 2</h4>
+              <h4 class="pt-0 my-2">TDX Module Life Cycle Part 0 (SEAMLDR)</h4>
               <div class="text-muted">
                 <p>
                   
@@ -2300,10 +2384,9 @@ of init_tdx_module.</p>
 
 
 
-                  Deep dive into TD VCPU creation (TDH_VP_CREATE-TDH_VP_INIT)
-Instantiating TD VCPU
-After the VM has been initialized, note that it has not been finalized yet, it 
-can generate VCPUs assigned to the ...
+                  New CPU privileges and software layer for Intel TDX
+Secure Arbitration Mode (SEAM) is an extension of Virtual Machines Extension 
+(VMX). It introduces new VMX root mode called SEAM root. The primar...
                 </p>
               </div>
             </div>
@@ -2311,7 +2394,7 @@ can generate VCPUs assigned to the ...
         </article>
       
         <article class="col">
-          <a href="/posts/TD-VM-LIFECYCLE-3/" class="post-preview card h-100">
+          <a href="/posts/TDX-MODULE-LIFECYCLE-1/" class="post-preview card h-100">
             <div class="card-body">
               <!--
   Date format snippet
@@ -2323,14 +2406,14 @@ can generate VCPUs assigned to the ...
 
 <time
   
-  data-ts="1680667200"
+  data-ts="1679284800"
   data-df="ll"
   
 >
-  Apr  5, 2023
+  Mar 20, 2023
 </time>
 
-              <h4 class="pt-0 my-2">TD VM Life Cycle Part 1</h4>
+              <h4 class="pt-0 my-2">TDX Module Life Cycle Part 1</h4>
               <div class="text-muted">
                 <p>
                   
@@ -2339,9 +2422,10 @@ can generate VCPUs assigned to the ...
 
 
 
-                  TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND)
-In the previous postings, we built the meta data required for launching TD VM 
-such as TDR, TDCS and VMCS of VCPU. However, to actually run cod...
+                  Initialize TDX module
+TDX module requires few initialization steps to start service as intermediary of
+the TD and VMM. To this end, TDX module requires multiple SEAMCALLs to be 
+invoked, as shown i...
                 </p>
               </div>
             </div>
@@ -2349,7 +2433,7 @@ such as TDR, TDCS and VMCS of VCPU. However, to actually run cod...
         </article>
       
         <article class="col">
-          <a href="/posts/tdx-intro/" class="post-preview card h-100">
+          <a href="/posts/TDX-MODULE-LIFECYCLE-2/" class="post-preview card h-100">
             <div class="card-body">
               <!--
   Date format snippet
@@ -2361,14 +2445,14 @@ such as TDR, TDCS and VMCS of VCPU. However, to actually run cod...
 
 <time
   
-  data-ts="1686801600"
+  data-ts="1679544000"
   data-df="ll"
   
 >
-  Jun 15, 2023
+  Mar 23, 2023
 </time>
 
-              <h4 class="pt-0 my-2">TDX Specification Introduction</h4>
+              <h4 class="pt-0 my-2">TDX Module Life Cycle Part 2</h4>
               <div class="text-muted">
                 <p>
                   
@@ -2377,9 +2461,9 @@ such as TDR, TDCS and VMCS of VCPU. However, to actually run cod...
 
 
 
-                  This slide provides an overview of Intel TDX, which I presented to my colleagues. 
-It delves into the general architecture of Intel TDX and highlights its capability 
-to ensure confidentiality and ...
+                  In previous posts, I discussed the initialization of the TDX module using 
+TDH_SYS_INIT SEAMCALL. As depicted in the image below, several additional 
+configuration steps are necessary for the TDX m...
                 </p>
               </div>
             </div>
@@ -2401,11 +2485,11 @@ to ensure confidentiality and ...
 
   
     <a
-      href="/posts/gem5-interrupt-handling-o3/"
+      href="/posts/TDX-MODULE-LIFECYCLE-2/"
       class="btn btn-outline-primary"
       aria-label="Older"
     >
-      <p>Gem5 Interrupt Handling O3</p>
+      <p>TDX Module Life Cycle Part 2</p>
     </a>
   
 

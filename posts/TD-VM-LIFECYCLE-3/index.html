@@ -35,7 +35,7 @@
   
     <!-- Begin Jekyll SEO tag v2.8.0 -->
 <meta name="generator" content="Jekyll v4.3.2" />
-<meta property="og:title" content="TD VM Life Cycle Part 1" />
+<meta property="og:title" content="TD VM Life Cycle Part 3" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND) In the previous postings, we built the meta data required for launching TD VM such as TDR, TDCS and VMCS of VCPU. However, to actually run code inside the TD, we need memory pages and its mappings. We will see how TDX Module builds up the Secure EPT for private memories and add initial set of TD private pages using TDH.MEM.SEPT.ADD and TDH.MEM.PAGE.ADD, respectively." />
 <meta property="og:description" content="TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND) In the previous postings, we built the meta data required for launching TD VM such as TDR, TDCS and VMCS of VCPU. However, to actually run code inside the TD, we need memory pages and its mappings. We will see how TDX Module builds up the Secure EPT for private memories and add initial set of TD private pages using TDH.MEM.SEPT.ADD and TDH.MEM.PAGE.ADD, respectively." />
@@ -45,15 +45,15 @@
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2023-04-05T00:00:00-04:00" />
 <meta name="twitter:card" content="summary" />
-<meta property="twitter:title" content="TD VM Life Cycle Part 1" />
+<meta property="twitter:title" content="TD VM Life Cycle Part 3" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-04-05T00:00:00-04:00","datePublished":"2023-04-05T00:00:00-04:00","description":"TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND) In the previous postings, we built the meta data required for launching TD VM such as TDR, TDCS and VMCS of VCPU. However, to actually run code inside the TD, we need memory pages and its mappings. We will see how TDX Module builds up the Secure EPT for private memories and add initial set of TD private pages using TDH.MEM.SEPT.ADD and TDH.MEM.PAGE.ADD, respectively.","headline":"TD VM Life Cycle Part 1","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/"},"url":"https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-04-05T00:00:00-04:00","datePublished":"2023-04-05T00:00:00-04:00","description":"TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND) In the previous postings, we built the meta data required for launching TD VM such as TDR, TDCS and VMCS of VCPU. However, to actually run code inside the TD, we need memory pages and its mappings. We will see how TDX Module builds up the Secure EPT for private memories and add initial set of TD private pages using TDH.MEM.SEPT.ADD and TDH.MEM.PAGE.ADD, respectively.","headline":"TD VM Life Cycle Part 3","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/"},"url":"https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/"}</script>
 <!-- End Jekyll SEO tag -->
 
   
 
-  <title>TD VM Life Cycle Part 1 | Ruach
+  <title>TD VM Life Cycle Part 3 | Ruach
   </title>
 
   <!--
@@ -323,7 +323,7 @@
         
           
             
-              <span>TD VM Life Cycle Part 1</span>
+              <span>TD VM Life Cycle Part 3</span>
             
 
           
@@ -390,6 +390,150 @@
 
 
 
+
+  
+  
+
+  <!-- CDN URL -->
+  
+
+  <!-- Add image path -->
+  
+
+  
+    
+      
+      
+    
+
+    
+    
+
+    
+
+    
+    
+
+    
+    
+    
+
+    
+      
+
+      
+      
+      
+
+      
+    
+      
+
+      
+      
+      
+
+      
+    
+
+    <!-- take out classes -->
+    
+
+    
+    
+
+    
+
+    
+      <!-- do not add shimmer by default -->
+      
+    
+
+    <!-- lazy-load images -->
+    
+
+    
+      <!-- make sure the `<img>` is wrapped by `<a>` -->
+      
+
+      
+        <!-- create the image wrapper -->
+        
+
+        
+        
+      
+    
+
+    <!-- combine -->
+    
+  
+    
+
+    
+    
+
+    
+
+    
+    
+
+    
+    
+    
+
+    
+      
+
+      
+      
+      
+
+      
+    
+      
+
+      
+      
+      
+
+      
+    
+
+    <!-- take out classes -->
+    
+
+    
+    
+
+    
+
+    
+      <!-- do not add shimmer by default -->
+      
+    
+
+    <!-- lazy-load images -->
+    
+
+    
+      <!-- make sure the `<img>` is wrapped by `<a>` -->
+      
+
+      
+        <!-- create the image wrapper -->
+        
+
+        
+        
+      
+    
+
+    <!-- combine -->
+    
+  
+
+  
 
 
 <!-- Add header for code snippets -->
@@ -593,17 +737,6 @@
 
       
     
-      
-
-      
-      
-
-      
-      
-      
-
-      
-    
 
     
   
@@ -628,7 +761,7 @@
 
 <article class="px-1">
   <header>
-    <h1 data-toc-skip>TD VM Life Cycle Part 1</h1>
+    <h1 data-toc-skip>TD VM Life Cycle Part 3</h1>
 
     <div class="post-meta text-muted">
       <!-- published date -->
@@ -695,7 +828,7 @@
   class="readtime"
   data-bs-toggle="tooltip"
   data-bs-placement="bottom"
-  title="4182 words"
+  title="4152 words"
 >
   <em>23 min</em> read</span>
 
@@ -858,7 +991,6 @@ requires the shared page, it should invoke MapGPA to convert it.</p>
         <span class="n">kvm_mmu_reload</span><span class="p">(</span><span class="n">vcpu</span><span class="p">);</span>
 </pre></td></tr></tbody></table></code></div></div>
 
-<h3 id="i-dont-know-why-vcpu-should-be-loaded-here"><span class="me-2">I DON”T KNOW WHY VCPU SHOULD BE LOADED Here..</span><a href="#i-dont-know-why-vcpu-should-be-loaded-here" class="anchor text-muted"><i class="fas fa-hashtag"></i></a></h3>
 <div class="language-cpp highlighter-rouge"><div class="code-header">
         <span data-label-text="Cpp"><i class="fas fa-code fa-fw small"></i></span>
       <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
@@ -1328,7 +1460,7 @@ __direct_map function to handle the fault.</p>
 <p>To resolve this TDX page fault, we needs to handle two important things. The 
 first is generating S-EPT mapping. The second is adding page to TD-VM.</p>
 
-<p>[[https://github.gatech.edu/sslab/tdx/blob/main/img/ADD_PRIVATE_PAGE.png]]</p>
+<p><a href="/assets/img/TDX//ADD_PRIVATE_PAGE.png" class="popup img-link "><img src="/assets/img/TDX//ADD_PRIVATE_PAGE.png" alt="PRIVATE_PAGE" loading="lazy"></a></p>
 
 <h2 id="add-s-ept-for-private-page-translation-tdh_mem_sept_add"><span class="me-2">Add S-EPT for private page translation (TDH_MEM_SEPT_ADD)</span><a href="#add-s-ept-for-private-page-translation-tdh_mem_sept_add" class="anchor text-muted"><i class="fas fa-hashtag"></i></a></h2>
 <p>To translate private page belong to TD-VM, it needs SPTE for non-leaf and leaf.
@@ -2068,7 +2200,7 @@ private memory of the TD VM.</p>
 as the TDH_MEM_PAGE_AUG SEAMCALL, but if not, TDH_MEM_PAGE_ADD SEAMCALL allows 
 it to have new private page.</p>
 
-<p>[[https://github.gatech.edu/sslab/tdx/blob/main/img/TDH_MEM_PAGE_ADD.png]]</p>
+<p><a href="/assets/img/TDX//TDH_MEM_PAGE_ADD.png" class="popup img-link "><img src="/assets/img/TDX//TDH_MEM_PAGE_ADD.png" alt="MEM_PAGE_ADD" loading="lazy"></a></p>
 
 <p>This SEAMCALL requires four important information about the addresses to add new
 page to the TD VM. The first is the EPT mapping information which we already
@@ -2078,8 +2210,7 @@ is the address of the source page containing data/code. Note that the source_pa
 points to the QEMU page containing TDVF image. gpa is the EPT mapping address 
 inside the TDX Module. Recall that the main loop for S-EPT updates base_gfn to 
 the updates S-EPT entry. hpa is the destination page that will be added to the 
-TD VM (TODO: Need to understand where the hpa parameter comes from.. it should
-have been allocated by the VMM before..)</p>
+TD VM.</p>
 
 <h2 id="kvm_tdx_finaliaze_vm"><span class="me-2">KVM_TDX_FINALIAZE_VM</span><a href="#kvm_tdx_finaliaze_vm" class="anchor text-muted"><i class="fas fa-hashtag"></i></a></h2>
 <p>After the initial set of pages is added and extended, the VMM can finalize the 
@@ -2210,7 +2341,7 @@ stay in mmu.c where they belong.</p>
       
 
       <a
-        href="https://twitter.com/intent/tweet?text=TD%20VM%20Life%20Cycle%20Part%201%20-%20Ruach&url=https%3A%2F%2Fruach.github.io%2Fposts%2FTD-VM-LIFECYCLE-3%2F"
+        href="https://twitter.com/intent/tweet?text=TD%20VM%20Life%20Cycle%20Part%203%20-%20Ruach&url=https%3A%2F%2Fruach.github.io%2Fposts%2FTD-VM-LIFECYCLE-3%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Twitter"
@@ -2225,7 +2356,7 @@ stay in mmu.c where they belong.</p>
       
 
       <a
-        href="https://www.facebook.com/sharer/sharer.php?title=TD%20VM%20Life%20Cycle%20Part%201%20-%20Ruach&u=https%3A%2F%2Fruach.github.io%2Fposts%2FTD-VM-LIFECYCLE-3%2F"
+        href="https://www.facebook.com/sharer/sharer.php?title=TD%20VM%20Life%20Cycle%20Part%203%20-%20Ruach&u=https%3A%2F%2Fruach.github.io%2Fposts%2FTD-VM-LIFECYCLE-3%2F"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Facebook"
@@ -2240,7 +2371,7 @@ stay in mmu.c where they belong.</p>
       
 
       <a
-        href="https://t.me/share/url?url=https%3A%2F%2Fruach.github.io%2Fposts%2FTD-VM-LIFECYCLE-3%2F&text=TD%20VM%20Life%20Cycle%20Part%201%20-%20Ruach"
+        href="https://t.me/share/url?url=https%3A%2F%2Fruach.github.io%2Fposts%2FTD-VM-LIFECYCLE-3%2F&text=TD%20VM%20Life%20Cycle%20Part%203%20-%20Ruach"
         data-bs-toggle="tooltip"
         data-bs-placement="top"
         title="Telegram"
@@ -2390,7 +2521,91 @@ stay in mmu.c where they belong.</p>
   
 
   
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
     
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
   
 
   
@@ -2430,7 +2645,7 @@ stay in mmu.c where they belong.</p>
     <nav class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4 mb-4">
       
         <article class="col">
-          <a href="/posts/TD-VM-LIFECYCLE-1/" class="post-preview card h-100">
+          <a href="/posts/TDX-SEAMLDR/" class="post-preview card h-100">
             <div class="card-body">
               <!--
   Date format snippet
@@ -2442,14 +2657,14 @@ stay in mmu.c where they belong.</p>
 
 <time
   
-  data-ts="1680321600"
+  data-ts="1678424400"
   data-df="ll"
   
 >
-  Apr  1, 2023
+  Mar 10, 2023
 </time>
 
-              <h4 class="pt-0 my-2">TD VM Life Cycle Part 1</h4>
+              <h4 class="pt-0 my-2">TDX Module Life Cycle Part 0 (SEAMLDR)</h4>
               <div class="text-muted">
                 <p>
                   
@@ -2458,11 +2673,9 @@ stay in mmu.c where they belong.</p>
 
 
 
-                  Deep dive into TD-VM creation (TDH_MNG_CREATE SEAMCALL-TDH_MNG_INIT)
-
-
-This article will follow the steps described in this figure. It is good to check
-this figure when you want to check which part...
+                  New CPU privileges and software layer for Intel TDX
+Secure Arbitration Mode (SEAM) is an extension of Virtual Machines Extension 
+(VMX). It introduces new VMX root mode called SEAM root. The primar...
                 </p>
               </div>
             </div>
@@ -2470,7 +2683,7 @@ this figure when you want to check which part...
         </article>
       
         <article class="col">
-          <a href="/posts/TD-VM-LIFECYCLE-2/" class="post-preview card h-100">
+          <a href="/posts/TDX-MODULE-LIFECYCLE-1/" class="post-preview card h-100">
             <div class="card-body">
               <!--
   Date format snippet
@@ -2482,14 +2695,14 @@ this figure when you want to check which part...
 
 <time
   
-  data-ts="1680494400"
+  data-ts="1679284800"
   data-df="ll"
   
 >
-  Apr  3, 2023
+  Mar 20, 2023
 </time>
 
-              <h4 class="pt-0 my-2">TD VM Life Cycle Part 2</h4>
+              <h4 class="pt-0 my-2">TDX Module Life Cycle Part 1</h4>
               <div class="text-muted">
                 <p>
                   
@@ -2498,10 +2711,10 @@ this figure when you want to check which part...
 
 
 
-                  Deep dive into TD VCPU creation (TDH_VP_CREATE-TDH_VP_INIT)
-Instantiating TD VCPU
-After the VM has been initialized, note that it has not been finalized yet, it 
-can generate VCPUs assigned to the ...
+                  Initialize TDX module
+TDX module requires few initialization steps to start service as intermediary of
+the TD and VMM. To this end, TDX module requires multiple SEAMCALLs to be 
+invoked, as shown i...
                 </p>
               </div>
             </div>
@@ -2509,7 +2722,7 @@ can generate VCPUs assigned to the ...
         </article>
       
         <article class="col">
-          <a href="/posts/tdx-intro/" class="post-preview card h-100">
+          <a href="/posts/TDX-MODULE-LIFECYCLE-2/" class="post-preview card h-100">
             <div class="card-body">
               <!--
   Date format snippet
@@ -2521,14 +2734,14 @@ can generate VCPUs assigned to the ...
 
 <time
   
-  data-ts="1686801600"
+  data-ts="1679544000"
   data-df="ll"
   
 >
-  Jun 15, 2023
+  Mar 23, 2023
 </time>
 
-              <h4 class="pt-0 my-2">TDX Specification Introduction</h4>
+              <h4 class="pt-0 my-2">TDX Module Life Cycle Part 2</h4>
               <div class="text-muted">
                 <p>
                   
@@ -2537,9 +2750,9 @@ can generate VCPUs assigned to the ...
 
 
 
-                  This slide provides an overview of Intel TDX, which I presented to my colleagues. 
-It delves into the general architecture of Intel TDX and highlights its capability 
-to ensure confidentiality and ...
+                  In previous posts, I discussed the initialization of the TDX module using 
+TDH_SYS_INIT SEAMCALL. As depicted in the image below, several additional 
+configuration steps are necessary for the TDX m...
                 </p>
               </div>
             </div>
@@ -2571,11 +2784,11 @@ to ensure confidentiality and ...
 
   
     <a
-      href="/posts/tdx-intro/"
+      href="/posts/SPT-AND-MEMSLOT/"
       class="btn btn-outline-primary"
       aria-label="Newer"
     >
-      <p>TDX Specification Introduction</p>
+      <p>Shadow Page Table (SPT) and MEMSLOT</p>
     </a>
   
 </nav>

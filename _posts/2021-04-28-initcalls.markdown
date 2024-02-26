@@ -4,7 +4,7 @@ titile: "Initcalls: Initializing Linux subsystems"
 categories: linux, embedded-linux
 ---
 
-#do_initcalls
+# do_initcalls
 ```c
 static void __init do_basic_setup(void)
 {

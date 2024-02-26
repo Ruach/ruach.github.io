@@ -1,0 +1,17 @@
+---
+layout: post
+title: "TDX Architecture Introduction"
+categories: [Confidential Computing, Intel TDX]
+---
+
+This slide provides an overview of Intel TDX, which I presented to my colleagues. 
+It delves into the general architecture of Intel TDX and highlights its capability 
+to ensure confidentiality and integrity for confidential virtual machines.
+
+
+<link rel="stylesheet" href="/assets/css/styles.css"> 
+
+<div class="iframe-container">
+  <iframe src="https://onedrive.live.com/embed?resid=B1DD2A54FA983FCD%21298&amp;authkey=!ACMSjcHUovRCmrc&amp;em=2&amp;wdAr=1.7777777777777777&amp;wdEaaCheck=0" frameborder="0">This is an embedded <a target="_blank" href="https://office.com">Microsoft Office</a> presentation, powered by <a target="_blank" href="https://office.com/webapps">Office</a>.</iframe>
+</div>
+

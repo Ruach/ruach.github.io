@@ -4,7 +4,7 @@ titile: "Clock and its usages in Linux kernel with apple dwc3 usb controller"
 categories: linux, embedded-linux
 ---
 
-##Dwc3 probing 
+## Dwc3 probing 
 ```c
 static int dwc3_apple_m1_probe(struct platform_device *pdev)
 {       
@@ -66,7 +66,7 @@ err_clk_put:
 ```
 TODO: more...
 
-##Adding clock to the system in Linux Kernel with Device Tree
+## Adding clock to the system in Linux Kernel with Device Tree
 ```
     refclk24mhz: refclk24mhz {
         compatible = "fixed-clock";
@@ -443,7 +443,7 @@ if they are set correctly, they initialize the left fields
 such as frequency using the provided operations. 
 
 
-###Adding generated clock as provider 
+### Adding generated clock as provider 
 After generating all required fields for clock structure such as core and clk_hw,
 we need to register the generated clock to the system. 
 Let's revisit how the of_clk_add_provider is invoked 
@@ -507,7 +507,7 @@ Later this list will be searched to find out the clock object
 whenever the other device node requiring the pre-configured clocks. 
 
 
-##Utilizing registered clock resource in other devices
+## Utilizing registered clock resource in other devices
 
 
 **driver/clk/clk-bulk.c**
@@ -630,7 +630,7 @@ struct clk_hw *of_clk_get_hw(struct device_node *np, int index,
 }
 ```
 
-###Locating the clock node
+### Locating the clock node
 The below sequences of function tries to locate the 
 clock property of your device node first.
 Because clock property contains one or more clocks 
@@ -879,7 +879,7 @@ the found phandle's node, it.node, should be a
 device node representing the clock source. 
 
 
-###Locating the clk structure associated with the found clkspec
+### Locating the clk structure associated with the found clkspec
 Let's revisit the of_clk_get_hw function.
 
 ```c
@@ -1087,7 +1087,7 @@ Threfore, we need to create clk structure instance once again
 associated with current clk_hw structure.
 Then how it is different from the clk structure stored in the provider structure?
 
-##Preparing and enabling cloks
+## Preparing and enabling cloks
 ```
 static inline int __must_check
 clk_bulk_prepare_enable(int num_clks, const struct clk_bulk_data *clks)
@@ -1419,7 +1419,7 @@ We are not going to cover the detail implementation of the clock enable function
 
 
 
-##More DWC3 on apple device
+## More DWC3 on apple device
 After the clock provided to the dwc3 device has been prepared and enabled,
 it should start the dwc3 device itself.
 The dwc3_apple_m1_start function does this for you. 

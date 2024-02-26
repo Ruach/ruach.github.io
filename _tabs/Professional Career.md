@@ -9,38 +9,48 @@ title: Professional Career
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Responsive PDF Embed</title>
+
     <style>
+    .pdf-container {
+        position: relative;
+        width: 100%;
+        height: 0;
+        overflow: hidden;
+        padding-bottom: 100%; /* Aspect ratio 1:1 */
+    }
+
+    .pdf-container iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    /* Responsive styling */
+    @media only screen and (max-width: 768px) {
+        /* Adjust padding-bottom for smaller screens */
         .pdf-container {
-            position: relative;
-            width: 100%;
-            height: 0;
-            overflow: hidden;
-            padding-bottom: 100%; /* Aspect ratio 1:1 */
+            padding-bottom: 150%; /* Adjust as needed */
         }
+    }
 
-        .pdf-container iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+    @media only screen and (max-width: 480px) {
+        /* Further adjustments for smaller screens */
+        .pdf-container {
+            padding-bottom: 200%; /* Adjust as needed */
         }
-
-        /* Responsive styling */
-        @media only screen and (max-width: 768px) {
-            /* Adjust padding-bottom for smaller screens */
-            .pdf-container {
-                padding-bottom: 150%; /* Adjust as needed */
-            }
+    }
+    
+    /* Additional responsive styling for very small screens */
+    @media only screen and (max-width: 320px) {
+        .pdf-container {
+            padding-bottom: 250%; /* Adjust as needed */
         }
-
-        @media only screen and (max-width: 480px) {
-            /* Further adjustments for smaller screens */
-            .pdf-container {
-                padding-bottom: 200%; /* Adjust as needed */
-            }
-        }
+    }
     </style>
+
+
 </head>
 <body>
 

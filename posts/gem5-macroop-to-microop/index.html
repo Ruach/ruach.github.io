@@ -34,7 +34,7 @@
 
   
     <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.2" />
+<meta name="generator" content="Jekyll v4.3.3" />
 <meta property="og:title" content="Gem5 Macroop To Microop" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="Macroop and Microop in Computer Architecture" />
@@ -172,16 +172,6 @@
             
 
             <span>ARCHIVES</span>
-          </a>
-        </li>
-        <!-- .nav-item -->
-      
-        <li class="nav-item">
-          <a href="/Professional-Career/" class="nav-link">
-            <i class="fa-fw fas fa-id-card"></i>
-            
-
-            <span>PROFESSIONAL CAREER</span>
           </a>
         </li>
         <!-- .nav-item -->
@@ -604,6 +594,17 @@
 
       
     
+      
+
+      
+      
+
+      
+      
+      
+
+      
+    
 
     
   
@@ -619,6 +620,17 @@
       
         
         
+      
+
+      
+      
+
+      
+      
+      
+
+      
+    
       
 
       
@@ -782,9 +794,9 @@
   class="readtime"
   data-bs-toggle="tooltip"
   data-bs-placement="bottom"
-  title="8321 words"
+  title="9094 words"
 >
-  <em>46 min</em> read</span>
+  <em>50 min</em> read</span>
 
       </div>
       <!-- .d-flex -->
@@ -3064,7 +3076,257 @@ there should be a corresponding ‘Limm’ C++ class that can be instantiated. T
 </pre></td></tr></tbody></table></code></div></div>
 <p>For further details about microop, please wait for next posting!</p>
 
-<h4 id="finalize-macroop-class-definition-with-template-substitution"><span class="me-2">Finalize Macroop class definition with template substitution</span><a href="#finalize-macroop-class-definition-with-template-substitution" class="anchor text-muted"><i class="fas fa-hashtag"></i></a></h4>
+<h3 id="finalize-macroop-class-definition-with-template-substitution"><span class="me-2">Finalize Macroop class definition with template substitution</span><a href="#finalize-macroop-class-definition-with-template-substitution" class="anchor text-muted"><i class="fas fa-hashtag"></i></a></h3>
+
+<h4 id="def-template-id-"><span class="me-2">def template ID {…};</span><a href="#def-template-id-" class="anchor text-muted"><i class="fas fa-hashtag"></i></a></h4>
+<div class="language-python highlighter-rouge"><div class="code-header">
+        <span data-label-text="Python"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+</pre></td><td class="rouge-code"><pre><span class="o">*</span><span class="n">gem5</span><span class="o">/</span><span class="n">src</span><span class="o">/</span><span class="n">arch</span><span class="o">/</span><span class="n">isa_parser</span><span class="p">.</span><span class="n">py</span><span class="o">*</span>
+
+    <span class="k">def</span> <span class="nf">p_def_template</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
+        <span class="sh">'</span><span class="s">def_template : DEF TEMPLATE ID CODELIT SEMI</span><span class="sh">'</span>
+        <span class="k">if</span> <span class="n">t</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="ow">in</span> <span class="n">self</span><span class="p">.</span><span class="n">templateMap</span><span class="p">:</span>
+            <span class="nf">print</span><span class="p">(</span><span class="sh">"</span><span class="s">warning: template %s already defined</span><span class="sh">"</span> <span class="o">%</span> <span class="n">t</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">templateMap</span><span class="p">[</span><span class="n">t</span><span class="p">[</span><span class="mi">3</span><span class="p">]]</span> <span class="o">=</span> <span class="nc">Template</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">t</span><span class="p">[</span><span class="mi">4</span><span class="p">])</span>
+
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>According to the grammar rule, the Template object is created using the code 
+literal from the def template block, denoted as t[4]. These newly created 
+Template objects are managed by the parser’s templateMap. It’s important to 
+highlight that the template name (ID, represented by t[3]) is utilized as the 
+index for accessing the corresponding Template object within the map. ISAParser
+also defines the Template python class for handling this functionality.</p>
+
+<div class="language-python highlighter-rouge"><div class="code-header">
+        <span data-label-text="Python"><i class="fas fa-code fa-fw small"></i></span>
+      <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+</pre></td><td class="rouge-code"><pre><span class="n">labelRE</span> <span class="o">=</span> <span class="n">re</span><span class="p">.</span><span class="nf">compile</span><span class="p">(</span><span class="sa">r</span><span class="sh">'</span><span class="s">(?&lt;!%)%\(([^\)]+)\)[sd]</span><span class="sh">'</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">Template</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">parser</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">parser</span> <span class="o">=</span> <span class="n">parser</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">template</span> <span class="o">=</span> <span class="n">t</span>
+
+    <span class="k">def</span> <span class="nf">subst</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+        <span class="n">myDict</span> <span class="o">=</span> <span class="bp">None</span>
+
+        <span class="c1"># Protect non-Python-dict substitutions (e.g. if there's a printf
+</span>        <span class="c1"># in the templated C++ code)
+</span>        <span class="n">template</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">parser</span><span class="p">.</span><span class="nf">protectNonSubstPercents</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">template</span><span class="p">)</span>
+
+        <span class="c1"># Build a dict ('myDict') to use for the template substitution.
+</span>        <span class="c1"># Start with the template namespace.  Make a copy since we're
+</span>        <span class="c1"># going to modify it.
+</span>        <span class="n">myDict</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="n">parser</span><span class="p">.</span><span class="n">templateMap</span><span class="p">.</span><span class="nf">copy</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="nf">isinstance</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">InstObjParams</span><span class="p">):</span>
+            <span class="c1"># If we're dealing with an InstObjParams object, we need
+</span>            <span class="c1"># to be a little more sophisticated.  The instruction-wide
+</span>            <span class="c1"># parameters are already formed, but the parameters which
+</span>            <span class="c1"># are only function wide still need to be generated.
+</span>            <span class="n">compositeCode</span> <span class="o">=</span> <span class="sh">''</span>
+
+            <span class="n">myDict</span><span class="p">.</span><span class="nf">update</span><span class="p">(</span><span class="n">d</span><span class="p">.</span><span class="n">__dict__</span><span class="p">)</span>
+            <span class="c1"># The "operands" and "snippets" attributes of the InstObjParams
+</span>            <span class="c1"># objects are for internal use and not substitution.
+</span>            <span class="k">del</span> <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">operands</span><span class="sh">'</span><span class="p">]</span>
+            <span class="k">del</span> <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">snippets</span><span class="sh">'</span><span class="p">]</span>
+
+            <span class="n">snippetLabels</span> <span class="o">=</span> <span class="p">[</span><span class="n">l</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">labelRE</span><span class="p">.</span><span class="nf">findall</span><span class="p">(</span><span class="n">template</span><span class="p">)</span>
+                             <span class="k">if</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">d</span><span class="p">.</span><span class="n">snippets</span><span class="p">]</span>
+
+            <span class="n">snippets</span> <span class="o">=</span> <span class="nf">dict</span><span class="p">([(</span><span class="n">s</span><span class="p">,</span> <span class="n">self</span><span class="p">.</span><span class="n">parser</span><span class="p">.</span><span class="nf">mungeSnippet</span><span class="p">(</span><span class="n">d</span><span class="p">.</span><span class="n">snippets</span><span class="p">[</span><span class="n">s</span><span class="p">]))</span>
+                             <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">snippetLabels</span><span class="p">])</span>
+
+            <span class="n">myDict</span><span class="p">.</span><span class="nf">update</span><span class="p">(</span><span class="n">snippets</span><span class="p">)</span>
+
+            <span class="n">compositeCode</span> <span class="o">=</span> <span class="sh">'</span><span class="s"> </span><span class="sh">'</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="nf">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">snippets</span><span class="p">.</span><span class="nf">values</span><span class="p">()))</span>
+
+            <span class="c1"># Add in template itself in case it references any
+</span>            <span class="c1"># operands explicitly (like Mem)
+</span>            <span class="n">compositeCode</span> <span class="o">+=</span> <span class="sh">'</span><span class="s"> </span><span class="sh">'</span> <span class="o">+</span> <span class="n">template</span>
+
+            <span class="n">operands</span> <span class="o">=</span> <span class="nc">SubOperandList</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="n">parser</span><span class="p">,</span> <span class="n">compositeCode</span><span class="p">,</span> <span class="n">d</span><span class="p">.</span><span class="n">operands</span><span class="p">)</span>
+
+            <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_decl</span><span class="sh">'</span><span class="p">]</span> <span class="o">=</span> <span class="n">operands</span><span class="p">.</span><span class="nf">concatAttrStrings</span><span class="p">(</span><span class="sh">'</span><span class="s">op_decl</span><span class="sh">'</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">operands</span><span class="p">.</span><span class="n">readPC</span> <span class="ow">or</span> <span class="n">operands</span><span class="p">.</span><span class="n">setPC</span><span class="p">:</span>
+                <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_decl</span><span class="sh">'</span><span class="p">]</span> <span class="o">+=</span> <span class="sh">'</span><span class="s">TheISA::PCState __parserAutoPCState;</span><span class="se">\n</span><span class="sh">'</span>
+
+            <span class="c1"># In case there are predicated register reads and write, declare
+</span>            <span class="c1"># the variables for register indicies. It is being assumed that
+</span>            <span class="c1"># all the operands in the OperandList are also in the
+</span>            <span class="c1"># SubOperandList and in the same order. Otherwise, it is
+</span>            <span class="c1"># expected that predication would not be used for the operands.
+</span>            <span class="k">if</span> <span class="n">operands</span><span class="p">.</span><span class="n">predRead</span><span class="p">:</span>
+                <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_decl</span><span class="sh">'</span><span class="p">]</span> <span class="o">+=</span> <span class="sh">'</span><span class="s">uint8_t _sourceIndex = 0;</span><span class="se">\n</span><span class="sh">'</span>
+            <span class="k">if</span> <span class="n">operands</span><span class="p">.</span><span class="n">predWrite</span><span class="p">:</span>
+                <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_decl</span><span class="sh">'</span><span class="p">]</span> <span class="o">+=</span> <span class="sh">'</span><span class="s">uint8_t M5_VAR_USED _destIndex = 0;</span><span class="se">\n</span><span class="sh">'</span>
+
+            <span class="n">is_src</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">op</span><span class="p">:</span> <span class="n">op</span><span class="p">.</span><span class="n">is_src</span>
+            <span class="n">is_dest</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">op</span><span class="p">:</span> <span class="n">op</span><span class="p">.</span><span class="n">is_dest</span>
+
+            <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_src_decl</span><span class="sh">'</span><span class="p">]</span> <span class="o">=</span> \
+                      <span class="n">operands</span><span class="p">.</span><span class="nf">concatSomeAttrStrings</span><span class="p">(</span><span class="n">is_src</span><span class="p">,</span> <span class="sh">'</span><span class="s">op_src_decl</span><span class="sh">'</span><span class="p">)</span>
+            <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_dest_decl</span><span class="sh">'</span><span class="p">]</span> <span class="o">=</span> \
+                      <span class="n">operands</span><span class="p">.</span><span class="nf">concatSomeAttrStrings</span><span class="p">(</span><span class="n">is_dest</span><span class="p">,</span> <span class="sh">'</span><span class="s">op_dest_decl</span><span class="sh">'</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">operands</span><span class="p">.</span><span class="n">readPC</span><span class="p">:</span>
+                <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_src_decl</span><span class="sh">'</span><span class="p">]</span> <span class="o">+=</span> \
+                    <span class="sh">'</span><span class="s">TheISA::PCState __parserAutoPCState;</span><span class="se">\n</span><span class="sh">'</span>
+            <span class="k">if</span> <span class="n">operands</span><span class="p">.</span><span class="n">setPC</span><span class="p">:</span>
+                <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_dest_decl</span><span class="sh">'</span><span class="p">]</span> <span class="o">+=</span> \
+                    <span class="sh">'</span><span class="s">TheISA::PCState __parserAutoPCState;</span><span class="se">\n</span><span class="sh">'</span>
+
+            <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_rd</span><span class="sh">'</span><span class="p">]</span> <span class="o">=</span> <span class="n">operands</span><span class="p">.</span><span class="nf">concatAttrStrings</span><span class="p">(</span><span class="sh">'</span><span class="s">op_rd</span><span class="sh">'</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">operands</span><span class="p">.</span><span class="n">readPC</span><span class="p">:</span>
+                <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_rd</span><span class="sh">'</span><span class="p">]</span> <span class="o">=</span> <span class="sh">'</span><span class="s">__parserAutoPCState = xc-&gt;pcState();</span><span class="se">\n</span><span class="sh">'</span> <span class="o">+</span> \
+                                  <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_rd</span><span class="sh">'</span><span class="p">]</span>
+
+            <span class="c1"># Compose the op_wb string. If we're going to write back the
+</span>            <span class="c1"># PC state because we changed some of its elements, we'll need to
+</span>            <span class="c1"># do that as early as possible. That allows later uncoordinated
+</span>            <span class="c1"># modifications to the PC to layer appropriately.
+</span>            <span class="n">reordered</span> <span class="o">=</span> <span class="nf">list</span><span class="p">(</span><span class="n">operands</span><span class="p">.</span><span class="n">items</span><span class="p">)</span>
+            <span class="n">reordered</span><span class="p">.</span><span class="nf">reverse</span><span class="p">()</span>
+            <span class="n">op_wb_str</span> <span class="o">=</span> <span class="sh">''</span>
+            <span class="n">pcWbStr</span> <span class="o">=</span> <span class="sh">'</span><span class="s">xc-&gt;pcState(__parserAutoPCState);</span><span class="se">\n</span><span class="sh">'</span>
+            <span class="k">for</span> <span class="n">op_desc</span> <span class="ow">in</span> <span class="n">reordered</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">op_desc</span><span class="p">.</span><span class="nf">isPCPart</span><span class="p">()</span> <span class="ow">and</span> <span class="n">op_desc</span><span class="p">.</span><span class="n">is_dest</span><span class="p">:</span>
+                    <span class="n">op_wb_str</span> <span class="o">=</span> <span class="n">op_desc</span><span class="p">.</span><span class="n">op_wb</span> <span class="o">+</span> <span class="n">pcWbStr</span> <span class="o">+</span> <span class="n">op_wb_str</span>
+                    <span class="n">pcWbStr</span> <span class="o">=</span> <span class="sh">''</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">op_wb_str</span> <span class="o">=</span> <span class="n">op_desc</span><span class="p">.</span><span class="n">op_wb</span> <span class="o">+</span> <span class="n">op_wb_str</span>
+            <span class="n">myDict</span><span class="p">[</span><span class="sh">'</span><span class="s">op_wb</span><span class="sh">'</span><span class="p">]</span> <span class="o">=</span> <span class="n">op_wb_str</span>
+        <span class="p">...</span><span class="bp">...</span>
+</pre></td></tr></tbody></table></code></div></div>
+
+<p>Upon instantiation of the Template object, its code-literal is stored within the
+self.template field of the object. This field is subsequently utilized in the 
+<strong>subst</strong> method for substituting the code-literal with a provided substitution 
+string.</p>
+
+<p>A crucial aspect of the Template class is the <strong>subst</strong> method, which, upon 
+examination, reveals that it returns a template (in the form of a code literal 
+string) substituted with the values from myDict. It’s important to note that the
+provided code literal contains incomplete sections that need replacement before 
+generating complete statements. The subst function creates the myDict dictionary
+based on the object (denoted as d) passed to it.</p>
+
+<p>Typically, the passed object is of type InstObjParams, offering microop or 
+macroop specific information to finalize the general implementation outlined by 
+the template. It’s worth mentioning that the subst function handles the myDict 
+dictionary differently based on the type of object provided to it. In instances 
+where an object of type InstObjParams is passed, the subst function prepares the
+myDict dictionary in accordance with the information supplied by its items. This 
+includes considerations such as whether it is intended for declaration (op_decl) 
+or for data write-back (op_wb), ensuring proper preparation for subsequent
+substitution.</p>
+
+<h4 id="generate-macroops-constructor-with-template"><span class="me-2">Generate macroop’s constructor with Template</span><a href="#generate-macroops-constructor-with-template" class="anchor text-muted"><i class="fas fa-hashtag"></i></a></h4>
 <div class="language-python highlighter-rouge"><div class="code-header">
         <span data-label-text="Python"><i class="fas fa-code fa-fw small"></i></span>
       <button aria-label="copy" data-title-succeed="Copied!"><i class="far fa-clipboard"></i></button></div><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
@@ -3165,17 +3427,15 @@ there should be a corresponding ‘Limm’ C++ class that can be instantiated. T
                    <span class="n">MacroDisassembly</span><span class="p">.</span><span class="nf">subst</span><span class="p">(</span><span class="n">iop</span><span class="p">);</span>         
 </pre></td></tr></tbody></table></code></div></div>
 
-<p>I haven’t covered the <strong>def template block</strong> yet, but when you look at the 
-automatically generated macroop class definitions in CPP, it will have similar 
-code skeleton presented in <strong>MacroConstructor</strong>. It is used for generating CPP 
-class for macroop! Based on the passed parameter InstObjParams, it substitutes
-the template and generate the CPP code! It’s worth noting that the placeholder 
-%(alloc_microops)s gets substituted with the constructor code for the microop 
-classes that were generated by the previous getAllocator method. The 
-MacroDisassembly template is used to automatically introduce member function
-<em>generateDisassembly</em> to automatically generated macroop class. 
-If you are interested in def template block, please bear with me I will explain 
-the details of the def template in the next post.</p>
+<p>When you look at the automatically generated macroop class definitions in CPP, 
+it will have similar code skeleton presented in <strong>MacroConstructor</strong>. It is used
+for generating CPP class constructor for macroop! Based on the passed parameter 
+InstObjParams, it substitutes the template and generate the CPP code! It’s worth
+noting that the placeholder %(alloc_microops)s gets substituted with the 
+constructor code for the microop classes that were generated by the previous
+getAllocator method. The MacroDisassembly template is used to automatically 
+introduce member functio n<em>generateDisassembly</em> to automatically generated 
+macroop class.</p>
 
 <h2 id="appendix"><span class="me-2">Appendix</span><a href="#appendix" class="anchor text-muted"><i class="fas fa-hashtag"></i></a></h2>
 <h4 id="symbols-of-parser"><span class="me-2">Symbols of parser</span><a href="#symbols-of-parser" class="anchor text-muted"><i class="fas fa-hashtag"></i></a></h4>
@@ -3767,6 +4027,18 @@ microop’s mnemonic, such as ‘limm,’ it will return the related Python clas
   
 
   
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
     
   
 
@@ -3807,7 +4079,7 @@ microop’s mnemonic, such as ‘limm,’ it will return the related Python clas
     <nav class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4 mb-4">
       
         <article class="col">
-          <a href="/posts/gem5-memaccess/" class="post-preview card h-100">
+          <a href="/posts/template-generating-microop/" class="post-preview card h-100">
             <div class="card-body">
               <!--
   Date format snippet
@@ -3819,14 +4091,14 @@ microop’s mnemonic, such as ‘limm,’ it will return the related Python clas
 
 <time
   
-  data-ts="1591329600"
+  data-ts="1591070400"
   data-df="ll"
   
 >
-  Jun  5, 2020
+  Jun  2, 2020
 </time>
 
-              <h4 class="pt-0 my-2">Gem5 Memaccess</h4>
+              <h4 class="pt-0 my-2">Template Generating Microop</h4>
               <div class="text-muted">
                 <p>
                   
@@ -3835,9 +4107,38 @@ microop’s mnemonic, such as ‘limm,’ it will return the related Python clas
 
 
 
-                  In my previous post, I discussed the automatic generation of C++ classes for 
-macroops and microops using various GEM5 tools, including a Python-based parser 
-and string-based template substitution...
+                  Automatic class generation for microops
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+let {                                                                       ...
                 </p>
               </div>
             </div>

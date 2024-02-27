@@ -34,7 +34,7 @@
 
   
     <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.2" />
+<meta name="generator" content="Jekyll v4.3.3" />
 <meta property="og:title" content="O3 Cpu Fetch" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="Fetch 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 895 template &lt;class Impl&gt; 896 void 897 DefaultFetch&lt;Impl&gt;::tick() 898 { 899 list&lt;ThreadID&gt;::iterator threads = activeThreads-&gt;begin(); 900 list&lt;ThreadID&gt;::iterator end = activeThreads-&gt;end(); 901 bool status_change = false; 902 903 wroteToTimeBuffer = false; 904 905 for (ThreadID i = 0; i &lt; numThreads; ++i) { 906 issuePipelinedIfetch[i] = false; 907 } 908 909 while (threads != end) { 910 ThreadID tid = *threads++; 911 912 // Check the signals for each thread to determine the proper status 913 // for each thread. 914 bool updated_status = checkSignalsAndUpdate(tid); 915 status_change = status_change || updated_status; 916 } 917 918 DPRINTF(Fetch, &quot;Running stage.\n&quot;); 919 920 if (FullSystem) { 921 if (fromCommit-&gt;commitInfo[0].interruptPending) { 922 interruptPending = true; 923 } 924 925 if (fromCommit-&gt;commitInfo[0].clearInterrupt) { 926 interruptPending = false; 927 } 928 } 929 930 for (threadFetched = 0; threadFetched &lt; numFetchingThreads; 931 threadFetched++) { 932 // Fetch each of the actively fetching threads. 933 fetch(status_change); 934 } 935 936 // Record number of instructions fetched this cycle for distribution. 937 fetchNisnDist.sample(numInst); 938 939 if (status_change) { 940 // Change the fetch stage status if there was a status change. 941 _status = updateFetchStatus(); 942 } 943 944 // Issue the next I-cache request if possible. 945 for (ThreadID i = 0; i &lt; numThreads; ++i) { 946 if (issuePipelinedIfetch[i]) { 947 pipelineIcacheAccesses(i); 948 } 949 } 950 951 // Send instructions enqueued into the fetch queue to decode. 952 // Limit rate by fetchWidth. Stall if decode is stalled. 953 unsigned insts_to_decode = 0; 954 unsigned available_insts = 0; 955 956 for (auto tid : *activeThreads) { 957 if (!stalls[tid].decode) { 958 available_insts += fetchQueue[tid].size(); 959 } 960 } 961 962 // Pick a random thread to start trying to grab instructions from 963 auto tid_itr = activeThreads-&gt;begin(); 964 std::advance(tid_itr, random_mt.random&lt;uint8_t&gt;(0, activeThreads-&gt;size() - 1)); 965 966 while (available_insts != 0 &amp;&amp; insts_to_decode &lt; decodeWidth) { 967 ThreadID tid = *tid_itr; 968 if (!stalls[tid].decode &amp;&amp; !fetchQueue[tid].empty()) { 969 const auto&amp; inst = fetchQueue[tid].front(); 970 toDecode-&gt;insts[toDecode-&gt;size++] = inst; 971 DPRINTF(Fetch, &quot;[tid:%i] [sn:%llu] Sending instruction to decode &quot; 972 &quot;from fetch queue. Fetch queue size: %i.\n&quot;, 973 tid, inst-&gt;seqNum, fetchQueue[tid].size()); 974 975 wroteToTimeBuffer = true; 976 fetchQueue[tid].pop_front(); 977 insts_to_decode++; 978 available_insts--; 979 } 980 981 tid_itr++; 982 // Wrap around if at end of active threads list 983 if (tid_itr == activeThreads-&gt;end()) 984 tid_itr = activeThreads-&gt;begin(); 985 } 986 987 // If there was activity this cycle, inform the CPU of it. 988 if (wroteToTimeBuffer) { 989 DPRINTF(Activity, &quot;Activity this cycle.\n&quot;); 990 cpu-&gt;activityThisCycle(); 991 } 992 993 // Reset the number of the instruction we&#39;ve fetched. 994 numInst = 0; 995 }" />
@@ -172,16 +172,6 @@
             
 
             <span>ARCHIVES</span>
-          </a>
-        </li>
-        <!-- .nav-item -->
-      
-        <li class="nav-item">
-          <a href="/Professional-Career/" class="nav-link">
-            <i class="fa-fw fas fa-id-card"></i>
-            
-
-            <span>PROFESSIONAL CAREER</span>
           </a>
         </li>
         <!-- .nav-item -->
@@ -4919,6 +4909,18 @@ this class overrides the -&gt; operator, it will invoke the
 
   
     
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
   
 
   

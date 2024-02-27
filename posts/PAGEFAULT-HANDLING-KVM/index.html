@@ -34,7 +34,7 @@
 
   
     <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.2" />
+<meta name="generator" content="Jekyll v4.3.3" />
 <meta property="og:title" content="KVM page-fault handling" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="EPT violation exit and handle The logistics of KVM’s page fault handling is like below: __vmx_handle_exit -&gt; handle_ept_violation -&gt; __vmx_handle_ept_violation -&gt; kvm_mmu_page_fault -&gt; kvm_mmu_do_page_fault -&gt; mmu.page_fault(), kvm_tdp_page_fault (when tdp is enabled) -&gt; direct_page_fault" />
@@ -172,16 +172,6 @@
             
 
             <span>ARCHIVES</span>
-          </a>
-        </li>
-        <!-- .nav-item -->
-      
-        <li class="nav-item">
-          <a href="/Professional-Career/" class="nav-link">
-            <i class="fa-fw fas fa-id-card"></i>
-            
-
-            <span>PROFESSIONAL CAREER</span>
           </a>
         </li>
         <!-- .nav-item -->

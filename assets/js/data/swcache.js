@@ -15,8 +15,6 @@ const resource = [
   
     '/archives/',
   
-    '/Professional-Career/',
-  
     '/about/',
   
 

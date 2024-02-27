@@ -1,9 +1,12 @@
+<!-- //make it hidden for temp
+
 ---
 icon: fas fa-id-card
 order: 4
 title: Professional Career
 ---
 
+-->
 <html lang="en">
 <head>
     <meta charset="UTF-8">

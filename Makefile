@@ -11,10 +11,10 @@ build: chirpy gh-pages posts assets
 local: chirpy gh-pages posts assets
 	@cd $(CHIRPY_DIR) && bundle exec jekyll serve 
 
-chirpy: 
+chirpy:	
 	@if [ ! -d "$(CHIRPY_DIR)" ]; then \
 		git worktree add --guess-remote chirpy; \
-		bundle install --gemfile=$(CHIRPY_DIR)/Gemfile \
+		bundle install --gemfile=$(CHIRPY_DIR)/Gemfile; \
 	fi
 
 gh-pages:

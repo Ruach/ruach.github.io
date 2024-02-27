@@ -34,7 +34,7 @@
 
   
     <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.2" />
+<meta name="generator" content="Jekyll v4.3.3" />
 <meta property="og:title" content="QEMU Side Memory Management for VM with RAMBLOCK" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="QEMU side memory management The MemoryRegion is the link between guest physical address space and the RAMBlocks containing the memory. Each MemoryRegion has the ram_addr_t offset of the RAMBlock and each RAMBlock has a MemoryRegion pointer. Note that MemoryRegion is more general than just RAM. It can also represent I/O memory where read/write callback functions are invoked on access. This is how hardware register accesses from a guest CPU are dispatched to emulated devices. The address_space_rw() function dispatches load/store accesses to the appropriate MemoryRegions. If a MemoryRegion is a RAM region then the data will be accessed from the RAMBlock’s mmapped guest RAM. The address_space_memory global variable is the guest physical memory space." />
@@ -172,16 +172,6 @@
             
 
             <span>ARCHIVES</span>
-          </a>
-        </li>
-        <!-- .nav-item -->
-      
-        <li class="nav-item">
-          <a href="/Professional-Career/" class="nav-link">
-            <i class="fa-fw fas fa-id-card"></i>
-            
-
-            <span>PROFESSIONAL CAREER</span>
           </a>
         </li>
         <!-- .nav-item -->

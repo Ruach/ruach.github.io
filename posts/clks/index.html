@@ -34,7 +34,7 @@
 
   
     <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.2" />
+<meta name="generator" content="Jekyll v4.3.3" />
 <meta property="og:title" content="Clks" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="Dwc3 probing ```c static int dwc3_apple_m1_probe(struct platform_device *pdev) { struct dwc3_apple *da; struct device *dev = &amp;pdev-&gt;dev; struct device_node *np = dev-&gt;of_node; 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 int ret; da = devm_kzalloc(dev, sizeof(*da), GFP_KERNEL); if (!da) return -ENOMEM; platform_set_drvdata(pdev, da); da-&gt;dev = dev; da-&gt;atcphy = of_iomap(np, 0); da-&gt;usbcore = of_iomap(np, 1); if (!da-&gt;atcphy || !da-&gt;usbcore) { pr_err(&quot;%pOFn: %s: failed to map MMIO ranges.&quot;, np, __func__); return -EINVAL; } ret = clk_bulk_get_all(da-&gt;dev, &amp;da-&gt;clks); if (ret &lt; 0) { pr_err(&quot;%pOFn: %s: clk_bulk_get_all failed.&quot;, np, __func__); return ret; } da-&gt;num_clocks = ret; ret = clk_bulk_prepare_enable(da-&gt;num_clocks, da-&gt;clks); if (ret) { pr_err(&quot;%pOFn: %s: clk_bulk_prepare_enable failed.&quot;, np, __func__); return ret; } ret = dwc3_apple_m1_start(da); if(ret) { pr_err(&quot;%pOFn: %s: failed to prepare hardware: %d.&quot;, np, __func__, ret); return ret; } ret = of_platform_populate(np, NULL, NULL, dev); if (ret) goto err_clk_put; pm_runtime_set_active(dev); pm_runtime_enable(dev); pm_runtime_get_sync(dev); return 0;" />
@@ -172,16 +172,6 @@
             
 
             <span>ARCHIVES</span>
-          </a>
-        </li>
-        <!-- .nav-item -->
-      
-        <li class="nav-item">
-          <a href="/Professional-Career/" class="nav-link">
-            <i class="fa-fw fas fa-id-card"></i>
-            
-
-            <span>PROFESSIONAL CAREER</span>
           </a>
         </li>
         <!-- .nav-item -->

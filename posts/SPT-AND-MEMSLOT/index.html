@@ -34,7 +34,7 @@
 
   
     <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.2" />
+<meta name="generator" content="Jekyll v4.3.3" />
 <meta property="og:title" content="Shadow Page Table (SPT) and MEMSLOT" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="Shadow Page Table (SPT) Before the introduction of TDP, shadow paging has been utilized to translate GPA to HPA. The KVM module utilize a unified concept to abstract the structure managing this translation (GPA-&gt;HPA), called Shadow Page Table (SPT). Although it reminds of shadow paging, the emulated page table based translation before the invention TDP, now it represents the table handling GPA-&gt;HPA translation regardless of the implementation behind. KVM utilizes the term Two Dimensional Paging (TDP) to distinguish EPT based translation (hardware) from shadow page table based translation (software-emulation). This terminology is quite confusing, but allow the TDP implementation to fit into the code base previously implemented for shadow paging. Each entry of SPT is called Shadow Page Table Entry (SPTE)." />
@@ -172,16 +172,6 @@
             
 
             <span>ARCHIVES</span>
-          </a>
-        </li>
-        <!-- .nav-item -->
-      
-        <li class="nav-item">
-          <a href="/Professional-Career/" class="nav-link">
-            <i class="fa-fw fas fa-id-card"></i>
-            
-
-            <span>PROFESSIONAL CAREER</span>
           </a>
         </li>
         <!-- .nav-item -->

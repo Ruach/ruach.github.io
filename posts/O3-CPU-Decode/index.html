@@ -34,7 +34,7 @@
 
   
     <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.2" />
+<meta name="generator" content="Jekyll v4.3.3" />
 <meta property="og:title" content="O3 Cpu Decode" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="Sending fetched instructions to decode stage gem5/src/cpu/o3/fetch_impl.hh 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 961 962 // Pick a random thread to start trying to grab instructions from 963 auto tid_itr = activeThreads-&gt;begin(); 964 std::advance(tid_itr, random_mt.random&lt;uint8_t&gt;(0, activeThreads-&gt;size() - 1)); 965 966 while (available_insts != 0 &amp;&amp; insts_to_decode &lt; decodeWidth) { 967 ThreadID tid = *tid_itr; 968 if (!stalls[tid].decode &amp;&amp; !fetchQueue[tid].empty()) { 969 const auto&amp; inst = fetchQueue[tid].front(); 970 toDecode-&gt;insts[toDecode-&gt;size++] = inst; 971 DPRINTF(Fetch, &quot;[tid:%i] [sn:%llu] Sending instruction to decode &quot; 972 &quot;from fetch queue. Fetch queue size: %i.\n&quot;, 973 tid, inst-&gt;seqNum, fetchQueue[tid].size()); 974 975 wroteToTimeBuffer = true; 976 fetchQueue[tid].pop_front(); 977 insts_to_decode++; 978 available_insts--; 979 } 980 981 tid_itr++; 982 // Wrap around if at end of active threads list 983 if (tid_itr == activeThreads-&gt;end()) 984 tid_itr = activeThreads-&gt;begin(); 985 } 986 987 // If there was activity this cycle, inform the CPU of it. 988 if (wroteToTimeBuffer) { 989 DPRINTF(Activity, &quot;Activity this cycle.\n&quot;); 990 cpu-&gt;activityThisCycle(); 991 } 992 993 // Reset the number of the instruction we&#39;ve fetched. 994 numInst = 0; 995 } //end of the fetch.tick The last job of the fetch stage is passing the fetched instructions to the next stage, decode stage. On the above code, toDecode member field of the fetch is used as an storage located in between the fetch and decode stage." />
@@ -172,16 +172,6 @@
             
 
             <span>ARCHIVES</span>
-          </a>
-        </li>
-        <!-- .nav-item -->
-      
-        <li class="nav-item">
-          <a href="/Professional-Career/" class="nav-link">
-            <i class="fa-fw fas fa-id-card"></i>
-            
-
-            <span>PROFESSIONAL CAREER</span>
           </a>
         </li>
         <!-- .nav-item -->
@@ -2489,6 +2479,18 @@ then it should squash the current instruction.</p>
 
   
     
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
   
 
   

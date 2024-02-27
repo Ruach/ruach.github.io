@@ -34,7 +34,7 @@
 
   
     <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.2" />
+<meta name="generator" content="Jekyll v4.3.3" />
 <meta property="og:title" content="KVM page-fault handling for TDX" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="Basic idea to implement private page Because shared EPT is the same as the existing EPT, use the existing logic for shared EPT. On the other hand, secure EPT requires additional operations instead of directly reading/writing of the EPT entry. On EPT violation, The KVM mmu walks down the EPT tree from the root, determines the EPT entry to operate, and updates the entry. If necessary, a TLB shootdown is done. Because it’s very slow to directly walk secure EPT by TDX SEAMCALL, TDH.MEM.SEPT.RD(), the mirror of secure EPT is created and maintained. Add hooks to KVM MMU to reuse the existing code." />
@@ -172,16 +172,6 @@
             
 
             <span>ARCHIVES</span>
-          </a>
-        </li>
-        <!-- .nav-item -->
-      
-        <li class="nav-item">
-          <a href="/Professional-Career/" class="nav-link">
-            <i class="fa-fw fas fa-id-card"></i>
-            
-
-            <span>PROFESSIONAL CAREER</span>
           </a>
         </li>
         <!-- .nav-item -->

@@ -805,16 +805,17 @@ unsigned long smc_rtt_set_ripas(unsigned long rd_addr,
         ret = RMI_SUCCESS;
 ```
 
-Note that the rec->set_ripas which was set while handling RSI call. Because the 
-ripas of realm page should not be changed freely as the request of the host, it 
-compares the host provided parameter for RTT_SET_RIPAS RMI is same with the ones 
-that memorized due to RSI. The most important part of this complicated procedure
-is ripas can only be changed for the memory range where the realm wants to 
-changes its ripas. Therefore, it checks whether the request's ripas and its 
-map_addr corresponds with the request. Also note that after handling the ripas 
-change, it updates the addr field of the set_ripas because the RMI is invoked 
-per page, so there can be remaining RMI call to finish RSI. Now let's see how 
-it actually change the ripas. 
+Note that the rec->set_ripas which was set while handling previous RSI call. 
+Because the ripas of realm page should not be changed freely as the request of 
+the host's request that could be potentially malicious, it compares the host 
+provided parameter for RTT_SET_RIPAS RMI is same with the ones that memorized 
+in the previous RSI which indicates the intention of the Realm. The most important
+part of this complicated procedure is ripas can only be changed for the memory 
+range where the realm wants to changes its ripas. Therefore, it checks whether the
+request's ripas and it map_addr matches with the request of the Realm. Also note
+that after handling the ripas change, it updates the addr field of the set_ripas 
+because the RMI is invoked per page, so there can be remaining RMI call to finish
+RSI. Now let's see how it actually change the ripas. 
 
 ```cpp
 static bool update_ripas(unsigned long *s2tte, unsigned long level,
@@ -1291,9 +1292,9 @@ static inline unsigned long rsi_set_addr_range_state(phys_addr_t start,
         return res.a0;
 }       
 ```
-As the RMM fed the rec->set_ripas.addr to the res[1] it will be passed to the 
-top indicating the highest address that ripas was changed by the host and RMM. 
-Also, a0 is the RSI_SUCCESS.
+RMM fed the rec->set_ripas.addr to the res[1], and it will be assigned to the 
+top variable indicating the highest address that ripas was changed by the host 
+and RMM. Also, a0 will be the RSI_SUCCESS.
 
 ```cpp
 static inline void set_memory_range(phys_addr_t start, phys_addr_t end,
@@ -1372,7 +1373,7 @@ static int __change_memory_common(unsigned long start, unsigned long size,
 }
 ```
 
-The apply_to_page_range function invokes the passed function, changed_page_range,
+The apply_to_page_range function invokes the passed function, change_page_range,
 for the ptep of the memory range specified by the start and size. Note that the 
 start address is the virtual, so this macro will invoke this function with the 
 pte of each page mapped in between [start, start+size]. Also note that it passes
@@ -1414,9 +1415,10 @@ How a fault raised in the realm due to accessing untrusted IPA can be resolved?
 After change_page_range is invoked for the DMA range, the IPA originally used 
 for the DMA is **moved to the upper half** by changing stage 1 page table of the 
 realm. However, accessing this page from the realm through the virtual address
-should generate the fault, because there is no s2tt mapping. That is what I 
-described about how the realm allocates untrusted IPA for DMA. Then how the host
-handles the fault generated due to accessing it? 
+should generate the fault, because there is no s2tt mapping that can indicate 
+processor to translate untrusted IPA to untrusted physical page belong to host. 
+Then how the host handles the fault generated due to accessing untrusted IPA 
+from Realm? 
 
 ### Revisit host for handling fault-ipa
 When the realm exits, and if its fault-ipa is within untrusted, there could be 
@@ -1508,7 +1510,7 @@ page through RMI, the memslot should exist. Therefore, the IPA which was mapped
 to trusted before, but currently mapped to untrusted can be treated as non-MMIO
 memory, and its fault will be handled by user_mem_abort not by the io_mem_abort. 
 
-Also note that the fault_ipa itself it passed to the user_mem_abort without 
+Also note that the fault_ipa. It is passed to the user_mem_abort without 
 masking out the MSB. However, before invoking the io_mem_abort, it masks out the 
 MSB from the fault_ipa. It is easy to find the reason when you think about it 
 carefully. io_mem_abort needs the IPA to check if it is within MMIO range and 

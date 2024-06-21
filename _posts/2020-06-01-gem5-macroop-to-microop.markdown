@@ -1,6 +1,6 @@
 ---
 layout: post
-titile: "Macroop Parsing with Python-Lex-Yacc"
+tittle: "Macroop Parsing with Python-Lex-Yacc"
 categories: [GEM5, Macroop, Microops, PLY]
 ---
 
@@ -1386,7 +1386,152 @@ there should be a corresponding 'Limm' C++ class that can be instantiated. The
 ```
 For further details about microop, please wait for next posting!
 
-#### Finalize Macroop class definition with template substitution 
+### Finalize Macroop class definition with template substitution 
+
+#### def template ID {...};
+```python
+*gem5/src/arch/isa_parser.py*
+
+    def p_def_template(self, t):
+        'def_template : DEF TEMPLATE ID CODELIT SEMI'
+        if t[3] in self.templateMap:
+            print("warning: template %s already defined" % t[3])
+        self.templateMap[t[3]] = Template(self, t[4])
+
+```
+
+According to the grammar rule, the Template object is created using the code 
+literal from the def template block, denoted as t[4]. These newly created 
+Template objects are managed by the parser's templateMap. It's important to 
+highlight that the template name (ID, represented by t[3]) is utilized as the 
+index for accessing the corresponding Template object within the map. ISAParser
+also defines the Template python class for handling this functionality.
+
+
+```python
+labelRE = re.compile(r'(?<!%)%\(([^\)]+)\)[sd]')
+
+class Template(object):
+    def __init__(self, parser, t):
+        self.parser = parser
+        self.template = t
+
+    def subst(self, d):
+        myDict = None
+
+        # Protect non-Python-dict substitutions (e.g. if there's a printf
+        # in the templated C++ code)
+        template = self.parser.protectNonSubstPercents(self.template)
+
+        # Build a dict ('myDict') to use for the template substitution.
+        # Start with the template namespace.  Make a copy since we're
+        # going to modify it.
+        myDict = self.parser.templateMap.copy()
+
+        if isinstance(d, InstObjParams):
+            # If we're dealing with an InstObjParams object, we need
+            # to be a little more sophisticated.  The instruction-wide
+            # parameters are already formed, but the parameters which
+            # are only function wide still need to be generated.
+            compositeCode = ''
+
+            myDict.update(d.__dict__)
+            # The "operands" and "snippets" attributes of the InstObjParams
+            # objects are for internal use and not substitution.
+            del myDict['operands']
+            del myDict['snippets']
+
+            snippetLabels = [l for l in labelRE.findall(template)
+                             if l in d.snippets]
+
+            snippets = dict([(s, self.parser.mungeSnippet(d.snippets[s]))
+                             for s in snippetLabels])
+
+            myDict.update(snippets)
+
+            compositeCode = ' '.join(map(str, snippets.values()))
+
+            # Add in template itself in case it references any
+            # operands explicitly (like Mem)
+            compositeCode += ' ' + template
+
+            operands = SubOperandList(self.parser, compositeCode, d.operands)
+
+            myDict['op_decl'] = operands.concatAttrStrings('op_decl')
+            if operands.readPC or operands.setPC:
+                myDict['op_decl'] += 'TheISA::PCState __parserAutoPCState;\n'
+
+            # In case there are predicated register reads and write, declare
+            # the variables for register indicies. It is being assumed that
+            # all the operands in the OperandList are also in the
+            # SubOperandList and in the same order. Otherwise, it is
+            # expected that predication would not be used for the operands.
+            if operands.predRead:
+                myDict['op_decl'] += 'uint8_t _sourceIndex = 0;\n'
+            if operands.predWrite:
+                myDict['op_decl'] += 'uint8_t M5_VAR_USED _destIndex = 0;\n'
+
+            is_src = lambda op: op.is_src
+            is_dest = lambda op: op.is_dest
+
+            myDict['op_src_decl'] = \
+                      operands.concatSomeAttrStrings(is_src, 'op_src_decl')
+            myDict['op_dest_decl'] = \
+                      operands.concatSomeAttrStrings(is_dest, 'op_dest_decl')
+            if operands.readPC:
+                myDict['op_src_decl'] += \
+                    'TheISA::PCState __parserAutoPCState;\n'
+            if operands.setPC:
+                myDict['op_dest_decl'] += \
+                    'TheISA::PCState __parserAutoPCState;\n'
+
+            myDict['op_rd'] = operands.concatAttrStrings('op_rd')
+            if operands.readPC:
+                myDict['op_rd'] = '__parserAutoPCState = xc->pcState();\n' + \
+                                  myDict['op_rd']
+
+            # Compose the op_wb string. If we're going to write back the
+            # PC state because we changed some of its elements, we'll need to
+            # do that as early as possible. That allows later uncoordinated
+            # modifications to the PC to layer appropriately.
+            reordered = list(operands.items)
+            reordered.reverse()
+            op_wb_str = ''
+            pcWbStr = 'xc->pcState(__parserAutoPCState);\n'
+            for op_desc in reordered:
+                if op_desc.isPCPart() and op_desc.is_dest:
+                    op_wb_str = op_desc.op_wb + pcWbStr + op_wb_str
+                    pcWbStr = ''
+                else:
+                    op_wb_str = op_desc.op_wb + op_wb_str
+            myDict['op_wb'] = op_wb_str
+        ......
+```
+
+Upon instantiation of the Template object, its code-literal is stored within the
+self.template field of the object. This field is subsequently utilized in the 
+**subst** method for substituting the code-literal with a provided substitution 
+string.
+
+A crucial aspect of the Template class is the **subst** method, which, upon 
+examination, reveals that it returns a template (in the form of a code literal 
+string) substituted with the values from myDict. It's important to note that the
+provided code literal contains incomplete sections that need replacement before 
+generating complete statements. The subst function creates the myDict dictionary
+based on the object (denoted as d) passed to it.
+
+Typically, the passed object is of type InstObjParams, offering microop or 
+macroop specific information to finalize the general implementation outlined by 
+the template. It's worth mentioning that the subst function handles the myDict 
+dictionary differently based on the type of object provided to it. In instances 
+where an object of type InstObjParams is passed, the subst function prepares the
+myDict dictionary in accordance with the information supplied by its items. This 
+includes considerations such as whether it is intended for declaration (op_decl) 
+or for data write-back (op_wb), ensuring proper preparation for subsequent
+substitution.
+
+
+#### Generate macroop's constructor with Template
 ```python
 #gem5/src/arch/x86/isa/macroop.isa                                              
 
@@ -1438,17 +1583,15 @@ def template MacroDisassembly {
                    MacroDisassembly.subst(iop);         
 ```
 
-I haven't covered the **def template block** yet, but when you look at the 
-automatically generated macroop class definitions in CPP, it will have similar 
-code skeleton presented in **MacroConstructor**. It is used for generating CPP 
-class for macroop! Based on the passed parameter InstObjParams, it substitutes
-the template and generate the CPP code! It's worth noting that the placeholder 
-%(alloc_microops)s gets substituted with the constructor code for the microop 
-classes that were generated by the previous getAllocator method. The 
-MacroDisassembly template is used to automatically introduce member function
-*generateDisassembly* to automatically generated macroop class. 
-If you are interested in def template block, please bear with me I will explain 
-the details of the def template in the next post.
+When you look at the automatically generated macroop class definitions in CPP, 
+it will have similar code skeleton presented in **MacroConstructor**. It is used
+for generating CPP class constructor for macroop! Based on the passed parameter 
+InstObjParams, it substitutes the template and generate the CPP code! It's worth
+noting that the placeholder %(alloc_microops)s gets substituted with the 
+constructor code for the microop classes that were generated by the previous
+getAllocator method. The MacroDisassembly template is used to automatically 
+introduce member functio n*generateDisassembly* to automatically generated 
+macroop class.
 
 
 ## Appendix

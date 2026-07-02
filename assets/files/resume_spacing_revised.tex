@@ -1,0 +1,563 @@
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[colorlinks = true,
+            linkcolor = blue,
+            urlcolor  = blue,
+            citecolor = blue,
+            anchorcolor = blue]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\usepackage{fontawesome}
+\usepackage{multicol}
+\setlength{\multicolsep}{-3.0pt}
+\setlength{\columnsep}{-1pt}
+\input{glyphtounicode}
+
+
+%----------FONT OPTIONS----------
+% sans-serif
+% \usepackage[sfdefault]{FiraSans}
+% \usepackage[sfdefault]{roboto}
+% \usepackage[sfdefault]{noto-sans}
+% \usepackage[default]{sourcesanspro}
+
+% serif
+% \usepackage{CormorantGaramond}
+% \usepackage{charter}
+
+\hypersetup{pdfborder = 0 0 0}
+\pagestyle{fancy}
+\fancyhf{} % clear all header and footer fields
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Adjust margins
+\addtolength{\oddsidemargin}{-0.6in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1.19in}
+\addtolength{\topmargin}{-.7in}
+\addtolength{\textheight}{1.4in}
+
+\urlstyle{same}
+
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+% Global compact list spacing for resume readability.
+\setlist[itemize]{itemsep=1pt, topsep=2pt, parsep=0pt, partopsep=0pt}
+\setlist[enumerate]{itemsep=1pt, topsep=2pt, parsep=0pt, partopsep=0pt}
+
+% Sections formatting
+% Keep section spacing centralized here instead of scattering \vspace commands.
+\titleformat{\section}
+  {\large\scshape\raggedright\bfseries}
+  {}{0em}{}
+  [\color{black}\titlerule]
+\titlespacing*{\section}{0pt}{6pt}{4pt}
+
+% Ensure that generate pdf is machine readable/ATS parsable
+\pdfgentounicode=1
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{
+  \item\small{#1}
+}
+
+\newcommand{\classesList}[4]{
+  \item\small{#1 #2 #3 #4}
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \item
+    \begin{tabular*}{1.0\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & \textbf{\small #2} \\
+    \end{tabular*}\vspace{-4pt}
+}
+
+\newcommand{\resumeSubSubheading}[2]{
+    \item
+    \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
+      \textit{\small#1} & \textit{\small #2} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
+      {\small#1} & \textbf{\small #2} \\
+    \end{tabular*}\vspace{-5pt}
+}
+
+\newcommand{\resumeProjectHeadingWithLabel}[3]{
+    \item
+    \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
+      {\small#1} & \textbf{\small #2} \\
+    \end{tabular*}\vspace{-2pt}\label{#3}
+}
+
+
+\newcommand{\resumeProjectHeadingNoBold}[2]{
+    \item
+    \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
+      {\small#1} & {\small #2} \\
+    \end{tabular*}\vspace{-5pt}
+}
+
+\newcommand{\softwareArtifactHeading}[2]{
+    \item[]
+    \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
+      \hspace{0em}\small#1 & \small #2  \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeExternalReviewer}[2]{
+    \item[]
+    \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
+      \hspace{2em}\small#1 & \small #2 \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeReference}[1]{
+    \item[]
+    \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
+      \hspace{2em}\small#1 & \\
+    \end{tabular*}\vspace{-8pt}
+}
+
+
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}}
+
+\renewcommand\labelitemi{$\vcenter{\hbox{\tiny$\bullet$}}$}
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}, itemsep=4pt, topsep=2pt]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+
+\newcommand{\resumeSubHeadingListLabelStart}{\begin{enumerate}[leftmargin=0.0in, label={[\arabic*]}, itemsep=4pt, topsep=2pt]}
+\newcommand{\resumeSubHeadingListLabelEnd}{\end{enumerate}}
+
+\newcommand{\resumeItemListStart}{\begin{itemize}[leftmargin=*, itemsep=1pt, topsep=1pt, parsep=0pt, partopsep=0pt]}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-4pt}}
+
+
+\begin{document}
+
+\begin{center}
+    {\huge \scshape Dr. JAEHYUK LEE, Ph.D.} \\ \vspace{1pt}
+    \small
+    \raisebox{-0.1\height}\faPhone\ 470-861-6020 ~
+    \href{https://ruach.github.io}{\faHome\ https://ruach.github.io} ~
+    \href{mailto:jaehyukl@nvidia.com}{\faEnvelope\ jaehyukl@nvidia.com} ~ 
+   % \href{https://www.linkedin.com/in/jaehyuk-lee-29b33b121/}{\faLinkedin\ Jaehyuk Lee}  ~
+    \vspace{-10pt}
+\end{center}
+%
+\section{RESEARCH INTEREST}
+\emph{I am interested in computer systems security, especially in:  hardware/software codesign for security, Trusted Execution Environment (TEE), secure IO design for TEE, software/hardware vulnerability research, side-channel attacks and its mitigations, and fuzzing}%, and sharing knowledge through blogging}
+\vspace{-3pt}
+
+\section{EDUCATION}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lllp{3.5cm}r@{}}
+    \textbf{Institution} & \textbf{Degree} & \textbf{Field of Study} & \textbf{Dates} & \textbf{GPA} \\
+    Korea Advanced Institute of Science and Technology & \emph{Ph.D.} & Information Security & Aug 2015 - Feb 2021 & {3.95} \\
+    {Korea Advanced Institute of Science and Technology} & \emph{M.S.} & Information Security & Sep 2013 - Aug 2015 & {4.1} \\
+    {Handong Global University} & \emph{B.S.} & Computer Science & Mar 2010 - Aug 2013 & {4.2} 
+\end{tabular*}}
+\vspace{-6pt}
+%
+\section{TECHNICAL SKILLS}
+\begin{itemize}[leftmargin=0.1in, label={}, itemsep=1pt, topsep=0pt, parsep=0pt]
+    \item \small\textbf{Software}: C, C++, Rust, Scala, Java, Python, TF-A, TF-RMM, Caliptra FW, NVIDIA PSCFW, Linux Kernel, KVM, QEMU, ARM/X86 Assembly, Fuzzing, GDB, IDA Pro, CoCLI
+    \item \small\textbf{Hardware}: GEM5 (x86 simulator), Processor Pipeline, Cache, TLB, Microcode, HW Side Channel, (System)Verilog, Chisel (RISC-V), Intel SGX \& TDX, ARM CCA \& TrustZone, IOMMU, PCIe
+    \item \small\textbf{Spec}: Entity Attestation Token (EAT), Concise Reference Integrity Manifest (CoRIM), DICE Protection Environment (DPE), Security Protocol and Data Model (SPDM), TEE Device Interface Security Protocol (TDISP)
+\end{itemize}
+\vspace{-4pt}
+\section{WORK EXPERIENCE}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {Senior Security Engineer: NVIDIA Corporation, Santa Clara, CA}{Jul 2024 -- Current}
+      {Title}{Location}
+ \resumeItemListStart
+
+\resumeItem{Owned device evidence and CoRIM generation for Vera and Grace confidential computing}
+\begin{itemize}[leftmargin=0.18in, itemsep=0pt, topsep=0pt]
+    \item Implemented cross-layer firmware support across RMM, ATF, PSCFW (IROT), and Caliptra DPE to enable end-to-end Vera CCA evidence generation.
+    \item Implemented the software stack to enable baremetal attestation evidence generation for Vera and Grace CPUs.
+    \item Developed CoRIM for Vera CCA and Vera/Grace baremetal attestation
+\end{itemize}
+
+\resumeItem{Owned Live Firmware Activation (LFA) support for RMM}
+\begin{itemize}[leftmargin=0.18in, itemsep=0pt, topsep=0pt]
+    \item Built the supporting software stack across RMM, ATF, and Vera IROT to enable live firmware activation.
+\end{itemize}
+
+\resumeItem{Experienced in the end-to-end SBIOS firmware development lifecycle, including build, validation, testing, and firmware package releases.}
+    \resumeItemListEnd
+%
+    \resumeSubheading
+      {Postdoc Researcher: Georgia Institute of Technology, Atlanta, GA}{Jan 2022 -- Jul 2024}
+      {Title}{Location}
+      \resumeItemListStart
+        \resumeItem {Developed an automated fuzzer selection tool that dynamically selects fuzzer(s) based on runtime analysis \ref{paper:autofz}. Anyone having no knowledge of fuzzers can simply utilize it for automate vulnerability discovery, irrespective of the target 
+        }
+        \resumeItem {Experienced in vulnerability research on Intel and ARM's latest hardware feature designed for confidential VM (TDX \& CCA). Identified new side-channel issues related to resource allocation in the construction of confidential VMs}
+         \resumeItem {Implemented a secure and swift IO path between confidential Virtual Machines (VM) and peripherals such as GPUs by leveraging robust isolation guarantees of IOMMU (SMMU) and ARM CCA, avoiding encryption overhead~\ref{paper:portal}} \resumeItem {Volunteered as an IT admin, possessing hands-on experience on IPMI, python \& shell scripting for multiple server management (30 servers), and troubleshooting software/hardware issues.}
+    \resumeItemListEnd
+      
+    \resumeSubheading
+      {Postdoc Researcher: \small{Korea Advanced Institute of Science and Technology}, Korea}{Mar 2021 -- Dec 2021}
+      {Title}{Location}
+      \resumeItemListStart
+        \resumeItem {Implemented novel cache side-channel attack on X86 and Apple M1 chips, unveiling the memory access pattern without evicting the victim's cache entries and completely bypassing side-channel defenses monitoring cache evictions \ref{paper:cache-attack}}
+        \resumeItem {Actively engaged in mentoring and educating Ph.D. students in large group settings (20 students)}
+
+    \resumeItemListEnd
+    
+    \resumeSubheading
+      {Research Intern: Georgia Institute of Technology, Atlanta, GA}{Nov 2019 -- May 2020}
+      {Title}{Location}
+      \resumeItemListStart
+        \resumeItem {
+        To address side-channel attacks, I implemented a hardware framework enabling user space applications to subscribe to micro-architecture events, including cache and TLB evictions, and demonstrated its effectiveness on GEM5 simulator \ref{paper:sense}
+        }
+    \resumeItemListEnd
+
+    \resumeSubheading
+      {Research Intern: Microsoft Research, Redmond, WA}{May 2016 -- August 2016}
+      {Title}{Location}
+      \resumeItemListStart
+        \resumeItem {Conducted vulnerability research about the potential impact of a memory corruption within confidential computing (Intel SGX). Implemented practical ROP attack against encrypted binary, compromising its confidentiality guarantee \ref{paper:sgx-rop}}
+        \resumeItem {Developed secure Content Delivery Network (CDN) to safeguard user data residing on the server, allowing industry companies, to offload user data to a third-party CDN server without having to place full trust in the cloud provider}
+    \resumeItemListEnd
+  \resumeSubHeadingListEnd
+%------------Publications-----------
+\section{PUBLICATION \& PATENT \small\href{https://scholar.google.com/citations?user=nfpCTgUAAAAJ&hl=en}{(822 citations)}} 
+\emph{top-tier conferences (USENIX Security, NDSS) and Journal (TDSC)}
+\vspace{2pt}
+    \resumeSubHeadingListLabelStart
+%
+    \resumeProjectHeadingWithLabel
+    {\textbf{PORTAL: Fast and Secure Device Access with Arm CCA for Modern Arm Mobile SoC} $|$
+    \href{https://www.computer.org/csdl/proceedings-article/sp/2025/223600a013/21B7Q5c3ZHq}{Paper}}
+    {SP 2025}{paper:portal}
+    \resumeItemListStart
+        \resumeItem{TEEs designed for confidential VMs face limitations in directly interfacing with peripherals, necessitating encryption and decryption overhead when transmitting data to devices. Portal addresses this concern by implementing access control}
+        \resumeItem{
+        Redesign IOMMU subsystem within the Linux kernel and migrate the resource allocation component, including SMMU page table management, to TF-RMM. Introduce RMI interface calls between KVM and TF-RMM to enable confidential VM to have a dedicated, isolated DMA region.
+        }
+    \resumeItemListEnd
+%
+     \resumeProjectHeadingWithLabel
+    {\textbf{Survey On DeFi Users’ Perception of Security Breaches and Countermeasures} $|$ 
+    \href{https://www.usenix.org/conference/usenixsecurity24/presentation/liu-mingyi}{Paper}}
+    {USENIX 2024}{paper:defi}
+        \resumeItemListStart
+        \resumeItem{Investigated DeFi
+users’ security perceptions and commonly adopted practices,
+and how those affected by previous scams or hacks (DeFi victims) respond and try to recover their losses.}
+        \resumeItem{Conducted qualitative analysis through coding 14 interviewers' responses using Dedoose.}
+    \resumeItemListEnd
+    %
+    \resumeProjectHeadingWithLabel
+    {\textbf{SENSE: Enhancing Microarchitectural Awareness via Subscription-Based Notification} 
+    $|$
+    \href{https://www.ndss-symposium.org/wp-content/uploads/2024-176-paper.pdf}{Paper}
+    }{NDSS 2024}{paper:sense}
+%
+    \resumeItemListStart
+        \resumeItem{SENSE grants TEEs access to micro-architectural information, facilitating preemptive protection against side-channel attacks targeting caches and TLBs. SENSE is implemented using the GEM5 system-level processor simulator.}
+        \resumeItem{Modified GEM5 out-of-order processor pipeline to redirect its execution to the pre-registered handler by implementing micro-code. I modified cache and TLB design to introduce additional bits tracking events with minimal cost.} 
+    \resumeItemListEnd
+%
+    \resumeProjectHeadingWithLabel
+    {\textbf{autofz: Automated Fuzzer Composition at Runtime} $|$ 
+    \href{https://www.usenix.org/system/files/sec23fall-prepub-446-fu.pdf}{Paper}
+    $|$
+    \href{https://news.ycombinator.com/item?id=34977319}{Hacker News}}{USENIX 2023}{paper:autofz}
+    \resumeItemListStart
+        \resumeItem{
+      Autofz alleviates the need for users to manually configure the best fuzzer for each specific target. Similar to AutoML, it automatically and adaptively configures best-performing fuzzers at runtime and achieves the best performance.}
+        \resumeItem{
+        Experienced in multiple fuzzers such as LearnAFL, RedQueen, MOpt, AFLFast, AFL, LAF-Intel, Angora, FairFuzz, Radamsa, QSYM.
+        }
+    \resumeItemListEnd
+%
+    \resumeProjectHeadingWithLabel
+    {\textbf{Hacking in Darkness: Return-oriented Programming against Secure Enclaves}
+    $|$ \href{https://www.usenix.org/system/files/conference/usenixsecurity17/sec17-lee-jaehyuk.pdf}{Paper} $|$
+    \href{https://www.youtube.com/watch?v=NP7f3M_saUs}{Talk} $|$
+    \href{https://www.youtube.com/watch?v=hyuZFf3QxvM}{Demo}
+    }{USENIX 2017}{paper:sgx-rop}
+    \resumeItemListStart
+        \resumeItem{Dark-ROP demonstrates practical exploitation of memory corruption vulnerabilities within enclaves through Return-Oriented Programming (ROP), utilizing special oracles induced by the design of Intel SGX.}
+         \resumeItem{
+        Located ROP gadgets by leveraging the side effects of newly introduced instructions for Intel SGX, all without prior knowledge of the binary details of the target process. Implemented full ROP chain and demonstrated attack.}
+    \resumeItemListEnd
+%
+    \resumeProjectHeadingWithLabel
+    {\textbf{SGX-Bomb: Locking Down the Processor via Rowhammer Attack} $|$ 
+    \href{https://www.unexploitable.systems/uploads/jang:sgx-bomb.pdf}{Paper} $|$
+    \href{https://news.ycombinator.com/item?id=15743608}{Hacker News} $|$
+    \href{https://www.youtube.com/watch?v=HUAyTLV_Mao} 
+    {Demo}
+    }{SysTEX 2017}{paper:sgx-bomb}
+    \resumeItemListStart
+        \resumeItem{SGX-Bomb showcases how Rowhammer attacks can jeopardize enclave integrity, posing a risk of denial-of-service (DoS) scenarios, which is especially concerning for cloud providers that host untrusted enclave programs.}
+        \resumeItem{Implemented kernel driver to reverse engineer mapping between physical address to memory bank for locating two adjacent rows. Demonstrated rowhammer attack inside Intel SGX with X86 assembly and C++ coding.
+        }
+    \resumeItemListEnd
+%
+    \resumeProjectHeadingWithLabel
+    {\textbf{PrivateZone: Providing a Private Execution Environment using ARM TrustZone} $|$ \href{https://cysec.kr/publications/PrivateZone_Providing_a_Private_Execution_Environment_using_ARM_TrustZone.pdf}{Paper}
+    }{TDSC 2016}{paper:privateZone}
+    \resumeItemListStart
+        \resumeItem{PrivateZone provides a secure TEE for developers to deploy and execute user processes on mobile platforms. It delivers assurances similar to TrustZone without imposing additional costs on developers to deploy applications}
+        \resumeItem{Implemented stage-2 page table for  Privatezone and developed the logic for context switching, effectively managing the transition between trusted stage-2 page tables and untrusted ones. Experienced in ARM assembly coding.}
+        
+    \resumeItemListEnd
+
+%
+    \resumeProjectHeadingWithLabel
+    {\textbf{OpenSGX: An Open Platform for SGX Research} $|$ \href{https://taesoo.kim/pubs/2016/jain:opensgx.pdf}{Paper} $|$
+    \href{https://en.wikipedia.org/wiki/Software_Guard_Extensions}{Wikipedia: SGX}}{NDSS 2015}{paper:open-sgx}
+    \resumeItemListStart
+        \resumeItem{OpenSGX enables Intel SGX exploration with instruction-level emulation, addressing limitations in TEE software development and offering a comprehensive ecosystem, including an OS, enclave handling, user libraries, and debugging}
+        \resumeItem{Implemented X86 assembly facilitating context switching within the SGX environment, enabling the transition between entering and exiting the SGX. Developed stub-call allowing SGX to invoke system calls through a customized libc}        
+    \resumeItemListEnd
+%   
+    %\newpage
+    \resumeProjectHeadingWithLabel
+    {\textbf{A Rule Extraction Method Using Relevance Factor for FMM Neural Networks} $|$ 
+    \href{https://koreascience.kr/article/JAKO201319947249078.page}{Paper}
+    }{KTSDE 2013}{paper:FMM}
+    \resumeItemListStart
+        \resumeItem{
+        Enhanced Fuzzy Min-Max (FMM) neural network by incorporating the frequency of features in training.}
+        \resumeItem{
+        Resolved ambiguity by prioritizing clarity and relevance, while ensuring distinctiveness between features and patterns.}
+    \resumeItemListEnd
+%
+    \resumeProjectHeadingWithLabel
+    {\textbf{PRIME+RETOUCH: When Cache is Locked and Leaked} $|$ 
+    \href{https://arxiv.org/abs/2402.15425}{Paper}}{Arxiv}{paper:cache-attack}
+    \resumeItemListStart
+        \resumeItem{PRIME+RETOUCH attack circumvents cache-based side-channel defense monitoring eviction events by utilizing cache replacement policy metadata. The attack is demonstrated on both Intel x86 and Apple M1 architectures.}
+        \resumeItem{
+       Conducted reverse engineering to analyze the cache eviction policy of the most recent X86 processor and the Apple M1 chip.  Developed PoC in X86 and ARM assembly, employing pointer chasing along with memory barriers
+        }
+    \resumeItemListEnd
+%
+    \resumeProjectHeadingWithLabel
+    {\textbf{Apparatus and method for open and private IoT gateway using Intel SGX} $|$ \href{https://patents.google.com/patent/KR102162018B1/en}{Patent}}{KR102162018B1}{patent:iot-gateway}
+    \resumeItemListStart
+        \resumeItem{
+The invention introduces a secure IoT gateway design, utilizing Intel SGX for protocol conversion and encrypted data transfer. It includes enclave designs for cross-platform communication, encrypted key management, and secure updates.}
+    \resumeItemListEnd
+    \resumeSubHeadingListLabelEnd
+
+% adjust vscape based on the space you want to leave between each section.
+\section{SOFTWARE ARTIFACTS}
+\resumeSubHeadingListStart
+    \softwareArtifactHeading
+    {\makebox[2.2cm][l]{\textbf{Autofz:}} {\href{https://github.com/sslab-gatech/autofz}{\faGithub  \hspace{0.1em} https://github.com/sslab-gatech/autofz}}} 
+    {\makebox[1.0cm][l]{\faCodeFork 13} \makebox[1.0cm][l]{\faStar 85}}
+    %
+    \softwareArtifactHeading
+    {\makebox[2.2cm][l]{\textbf{OpenSGX:}} {\href{https://github.com/sslab-gatech/opensgx}{\faGithub  \hspace{0.1em} https://github.com/sslab-gatech/opensgx}}}
+    {\makebox[1.0cm][l]{\faCodeFork 82} \makebox[1.0cm][l]{\faStar 308}}
+    %
+     \softwareArtifactHeading
+    {\makebox[2.2cm][l]{\textbf{SGXBomb:}} {\href{https://github.com/sslab-gatech/sgx-bomb}{\faGithub  \hspace{0.1em} https://github.com/sslab-gatech/sgx-bomb}}}
+    {\makebox[1.0cm][l]{\faCodeFork 4} \makebox[1.0cm][l]{\faStar 18}}
+\resumeSubHeadingListEnd
+\vspace{7pt}
+
+\begin{comment}
+%-----------PROJECTS-----------
+\section{SELECTED PROJECTS}
+    \resumeSubHeadingListStart
+    \resumeProjectHeadingNoBold
+          {\textbf{Enabling Rack-scale Disaggregation-aware Confidential Computing via Intel IPUs}}
+          {{Intel Lab (On-going)}}
+          \resumeItemListStart
+            \resumeItem{Modern data centers disaggregate hardware for efficiency, but TEE lacks seamless communication with disaggregated resources. This project seeks to enhance TEE using Intel IPUs to establish secure channels within and across racks.}
+          \resumeItemListEnd
+%
+    \resumeProjectHeadingNoBold
+          {\textbf{Exploring Possible Vulnerabilities in Intel TDX}}
+          {{Intel Lab (On-going)}}
+          \resumeItemListStart
+            \resumeItem{TEEs for confidential VMs, create a unique threat model where trust cannot be placed in the host VMM and OS while still being essential for resource management. We investigate potential side channels due to this new threat model.}
+          \resumeItemListEnd
+%
+     \resumeProjectHeadingNoBold
+    {\textbf{Establishing Secure and Swift IO Path for Confidential Computing}}
+    {{Samsung Research (On-going)}} 
+    \resumeItemListStart
+        \resumeItem{
+        Develop a secure and efficient way for offloading LLM models on a mobile device with hardware-enforced access control. It achieves better performance and reduced energy consumption by eliminating the need for cryptographic operation}
+    \resumeItemListEnd
+%
+\newpage
+    \resumeProjectHeadingNoBold
+          {\textbf{Research for Virtual Machine Introspection (VMI) for Linux KVM }}
+          {{Nation Security Research Institute}}
+          \resumeItemListStart
+            \resumeItem{Developed a VMI library for Linux KVM enabling inspection of VM status, including memory and registers. Modified EPT management code and its fault handler to monitor malicious memory access events.}
+            \resumeItem{
+            Created an interface between QEMU and the KVM kernel module to enable the registration of events for monitoring suspicious memory access and updates.}
+        \resumeItemListEnd
+%
+    \resumeProjectHeadingNoBold
+    {\textbf{OS Kernel Behavior Modeling for Introspection}}
+    {{Agency for Defense Development}} 
+    \resumeItemListStart
+        \resumeItem{
+        Extracted invariants to capture the benign behavior of the Linux kernel, utilizing the Daikon dynamic invariant detection tool.}
+        \resumeItem{
+        Deployed Control Flow Integrity (CFI) for the Linux kernel, leveraging extracted invariants as the guiding principle to detect anomalous behavior.}
+    \resumeItemListEnd
+%%
+    \resumeProjectHeadingNoBold
+    {\textbf{Introspection Platform for Trusted Execution Environment (TEE)}}
+    {{National Security Research Institute (NSRI)}} 
+    \resumeItemListStart
+        \resumeItem{
+      Developed compiler-based monitoring software operating within Intel SGX, aimed at tracing all ENCLU instructions invoked within SGX enclaves to record security-critical events.}
+       
+    \resumeItemListEnd
+    \resumeSubHeadingListEnd
+\end{comment}
+%
+\section{PROFESSIONAL ACTIVITIES}
+
+    \resumeSubHeadingListLabelStart
+    \item {\textbf{Journal Review}}
+    \begin{itemize}[leftmargin=*, itemsep=4pt, topsep=1pt, parsep=0pt, partopsep=0pt]
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            IEEE Transactions on Dependable and Secure Computing & {\href{https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=8858}{Impact Factor: 7.3}},\ \emph{2024}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            Computer \& Security & {\href{https://shop.elsevier.com/journals/computers-and-security/0167-4048}{Impact Factor: 5.7}},\ \emph{2024}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            Journal of Information Security and Applications & {\href{https://www.sciencedirect.com/journal/journal-of-information-security-and-applications}{Impact Factor: 5.6}},\ \emph{2024}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            IEEE Access & {\href{https://ieeeaccess.ieee.org/about-ieee-access/learn-more-about-ieee-access/}{Impact Factor: 3.9}},\ \emph{2024}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            ACM Transactions on Internet Technology & {\href{https://dl.acm.org/journal/toit/indexing}{Impact Factor: 3.9}},\ \emph{2024}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            IEEE Journal of Communications and Networks & {\href{https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=5449605}{Impact Factor: 3.6}},\ \emph{2024}
+        \end{tabular*}\vspace{-4pt}
+    \end{itemize}
+%
+    \item {\textbf{Conference Review}}
+    \begin{itemize}[leftmargin=*, itemsep=4pt, topsep=1pt, parsep=0pt, partopsep=0pt]
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            IEEE Mobile Ad Hoc and Smart Systems (MASS) & \emph{2024}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            IEEE International Conference on Parallel and Distributed Systems (ICPADS) & \emph{2024}
+        \end{tabular*}\vspace{-4pt}
+    \end{itemize}
+
+    \item {\textbf{External Reviewer}}
+    \begin{itemize}[leftmargin=*, itemsep=4pt, topsep=1pt, parsep=0pt, partopsep=0pt]
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            IEEE Symposium on Security and Privacy (Oakland) & \emph{2016, 2017, 2018, 2020, 2021, 2022}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            USENIX Security Symposium (Security) & \emph{2015, 2021, 2022, 2023, 2024}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            ACM Conference on Computer and Communications Security (CCS) & \emph{2015, 2017, 2018, 2019, 2023}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            Network and Distributed System Security Symposium (NDSS) & \emph{2019, 2020, 2021}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            ACM ASIA Conference on Computer and Communications Security (ASIACCS) & \emph{2015, 2016, 2018}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            ACM Symposium on Operating Systems Principles (SOSP) & \emph{2021}
+        \end{tabular*}\vspace{-4pt}
+        \item\small\begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+            ACM International World Wide Web Conference (WWW) & \emph{2018}
+        \end{tabular*}\vspace{-4pt}
+    \end{itemize}
+    \resumeSubHeadingListLabelEnd
+    
+
+\section {INVITED TALK}
+    \resumeSubHeadingListLabelStart
+    \item {\small\textbf{A Novel Cache Side Channel Attack without Attacker Eviction}}
+    \resumeItemListStart
+        \resumeItem{Presented at Intel Side Channel Academic Program (SCAP), Virtual, Sep 2020}
+    \resumeItemListEnd
+    %
+    \item {\small\textbf{Hacking in Darkness: Return-oriented Programming against Secure Enclaves}}
+    \resumeItemListStart
+        \resumeItem{Presented at the 26th Usenix Security $|$ \href{https://www.youtube.com/watch?v=NP7f3M_saUs}{Presentation Link}, Vancouver, BC, Canada, Aug 2017}
+        \resumeItem{Presented at KimchiCon $|$ \href{https://www.youtube.com/watch?v=gC4vZ7BjZxA}{Presentation Link}, Daejeon, South Korea, Aug 2017}
+    \resumeItemListEnd
+    %
+    \item {\small\textbf{Tutorial: Trusted Execution Environment: TrustZone, ITP and SGX}}
+    \resumeItemListStart
+        \resumeItem{Korea Institute of Information Security and Cryptology, Seoul, South Korea, Apr 2015}
+    \resumeItemListEnd
+    \resumeSubHeadingListLabelEnd
+\vspace{7pt}
+
+\section {THESIS}
+    \resumeSubHeadingListStart
+    \item
+    \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
+      \parbox{0.8\textwidth}{\emph{\small Unintended Consequences of System Design: Unpremeditated Usage of Benign System Components Devastates Security}} & {\small Ph.D. Thesis.} \\
+    \end{tabular*}\vspace{-3pt}
+    %
+    \resumeProjectHeadingNoBold
+          {\emph{Detecting Emulated Environment: Exploiting Behavioral Discrepancies In QEMU}}
+          {{M.S. Thesis.}}
+    \resumeSubHeadingListEnd
+
+
+\begin{comment}
+\section {LIST OF REFERENCES}
+    \resumeSubHeadingListStart
+    \item {\textbf{Dr. BrentByunghoon Kang, Ph.D.}}
+    \vspace{-7pt}
+    \resumeReference{Professor of School of Information Security}
+    \resumeReference{KAIST, Daejeon, Korea}
+    \resumeReference{Homepage : \href{https://cysec.kr/}{https://cysec.kr/}}
+    \resumeReference{Email : \href{mailto:brentkang@kaist.ac.kr}{brentkang@kaist.ac.kr}}
+
+
+    \item {\textbf{Dr. Yeongjin Jang, Ph.D.}}
+    \vspace{-7pt}
+    \resumeReference{Principal Engineer, Software,}
+    \resumeReference{Samsung Research America, Mountain View, CA}
+    \resumeReference{Homepage : \href{https://www.unexploitable.systems/}{https://www.unexploitable.systems/}}
+    \resumeReference{Email : \href{y.jang1@samsung.com}{y.jang1@samsung.com}}
+\end{comment}
+
+
+
+
+
+\end{document}
+
+

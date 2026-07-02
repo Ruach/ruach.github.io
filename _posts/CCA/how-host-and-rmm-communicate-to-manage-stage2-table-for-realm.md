@@ -3,6 +3,57 @@
 ### Initialize context and entry point info
 std_svc_setup -> rmmd_setup -> bl31_register_rmm_init(&rmm_init)
 
+rmmd_setup configure context for RMM such as entry point. 
+
+```cpp
+int rmmd_setup(void)
+{
+    size_t shared_buf_size __unused;
+    uintptr_t shared_buf_base;
+    uint32_t ep_attr;
+    unsigned int linear_id = plat_my_core_pos();
+    rmmd_rmm_context_t *rmm_ctx = &rmm_context[linear_id];
+    struct rmm_manifest *manifest;
+    int rc;
+
+    /* Make sure RME is supported. */
+    if (is_feat_rme_present() == 0U) {
+        /* Mark the RMM boot as failed for all the CPUs */
+        rmm_boot_failed = true;
+        return -ENOTSUP;
+    }
+
+    rmm_ep_info = bl31_plat_get_next_image_ep_info(REALM);
+
+    ......
+
+    /* Zero out and load the boot manifest at the beginning of the share area */
+    manifest = (struct rmm_manifest *)shared_buf_base;
+    (void)memset((void *)manifest, 0, sizeof(struct rmm_manifest));
+
+    rc = plat_rmmd_load_manifest(manifest);
+    if (rc != 0) {
+        ERROR("Error loading RMM Boot Manifest (%i)\n", rc);
+        /* Mark the boot as failed for all the CPUs */
+        rmm_boot_failed = true;
+        return rc;
+    }
+    flush_dcache_range((uintptr_t)shared_buf_base, shared_buf_size);
+
+    rmm_ep_info->args.arg0 = linear_id;
+    rmm_ep_info->args.arg1 = RMM_EL3_INTERFACE_VERSION;
+    rmm_ep_info->args.arg2 = PLATFORM_CORE_COUNT;
+    rmm_ep_info->args.arg3 = shared_buf_base;
+
+    /* Initialise RMM context with this entry point information */
+    cm_setup_context(&rmm_ctx->cpu_ctx, rmm_ep_info);
+
+    /* Register init function for deferred init.  */
+    bl31_register_rmm_init(&rmm_init);
+
+    return 0;
+}
+```
 
 ### Setup execution context of processor for RMM
 bl31_main -> rmm_init -> rmm_context[plat_my_core_pos()] (each core can have different RMM context)

@@ -637,7 +637,7 @@ After switching the VCPU the most of the VCPU initialization is done by the func
 init_td_vmcs. I will not cover the details, but previously stored host registers
 SEAM VMCS will be written to TD VMCS's host registers because VM EXIT from the 
 TD should jump to the TDX Module. Also the initialization includes private EPTP.
-Note that the EPTP address is stored in the TDCS (refer to [part 1]({% post_url 2023-04-01-TD-VM-LIFECYCLE-1  %})). 
+Note that the EPTP address is stored in the TDCS (refer to [part 1]({% post_url TDX/2023-04-01-TD-VM-LIFECYCLE-1 %})). 
 However, note that the entire EPTP has not been initialized, but the root. 
 
 ```cpp
@@ -651,7 +651,7 @@ Also, note that there are two different types of EPTP for TD VM. For that VMCS
 needs to be updated to contain pointers of shared and private EPTP. The private 
 EPTP should be protected from the non-TD software layers, so it should be 
 initialized by the TDX Module and written to VMCS through TDH_VP_INIT. However,
-the shared EPTP is provided by the Host VMM (see detail in [part 3]({% post_url 2023-04-05-TD-VM-LIFECYCLE-3  %})), 
+the shared EPTP is provided by the Host VMM (see detail in [part 3]({% post_url TDX/2023-04-05-TD-VM-LIFECYCLE-3 %})), 
 and it doesn't need to be secure. The purpose of shared EPTP is for sharing data
 with host VMM. Therefore, another SEAMCALL is used to write the VMCS located in t
 he TDX memory (TDH.VP.WR). 

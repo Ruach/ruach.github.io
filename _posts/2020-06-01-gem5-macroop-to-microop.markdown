@@ -488,7 +488,7 @@ del wrap
                 decode_block=self.exportContext["decode_block"]).emit()
 ```
 
-When the parser comes across tokens composed of the "let {{ }}" block, it 
+When the parser comes across tokens composed of the "let {% raw %}{{ }}{% endraw %}" block, it 
 triggers the **p_global_let** function. The "let" block plays two vital roles in 
 parsing ISA files. Initially, it executes Python code literal to declare the 
 Python-based classes necessary for parsing. Subsequently, for generating CPP 

@@ -33,22 +33,23 @@
   
 
   
-    <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.3" />
+    <!-- Begin Jekyll SEO tag v2.9.0 -->
+<meta name="generator" content="Jekyll v4.4.1" />
 <meta property="og:title" content="KVM page-fault handling for TDX" />
 <meta property="og:locale" content="en" />
-<meta name="description" content="Basic idea to implement private page Because shared EPT is the same as the existing EPT, use the existing logic for shared EPT. On the other hand, secure EPT requires additional operations instead of directly reading/writing of the EPT entry. On EPT violation, The KVM mmu walks down the EPT tree from the root, determines the EPT entry to operate, and updates the entry. If necessary, a TLB shootdown is done. Because it’s very slow to directly walk secure EPT by TDX SEAMCALL, TDH.MEM.SEPT.RD(), the mirror of secure EPT is created and maintained. Add hooks to KVM MMU to reuse the existing code." />
-<meta property="og:description" content="Basic idea to implement private page Because shared EPT is the same as the existing EPT, use the existing logic for shared EPT. On the other hand, secure EPT requires additional operations instead of directly reading/writing of the EPT entry. On EPT violation, The KVM mmu walks down the EPT tree from the root, determines the EPT entry to operate, and updates the entry. If necessary, a TLB shootdown is done. Because it’s very slow to directly walk secure EPT by TDX SEAMCALL, TDH.MEM.SEPT.RD(), the mirror of secure EPT is created and maintained. Add hooks to KVM MMU to reuse the existing code." />
+<meta name="description" content="Basic idea to implement private page Because shared EPT is the same as the existing EPT, use the existing logic for shared EPT. On the other hand, secure EPT requires additional operations instead of directly reading/writing of the EPT entry. On EPT violation, The KVM mmu walks down the EPT tree from the root, determines the EPT entry to operate, and updates the entry. If necessary, a TLB shootdown is done. Because it’s very slow to directly walk secure EPT by TDX SEAMCALL, TDH.MEM.SEPT.RD(), the mirror of secure EPT is created and maintained. Add hooks to KVM MMU to reuse…" />
+<meta name="twitter:description" property="og:description" content="Basic idea to implement private page Because shared EPT is the same as the existing EPT, use the existing logic for shared EPT. On the other hand, secure EPT requires additional operations instead of directly reading/writing of the EPT entry. On EPT violation, The KVM mmu walks down the EPT tree from the root, determines the EPT entry to operate, and updates the entry. If necessary, a TLB shootdown is done. Because it’s very slow to directly walk secure EPT by TDX SEAMCALL, TDH.MEM.SEPT.RD(), the mirror of secure EPT is created and maintained. Add hooks to KVM MMU to reuse…" />
 <link rel="canonical" href="https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM-TDX/" />
 <meta property="og:url" content="https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM-TDX/" />
 <meta property="og:site_name" content="Ruach" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2023-04-15T00:00:00-04:00" />
+<meta property="article:modified_time" content="2023-04-15T00:00:00-04:00" />
 <meta name="twitter:card" content="summary" />
-<meta property="twitter:title" content="KVM page-fault handling for TDX" />
+<meta name="twitter:title" content="KVM page-fault handling for TDX" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-04-15T00:00:00-04:00","datePublished":"2023-04-15T00:00:00-04:00","description":"Basic idea to implement private page Because shared EPT is the same as the existing EPT, use the existing logic for shared EPT. On the other hand, secure EPT requires additional operations instead of directly reading/writing of the EPT entry. On EPT violation, The KVM mmu walks down the EPT tree from the root, determines the EPT entry to operate, and updates the entry. If necessary, a TLB shootdown is done. Because it’s very slow to directly walk secure EPT by TDX SEAMCALL, TDH.MEM.SEPT.RD(), the mirror of secure EPT is created and maintained. Add hooks to KVM MMU to reuse the existing code.","headline":"KVM page-fault handling for TDX","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM-TDX/"},"url":"https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM-TDX/"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-04-15T00:00:00-04:00","datePublished":"2023-04-15T00:00:00-04:00","description":"Basic idea to implement private page Because shared EPT is the same as the existing EPT, use the existing logic for shared EPT. On the other hand, secure EPT requires additional operations instead of directly reading/writing of the EPT entry. On EPT violation, The KVM mmu walks down the EPT tree from the root, determines the EPT entry to operate, and updates the entry. If necessary, a TLB shootdown is done. Because it’s very slow to directly walk secure EPT by TDX SEAMCALL, TDH.MEM.SEPT.RD(), the mirror of secure EPT is created and maintained. Add hooks to KVM MMU to reuse…","headline":"KVM page-fault handling for TDX","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM-TDX/"},"url":"https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM-TDX/"}</script>
 <!-- End Jekyll SEO tag -->
 
   
@@ -3273,7 +3274,7 @@ Secure Arbitration Mode (SEAM) is an extension of Virtual Machines Extension
 >
   <p>
     ©
-    <time>2024</time>
+    <time>2026</time>
     <a href="https://ruach.github.io">Jaehyuk Lee</a>.
     
       <span

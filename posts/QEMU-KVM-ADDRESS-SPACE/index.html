@@ -33,22 +33,23 @@
   
 
   
-    <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.3" />
+    <!-- Begin Jekyll SEO tag v2.9.0 -->
+<meta name="generator" content="Jekyll v4.4.1" />
 <meta property="og:title" content="QEMU Side Memory Management for VM with RAMBLOCK" />
 <meta property="og:locale" content="en" />
-<meta name="description" content="QEMU side memory management The MemoryRegion is the link between guest physical address space and the RAMBlocks containing the memory. Each MemoryRegion has the ram_addr_t offset of the RAMBlock and each RAMBlock has a MemoryRegion pointer. Note that MemoryRegion is more general than just RAM. It can also represent I/O memory where read/write callback functions are invoked on access. This is how hardware register accesses from a guest CPU are dispatched to emulated devices. The address_space_rw() function dispatches load/store accesses to the appropriate MemoryRegions. If a MemoryRegion is a RAM region then the data will be accessed from the RAMBlock’s mmapped guest RAM. The address_space_memory global variable is the guest physical memory space." />
-<meta property="og:description" content="QEMU side memory management The MemoryRegion is the link between guest physical address space and the RAMBlocks containing the memory. Each MemoryRegion has the ram_addr_t offset of the RAMBlock and each RAMBlock has a MemoryRegion pointer. Note that MemoryRegion is more general than just RAM. It can also represent I/O memory where read/write callback functions are invoked on access. This is how hardware register accesses from a guest CPU are dispatched to emulated devices. The address_space_rw() function dispatches load/store accesses to the appropriate MemoryRegions. If a MemoryRegion is a RAM region then the data will be accessed from the RAMBlock’s mmapped guest RAM. The address_space_memory global variable is the guest physical memory space." />
+<meta name="description" content="QEMU side memory management The MemoryRegion is the link between guest physical address space and the RAMBlocks containing the memory. Each MemoryRegion has the ram_addr_t offset of the RAMBlock and each RAMBlock has a MemoryRegion pointer. Note that MemoryRegion is more general than just RAM. It can also represent I/O memory where read/write callback functions are invoked on access. This is how hardware register accesses from a guest CPU are dispatched to emulated devices. The address_space_rw() function dispatches load/store accesses to the appropriate MemoryRegions. If a MemoryRegion is a RAM region then the data will be accessed from the RAMBlock’s…" />
+<meta name="twitter:description" property="og:description" content="QEMU side memory management The MemoryRegion is the link between guest physical address space and the RAMBlocks containing the memory. Each MemoryRegion has the ram_addr_t offset of the RAMBlock and each RAMBlock has a MemoryRegion pointer. Note that MemoryRegion is more general than just RAM. It can also represent I/O memory where read/write callback functions are invoked on access. This is how hardware register accesses from a guest CPU are dispatched to emulated devices. The address_space_rw() function dispatches load/store accesses to the appropriate MemoryRegions. If a MemoryRegion is a RAM region then the data will be accessed from the RAMBlock’s…" />
 <link rel="canonical" href="https://ruach.github.io/posts/QEMU-KVM-ADDRESS-SPACE/" />
 <meta property="og:url" content="https://ruach.github.io/posts/QEMU-KVM-ADDRESS-SPACE/" />
 <meta property="og:site_name" content="Ruach" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2023-04-11T00:00:00-04:00" />
+<meta property="article:modified_time" content="2023-04-11T00:00:00-04:00" />
 <meta name="twitter:card" content="summary" />
-<meta property="twitter:title" content="QEMU Side Memory Management for VM with RAMBLOCK" />
+<meta name="twitter:title" content="QEMU Side Memory Management for VM with RAMBLOCK" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-04-11T00:00:00-04:00","datePublished":"2023-04-11T00:00:00-04:00","description":"QEMU side memory management The MemoryRegion is the link between guest physical address space and the RAMBlocks containing the memory. Each MemoryRegion has the ram_addr_t offset of the RAMBlock and each RAMBlock has a MemoryRegion pointer. Note that MemoryRegion is more general than just RAM. It can also represent I/O memory where read/write callback functions are invoked on access. This is how hardware register accesses from a guest CPU are dispatched to emulated devices. The address_space_rw() function dispatches load/store accesses to the appropriate MemoryRegions. If a MemoryRegion is a RAM region then the data will be accessed from the RAMBlock’s mmapped guest RAM. The address_space_memory global variable is the guest physical memory space.","headline":"QEMU Side Memory Management for VM with RAMBLOCK","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/QEMU-KVM-ADDRESS-SPACE/"},"url":"https://ruach.github.io/posts/QEMU-KVM-ADDRESS-SPACE/"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-04-11T00:00:00-04:00","datePublished":"2023-04-11T00:00:00-04:00","description":"QEMU side memory management The MemoryRegion is the link between guest physical address space and the RAMBlocks containing the memory. Each MemoryRegion has the ram_addr_t offset of the RAMBlock and each RAMBlock has a MemoryRegion pointer. Note that MemoryRegion is more general than just RAM. It can also represent I/O memory where read/write callback functions are invoked on access. This is how hardware register accesses from a guest CPU are dispatched to emulated devices. The address_space_rw() function dispatches load/store accesses to the appropriate MemoryRegions. If a MemoryRegion is a RAM region then the data will be accessed from the RAMBlock’s…","headline":"QEMU Side Memory Management for VM with RAMBLOCK","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/QEMU-KVM-ADDRESS-SPACE/"},"url":"https://ruach.github.io/posts/QEMU-KVM-ADDRESS-SPACE/"}</script>
 <!-- End Jekyll SEO tag -->
 
   
@@ -3309,7 +3310,7 @@ inst...
 >
   <p>
     ©
-    <time>2024</time>
+    <time>2026</time>
     <a href="https://ruach.github.io">Jaehyuk Lee</a>.
     
       <span

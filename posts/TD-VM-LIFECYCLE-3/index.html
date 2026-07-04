@@ -33,19 +33,20 @@
   
 
   
-    <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.3" />
+    <!-- Begin Jekyll SEO tag v2.9.0 -->
+<meta name="generator" content="Jekyll v4.4.1" />
 <meta property="og:title" content="TD VM Life Cycle Part 3" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND) In the previous postings, we built the meta data required for launching TD VM such as TDR, TDCS and VMCS of VCPU. However, to actually run code inside the TD, we need memory pages and its mappings. We will see how TDX Module builds up the Secure EPT for private memories and add initial set of TD private pages using TDH.MEM.SEPT.ADD and TDH.MEM.PAGE.ADD, respectively." />
-<meta property="og:description" content="TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND) In the previous postings, we built the meta data required for launching TD VM such as TDR, TDCS and VMCS of VCPU. However, to actually run code inside the TD, we need memory pages and its mappings. We will see how TDX Module builds up the Secure EPT for private memories and add initial set of TD private pages using TDH.MEM.SEPT.ADD and TDH.MEM.PAGE.ADD, respectively." />
+<meta name="twitter:description" property="og:description" content="TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND) In the previous postings, we built the meta data required for launching TD VM such as TDR, TDCS and VMCS of VCPU. However, to actually run code inside the TD, we need memory pages and its mappings. We will see how TDX Module builds up the Secure EPT for private memories and add initial set of TD private pages using TDH.MEM.SEPT.ADD and TDH.MEM.PAGE.ADD, respectively." />
 <link rel="canonical" href="https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/" />
 <meta property="og:url" content="https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/" />
 <meta property="og:site_name" content="Ruach" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2023-04-05T00:00:00-04:00" />
+<meta property="article:modified_time" content="2023-04-05T00:00:00-04:00" />
 <meta name="twitter:card" content="summary" />
-<meta property="twitter:title" content="TD VM Life Cycle Part 3" />
+<meta name="twitter:title" content="TD VM Life Cycle Part 3" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-04-05T00:00:00-04:00","datePublished":"2023-04-05T00:00:00-04:00","description":"TD Boot Memory Setup (TDH.MEM.SEPT.ADD-TDH.MR.EXTEND) In the previous postings, we built the meta data required for launching TD VM such as TDR, TDCS and VMCS of VCPU. However, to actually run code inside the TD, we need memory pages and its mappings. We will see how TDX Module builds up the Secure EPT for private memories and add initial set of TD private pages using TDH.MEM.SEPT.ADD and TDH.MEM.PAGE.ADD, respectively.","headline":"TD VM Life Cycle Part 3","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/"},"url":"https://ruach.github.io/posts/TD-VM-LIFECYCLE-3/"}</script>
@@ -2854,7 +2855,7 @@ configuration steps are necessary for the TDX m...
 >
   <p>
     ©
-    <time>2024</time>
+    <time>2026</time>
     <a href="https://ruach.github.io">Jaehyuk Lee</a>.
     
       <span

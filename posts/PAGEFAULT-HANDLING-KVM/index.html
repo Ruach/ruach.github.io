@@ -33,19 +33,20 @@
   
 
   
-    <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.3" />
+    <!-- Begin Jekyll SEO tag v2.9.0 -->
+<meta name="generator" content="Jekyll v4.4.1" />
 <meta property="og:title" content="KVM page-fault handling" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="EPT violation exit and handle The logistics of KVM’s page fault handling is like below: __vmx_handle_exit -&gt; handle_ept_violation -&gt; __vmx_handle_ept_violation -&gt; kvm_mmu_page_fault -&gt; kvm_mmu_do_page_fault -&gt; mmu.page_fault(), kvm_tdp_page_fault (when tdp is enabled) -&gt; direct_page_fault" />
-<meta property="og:description" content="EPT violation exit and handle The logistics of KVM’s page fault handling is like below: __vmx_handle_exit -&gt; handle_ept_violation -&gt; __vmx_handle_ept_violation -&gt; kvm_mmu_page_fault -&gt; kvm_mmu_do_page_fault -&gt; mmu.page_fault(), kvm_tdp_page_fault (when tdp is enabled) -&gt; direct_page_fault" />
+<meta name="twitter:description" property="og:description" content="EPT violation exit and handle The logistics of KVM’s page fault handling is like below: __vmx_handle_exit -&gt; handle_ept_violation -&gt; __vmx_handle_ept_violation -&gt; kvm_mmu_page_fault -&gt; kvm_mmu_do_page_fault -&gt; mmu.page_fault(), kvm_tdp_page_fault (when tdp is enabled) -&gt; direct_page_fault" />
 <link rel="canonical" href="https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM/" />
 <meta property="og:url" content="https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM/" />
 <meta property="og:site_name" content="Ruach" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2023-04-12T00:00:00-04:00" />
+<meta property="article:modified_time" content="2023-04-12T00:00:00-04:00" />
 <meta name="twitter:card" content="summary" />
-<meta property="twitter:title" content="KVM page-fault handling" />
+<meta name="twitter:title" content="KVM page-fault handling" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-04-12T00:00:00-04:00","datePublished":"2023-04-12T00:00:00-04:00","description":"EPT violation exit and handle The logistics of KVM’s page fault handling is like below: __vmx_handle_exit -&gt; handle_ept_violation -&gt; __vmx_handle_ept_violation -&gt; kvm_mmu_page_fault -&gt; kvm_mmu_do_page_fault -&gt; mmu.page_fault(), kvm_tdp_page_fault (when tdp is enabled) -&gt; direct_page_fault","headline":"KVM page-fault handling","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM/"},"url":"https://ruach.github.io/posts/PAGEFAULT-HANDLING-KVM/"}</script>
@@ -3946,7 +3947,7 @@ inst...
 >
   <p>
     ©
-    <time>2024</time>
+    <time>2026</time>
     <a href="https://ruach.github.io">Jaehyuk Lee</a>.
     
       <span

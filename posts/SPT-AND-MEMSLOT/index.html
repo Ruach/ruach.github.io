@@ -33,22 +33,23 @@
   
 
   
-    <!-- Begin Jekyll SEO tag v2.8.0 -->
-<meta name="generator" content="Jekyll v4.3.3" />
+    <!-- Begin Jekyll SEO tag v2.9.0 -->
+<meta name="generator" content="Jekyll v4.4.1" />
 <meta property="og:title" content="Shadow Page Table (SPT) and MEMSLOT" />
 <meta property="og:locale" content="en" />
-<meta name="description" content="Shadow Page Table (SPT) Before the introduction of TDP, shadow paging has been utilized to translate GPA to HPA. The KVM module utilize a unified concept to abstract the structure managing this translation (GPA-&gt;HPA), called Shadow Page Table (SPT). Although it reminds of shadow paging, the emulated page table based translation before the invention TDP, now it represents the table handling GPA-&gt;HPA translation regardless of the implementation behind. KVM utilizes the term Two Dimensional Paging (TDP) to distinguish EPT based translation (hardware) from shadow page table based translation (software-emulation). This terminology is quite confusing, but allow the TDP implementation to fit into the code base previously implemented for shadow paging. Each entry of SPT is called Shadow Page Table Entry (SPTE)." />
-<meta property="og:description" content="Shadow Page Table (SPT) Before the introduction of TDP, shadow paging has been utilized to translate GPA to HPA. The KVM module utilize a unified concept to abstract the structure managing this translation (GPA-&gt;HPA), called Shadow Page Table (SPT). Although it reminds of shadow paging, the emulated page table based translation before the invention TDP, now it represents the table handling GPA-&gt;HPA translation regardless of the implementation behind. KVM utilizes the term Two Dimensional Paging (TDP) to distinguish EPT based translation (hardware) from shadow page table based translation (software-emulation). This terminology is quite confusing, but allow the TDP implementation to fit into the code base previously implemented for shadow paging. Each entry of SPT is called Shadow Page Table Entry (SPTE)." />
+<meta name="description" content="Shadow Page Table (SPT) Before the introduction of TDP, shadow paging has been utilized to translate GPA to HPA. The KVM module utilize a unified concept to abstract the structure managing this translation (GPA-&gt;HPA), called Shadow Page Table (SPT). Although it reminds of shadow paging, the emulated page table based translation before the invention TDP, now it represents the table handling GPA-&gt;HPA translation regardless of the implementation behind. KVM utilizes the term Two Dimensional Paging (TDP) to distinguish EPT based translation (hardware) from shadow page table based translation (software-emulation). This terminology is quite confusing, but allow the TDP implementation to…" />
+<meta name="twitter:description" property="og:description" content="Shadow Page Table (SPT) Before the introduction of TDP, shadow paging has been utilized to translate GPA to HPA. The KVM module utilize a unified concept to abstract the structure managing this translation (GPA-&gt;HPA), called Shadow Page Table (SPT). Although it reminds of shadow paging, the emulated page table based translation before the invention TDP, now it represents the table handling GPA-&gt;HPA translation regardless of the implementation behind. KVM utilizes the term Two Dimensional Paging (TDP) to distinguish EPT based translation (hardware) from shadow page table based translation (software-emulation). This terminology is quite confusing, but allow the TDP implementation to…" />
 <link rel="canonical" href="https://ruach.github.io/posts/SPT-AND-MEMSLOT/" />
 <meta property="og:url" content="https://ruach.github.io/posts/SPT-AND-MEMSLOT/" />
 <meta property="og:site_name" content="Ruach" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2023-04-10T00:00:00-04:00" />
+<meta property="article:modified_time" content="2023-04-10T00:00:00-04:00" />
 <meta name="twitter:card" content="summary" />
-<meta property="twitter:title" content="Shadow Page Table (SPT) and MEMSLOT" />
+<meta name="twitter:title" content="Shadow Page Table (SPT) and MEMSLOT" />
 <meta name="twitter:site" content="@ruach_lee" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-04-10T00:00:00-04:00","datePublished":"2023-04-10T00:00:00-04:00","description":"Shadow Page Table (SPT) Before the introduction of TDP, shadow paging has been utilized to translate GPA to HPA. The KVM module utilize a unified concept to abstract the structure managing this translation (GPA-&gt;HPA), called Shadow Page Table (SPT). Although it reminds of shadow paging, the emulated page table based translation before the invention TDP, now it represents the table handling GPA-&gt;HPA translation regardless of the implementation behind. KVM utilizes the term Two Dimensional Paging (TDP) to distinguish EPT based translation (hardware) from shadow page table based translation (software-emulation). This terminology is quite confusing, but allow the TDP implementation to fit into the code base previously implemented for shadow paging. Each entry of SPT is called Shadow Page Table Entry (SPTE).","headline":"Shadow Page Table (SPT) and MEMSLOT","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/SPT-AND-MEMSLOT/"},"url":"https://ruach.github.io/posts/SPT-AND-MEMSLOT/"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-04-10T00:00:00-04:00","datePublished":"2023-04-10T00:00:00-04:00","description":"Shadow Page Table (SPT) Before the introduction of TDP, shadow paging has been utilized to translate GPA to HPA. The KVM module utilize a unified concept to abstract the structure managing this translation (GPA-&gt;HPA), called Shadow Page Table (SPT). Although it reminds of shadow paging, the emulated page table based translation before the invention TDP, now it represents the table handling GPA-&gt;HPA translation regardless of the implementation behind. KVM utilizes the term Two Dimensional Paging (TDP) to distinguish EPT based translation (hardware) from shadow page table based translation (software-emulation). This terminology is quite confusing, but allow the TDP implementation to…","headline":"Shadow Page Table (SPT) and MEMSLOT","mainEntityOfPage":{"@type":"WebPage","@id":"https://ruach.github.io/posts/SPT-AND-MEMSLOT/"},"url":"https://ruach.github.io/posts/SPT-AND-MEMSLOT/"}</script>
 <!-- End Jekyll SEO tag -->
 
   
@@ -1908,7 +1909,7 @@ inst...
 >
   <p>
     ©
-    <time>2024</time>
+    <time>2026</time>
     <a href="https://ruach.github.io">Jaehyuk Lee</a>.
     
       <span

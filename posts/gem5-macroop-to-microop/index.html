@@ -795,7 +795,7 @@
   class="readtime"
   data-bs-toggle="tooltip"
   data-bs-placement="bottom"
-  title="9094 words"
+  title="9095 words"
 >
   <em>50 min</em> read</span>
 
@@ -1613,7 +1613,7 @@ del wrap
                 <span class="n">decode_block</span><span class="o">=</span><span class="n">self</span><span class="p">.</span><span class="n">exportContext</span><span class="p">[</span><span class="sh">"</span><span class="s">decode_block</span><span class="sh">"</span><span class="p">]).</span><span class="nf">emit</span><span class="p">()</span>
 </pre></td></tr></tbody></table></code></div></div>
 
-<p>When the parser comes across tokens composed of the “let “ block, it 
+<p>When the parser comes across tokens composed of the “let {{ }}” block, it 
 triggers the <strong>p_global_let</strong> function. The “let” block plays two vital roles in 
 parsing ISA files. Initially, it executes Python code literal to declare the 
 Python-based classes necessary for parsing. Subsequently, for generating CPP 

@@ -14,11 +14,10 @@ title: ""
     Ruach (Hebrew <a href="https://www.youtube.com/watch?v=zMaNEurciu8" title="ruach_pronunciation">[רוּחַ]</a>)
 </h4>
 
-Ruach is the Hebrew word translated as breath ([Ezekiel 37:5-6][5]) and wind 
-([John 3:8][4]) in the Scripture. In the context 
-of Christianity, it is commonly interpreted as a representation of the 
-[Holy Spirit][3] ([Genesis 1:2][2]).
+Ruach is the Hebrew word translated as breath (<a href="https://www.bible.com/bible/111/EZK.37.5-6.NIV" title="Ezekiel 37:5-6">Ezekiel 37:5-6</a>) and wind (<a href="https://www.bible.com/bible/111/JHN.3.8.NIV" title="John 3:8">John 3:8</a>) in the Scripture. In the context of Christianity, it is commonly interpreted as a representation of the <a href="https://en.wikipedia.org/wiki/Holy_Spirit_in_Christianity#:~:text=The%20Holy%20Spirit%20enables%20Christian,particularly%20in%20times%20of%20trial." title="Holy Spirit">Holy Spirit</a> (<a href="https://www.bible.com/bible/111/GEN.1.1-2.NIV" title="Genesis 1:2">Genesis 1:2</a>).
+
 <br>
+
 <h4 class="post-text">
   My Confession
 </h4>
@@ -56,9 +55,4 @@ I would like to end this confession by sharing the Bible verse that has remained
 
 
 
-
-[2]: <https://www.bible.com/bible/111/GEN.1.1-2.NIV> "genesis_1_2"
-[3]: <https://en.wikipedia.org/wiki/Holy_Spirit_in_Christianity#:~:text=The%20Holy%20Spirit%20enables%20Christian,particularly%20in%20times%20of%20trial.> "holy_spirit"
-[4]: <https://www.bible.com/bible/111/JHN.3.8.NIV> "John 3:8"
-[5]: <https://www.bible.com/bible/111/EZK.37.5-6.NIV>> "Ezekiel 37:5-6"
 

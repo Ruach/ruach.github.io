@@ -17,7 +17,15 @@
 \usepackage{tabularx}
 \usepackage{fontawesome}
 \usepackage{multicol}
+%
 \usepackage[framemethod=tikz]{mdframed}
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
 \setlength{\multicolsep}{-3.0pt}
 \setlength{\columnsep}{-1pt}
 \input{glyphtounicode}
@@ -105,6 +113,11 @@
 \definecolor{venuecolor}{RGB}{30, 80, 150}
 \definecolor{interestbg}{RGB}{245, 248, 252}
 \definecolor{interestbar}{RGB}{30, 80, 150}
+% Timeline colors
+\definecolor{cIndustry}{RGB}{30, 80, 150}
+\definecolor{cAcademia}{RGB}{70, 140, 70}
+\definecolor{cIntern}{RGB}{180, 100, 30}
+\definecolor{cPaper}{RGB}{160, 50, 50}
 
 % Left-ruled box for the Research Interest statement.
 \newmdenv[
@@ -159,7 +172,7 @@
 \renewcommand\labelitemi{$\vcenter{\hbox{\tiny$\bullet$}}$}
 \renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
 
-\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}, itemsep=4pt, topsep=2pt]}
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}, itemsep=8pt, topsep=2pt]}
 \newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
 
 \newcommand{\resumeSubHeadingListLabelStart}{\begin{enumerate}[leftmargin=0.0in, label={[\arabic*]}, itemsep=8pt, topsep=2pt]}
@@ -167,6 +180,114 @@
 
 \newcommand{\resumeItemListStart}{\begin{itemize}[leftmargin=*, itemsep=1pt, topsep=1pt, parsep=0pt, partopsep=0pt]}
 \newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-4pt}}
+
+% ---- Career Timeline macro ----
+% Single horizontal axis. Role bars sit on the axis; publication pins hang below.
+\begin{comment} % timeline chart - commented out
+\newcommand{\timelineChart}{%
+\noindent\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[x=1.27cm, y=1.0cm, font=\scriptsize]
+
+  % ---- axis line ----
+  \draw[gray!50, line width=0.6pt] (0,0) -- (13.1,0);
+
+  % ---- tick marks + year labels ----
+  \foreach \yr/\lbl in {0/2013,2/2015,4/2017,6/2019,8/2021,10/2023,12/2025}{
+    \draw[gray!50] (\yr, 0.06) -- (\yr, -0.06);
+    \node[gray!60, anchor=north, font=\tiny] at (\yr, -0.1) {\lbl};
+  }
+
+  % ---- role bars (height 0.32, centred on y=0.22) ----
+  % bar macro: \roleBar{xstart}{xend}{color}{label}
+  % M.S. @ KAIST  Sep2013--Aug2015  -> 0.67..2.67
+  \fill[rounded corners=2pt, cAcademia!75]
+    (0.67, 0.06) rectangle node[font=\tiny\bfseries, white] {M.S.\ KAIST} (2.67, 0.38);
+  % Ph.D. @ KAIST  Aug2015--Feb2021 -> 2.67..8.17
+  \fill[rounded corners=2pt, cAcademia!90]
+    (2.67, 0.06) rectangle node[font=\tiny\bfseries, white] {Ph.D.\ @ KAIST} (8.17, 0.38);
+  % MSR Intern  May--Aug 2016 -> 3.42..3.67
+  \fill[rounded corners=1pt, cIntern!85]
+    (3.42, 0.06) rectangle (3.67, 0.38);
+  \node[cIntern!90, anchor=south, font=\tiny\bfseries] at (3.545, 0.42) {MSR};
+  % GT Intern  Nov2019--May2020 -> 6.83..7.42
+  \fill[rounded corners=1pt, cIntern!85]
+    (6.83, 0.06) rectangle (7.42, 0.38);
+  \node[cIntern!90, anchor=south, font=\tiny\bfseries] at (7.125, 0.42) {GT Intern};
+  % KAIST Postdoc  Mar--Dec 2021 -> 8.17..8.92
+  \fill[rounded corners=2pt, cAcademia!60]
+    (8.17, 0.06) rectangle (8.92, 0.38);
+  \node[cAcademia!80, anchor=south, font=\tiny\bfseries] at (8.545, 0.42) {PD};
+  % GT Postdoc  Jan2022--Jul2024 -> 9.0..11.5
+  \fill[rounded corners=2pt, cAcademia!85]
+    (9.0, 0.06) rectangle node[font=\tiny\bfseries, white] {GT Postdoc} (11.5, 0.38);
+  % NVIDIA  Jul2024--present -> 11.5..13.1
+  \fill[rounded corners=2pt, cIndustry!90]
+    (11.5, 0.06) rectangle node[font=\tiny\bfseries, white] {NVIDIA} (13.1, 0.38);
+
+  % ---- publication pins (stem down from axis, label below) ----
+  % Each pin: dot on axis, stem, short label
+  % Alternating depths -0.55 / -0.95 to avoid overlap
+  % pin macro (inline): dot at (x,0), stem to (x, depth), label below
+  \def\pina{-0.55}  % shallow
+  \def\pinb{-1.05}  % deep
+
+  % OpenSGX NDSS'15  x=2.0  -> shallow
+  \draw[cPaper!70, line width=0.5pt] (2.0,0) -- (2.0,\pina);
+  \fill[cPaper] (2.0,0) circle (1.8pt);
+  \node[cPaper, anchor=north, align=center, font=\tiny] at (2.0,\pina) {OpenSGX\\NDSS'15};
+
+  % PrivateZone TDSC'16  x=3.0  -> deep
+  \draw[cPaper!70, line width=0.5pt] (3.0,0) -- (3.0,\pinb);
+  \fill[cPaper] (3.0,0) circle (1.8pt);
+  \node[cPaper, anchor=north, align=center, font=\tiny] at (3.0,\pinb) {PrivateZone\\TDSC'16};
+
+  % SGX-Bomb SysTEX'17  x=4.0  -> shallow
+  \draw[cPaper!70, line width=0.5pt] (4.0,0) -- (4.0,\pina);
+  \fill[cPaper] (4.0,0) circle (1.8pt);
+  \node[cPaper, anchor=north, align=center, font=\tiny] at (4.0,\pina) {SGX-Bomb\\SysTEX'17};
+
+  % Dark-ROP USENIX'17  x=4.67  -> deep
+  \draw[cPaper!70, line width=0.5pt] (4.67,0) -- (4.67,\pinb);
+  \fill[cPaper] (4.67,0) circle (1.8pt);
+  \node[cPaper, anchor=north, align=center, font=\tiny] at (4.67,\pinb) {Dark-ROP\\USENIX'17};
+
+  % P+RETOUCH arXiv'21  x=8.5  -> shallow
+  \draw[cPaper!70, line width=0.5pt] (8.5,0) -- (8.5,\pina);
+  \fill[cPaper] (8.5,0) circle (1.8pt);
+  \node[cPaper, anchor=north, align=center, font=\tiny] at (8.5,\pina) {P+RETOUCH\\arXiv'21};
+
+  % autofz USENIX'23  x=10.6  -> deep
+  \draw[cPaper!70, line width=0.5pt] (10.6,0) -- (10.6,\pinb);
+  \fill[cPaper] (10.6,0) circle (1.8pt);
+  \node[cPaper, anchor=north, align=center, font=\tiny] at (10.6,\pinb) {autofz\\USENIX'23};
+
+  % SENSE NDSS'24  x=11.1  -> shallow
+  \draw[cPaper!70, line width=0.5pt] (11.1,0) -- (11.1,\pina);
+  \fill[cPaper] (11.1,0) circle (1.8pt);
+  \node[cPaper, anchor=north, align=center, font=\tiny] at (11.1,\pina) {SENSE\\NDSS'24};
+
+  % DeFi USENIX'24  x=11.7  -> deep
+  \draw[cPaper!70, line width=0.5pt] (11.7,0) -- (11.7,\pinb);
+  \fill[cPaper] (11.7,0) circle (1.8pt);
+  \node[cPaper, anchor=north, align=center, font=\tiny] at (11.7,\pinb) {DeFi\\USENIX'24};
+
+  % PORTAL SP'25  x=12.3  -> shallow
+  \draw[cPaper!70, line width=0.5pt] (12.3,0) -- (12.3,\pina);
+  \fill[cPaper] (12.3,0) circle (1.8pt);
+  \node[cPaper, anchor=north, align=center, font=\tiny] at (12.3,\pina) {PORTAL\\SP'25};
+
+  % ---- legend (bottom right) ----
+  \fill[rounded corners=1pt, cAcademia!85] (7.5,-1.65) rectangle (7.85,-1.45)
+    node[right, black, font=\tiny] {\ Academia};
+  \fill[rounded corners=1pt, cIntern!85]   (9.3,-1.65) rectangle (9.65,-1.45)
+    node[right, black, font=\tiny] {\ Internship};
+  \fill[rounded corners=1pt, cIndustry!90] (11.1,-1.65) rectangle (11.45,-1.45)
+    node[right, black, font=\tiny] {\ Industry};
+
+\end{tikzpicture}%
+}% end resizebox
+}
+\end{comment}
 
 
 \begin{document}
@@ -181,9 +302,14 @@
     \vspace{-10pt}
 \end{center}
 %
+%% ---- Career Timeline ----
+%\vspace{2pt}
+%\noindent\timelineChart
+%\vspace{4pt}
+%%
 \section{RESEARCH INTEREST}
 \begin{interestbox}
-\small\emph{I am interested in computer systems security, especially in:  hardware/software codesign for security, Trusted Execution Environment (TEE), secure IO design for TEE, software/hardware vulnerability research, side-channel attacks and mitigations, and fuzzing}
+\small\emph{I am interested in computer systems security, with a focus on hardware/software co-design for security, Trusted Execution Environments (TEEs), secure I/O design, building verifiable chains of trust through secure boot and cryptographic attestation, and vulnerability research including side-channel attacks and mitigations, and fuzzing.}
 \end{interestbox}
 \vspace{-3pt}
 %
@@ -213,8 +339,8 @@
     \resumeItem{Built the supporting software stack across \emph{RMM, ATF, and Vera IROT} to enable live firmware activation.}
 \resumeItemListEnd
 %
-\resumeItem{Experienced in the end-to-end SBIOS firmware development lifecycle, including build, validation, testing, and firmware package releases.}
 \resumeItem{Engineered secure tenant data loading (e.g., ML models) for NVFlare by integrating encrypted disk and early attestation key provisioning directly into initramfs, securing the boot sequence.}
+\resumeItem{Experienced in the end-to-end SBIOS firmware development lifecycle, including build, validation, testing, and firmware package releases.}
     \resumeItemListEnd
     \resumeSubheading
       {Postdoc Researcher: Georgia Institute of Technology, Atlanta, GA}{Jan 2022 -- Jul 2024}
@@ -252,8 +378,9 @@
     \resumeItemListEnd
   \resumeSubHeadingListEnd
 %------------Publications-----------
-\section{PUBLICATION \& PATENT \small\href{https://scholar.google.com/citations?user=nfpCTgUAAAAJ&hl=en}{(826 citations)}} 
-\emph{top-tier conferences (SP, USENIX Security, NDSS) and Journal (TDSC)}
+
+\section{PUBLICATION \& PATENT \small\href{https://scholar.google.com/citations?user=nfpCTgUAAAAJ&hl=en}{(828 citations)}}
+\emph{top-tier conferences (\textcolor{venuecolor}{SP, USENIX Security, NDSS}) and Journal (\textcolor{venuecolor}{TDSC})}
 \vspace{2pt}
     \resumeSubHeadingListLabelStart
 %
@@ -370,7 +497,7 @@ The invention introduces a secure IoT gateway design, utilizing Intel SGX for pr
 \resumeSubHeadingListStart
     \softwareArtifactHeading
     {\makebox[2.2cm][l]{\textbf{Autofz:}} {\href{https://github.com/sslab-gatech/autofz}{\faGithub  \hspace{0.1em} https://github.com/sslab-gatech/autofz}}} 
-    {\makebox[1.0cm][l]{\faCodeFork 13} \makebox[1.0cm][l]{\faStar 85}}
+    {\makebox[1.0cm][l]{\faCodeFork 12} \makebox[1.0cm][l]{\faStar 85}}
     %
     \softwareArtifactHeading
     {\makebox[2.2cm][l]{\textbf{OpenSGX:}} {\href{https://github.com/sslab-gatech/opensgx}{\faGithub  \hspace{0.1em} https://github.com/sslab-gatech/opensgx}}}
@@ -541,5 +668,30 @@ The invention introduces a secure IoT gateway design, utilizing Intel SGX for pr
           {\emph{Detecting Emulated Environment: Exploiting Behavioral Discrepancies In QEMU}}
           {{M.S. Thesis.}}
     \resumeSubHeadingListEnd
+
+\begin{comment} % Research Impact Summary — move here to re-enable
+% ---- Research Impact Summary ----
+\vspace{2pt}
+{\small
+\renewcommand{\arraystretch}{1.15}
+\noindent\begin{tabular*}{\textwidth}{@{}l@{\hspace{6pt}}l@{\hspace{10pt}}r@{\hspace{8pt}}l@{\hspace{6pt}}l@{}}
+\toprule
+\textbf{Paper} & \textbf{Venue} & \textbf{Cite} & \textbf{Impact} & \textbf{System Layer} \\
+\midrule
+Dark-ROP          & USENIX Sec.'17 & 274 & \textcolor{gray!80}{\rule{60pt}{4pt}} & Kernel, HW \\
+SGX-Bomb          & SysTEX'17      & 265 & \textcolor{gray!80}{\rule{58pt}{4pt}} & Hardware (DRAM) \\
+OpenSGX           & NDSS'15        & 144 & \textcolor{gray!80}{\rule{32pt}{4pt}} & HW $\to$ Kernel $\to$ User \\
+PrivateZone       & TDSC'16        &  84 & \textcolor{gray!80}{\rule{18pt}{4pt}} & Firmware, Kernel \\
+PORTAL            & SP'25          &  21 & \textcolor{gray!80}{\rule{5pt}{4pt}}  & Firmware, Kernel, Driver \\
+autofz            & USENIX Sec.'23 &  21 & \textcolor{gray!80}{\rule{5pt}{4pt}}  & User-space \\
+DeFi Survey       & USENIX Sec.'24 &  15 & \textcolor{gray!80}{\rule{3pt}{4pt}}  & --- \\
+P+RETOUCH         & arXiv'24       &   1 & \textcolor{gray!80}{\rule{1pt}{4pt}}  & Hardware (Cache) \\
+SENSE             & NDSS'24        &   2 & \textcolor{gray!80}{\rule{1pt}{4pt}}  & HW Sim (GEM5) \\
+\bottomrule
+\multicolumn{5}{@{}l@{}}{\tiny Citations: Google Scholar, Jul 2026. Bar $\propto$ citation count (max 274).}
+\end{tabular*}
+}
+\vspace{2pt}
+\end{comment}
 \end{document}
 

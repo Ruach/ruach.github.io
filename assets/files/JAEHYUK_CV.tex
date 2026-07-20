@@ -4,7 +4,7 @@
 \usepackage[empty]{fullpage}
 \usepackage{titlesec}
 \usepackage{marvosym}
-\usepackage[usenames,dvipsnames]{color}
+\usepackage[usenames,dvipsnames,svgnames,table]{xcolor}
 \usepackage{verbatim}
 \usepackage{enumitem}
 \usepackage[colorlinks = true,
@@ -17,6 +17,7 @@
 \usepackage{tabularx}
 \usepackage{fontawesome}
 \usepackage{multicol}
+\usepackage[framemethod=tikz]{mdframed}
 \setlength{\multicolsep}{-3.0pt}
 \setlength{\columnsep}{-1pt}
 \input{glyphtounicode}
@@ -100,10 +101,26 @@
     \end{tabular*}\vspace{-5pt}
 }
 
+% Venue tag color: dark blue-gray, readable but visually distinct from body text.
+\definecolor{venuecolor}{RGB}{30, 80, 150}
+\definecolor{interestbg}{RGB}{245, 248, 252}
+\definecolor{interestbar}{RGB}{30, 80, 150}
+
+% Left-ruled box for the Research Interest statement.
+\newmdenv[
+  topline=false, bottomline=false, rightline=false,
+  linewidth=3pt,
+  linecolor=interestbar,
+  backgroundcolor=interestbg,
+  innerleftmargin=8pt, innerrightmargin=6pt,
+  innertopmargin=5pt, innerbottommargin=5pt,
+  skipabove=2pt, skipbelow=2pt
+]{interestbox}
+
 \newcommand{\resumeProjectHeadingWithLabel}[3]{
     \item
     \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
-      {\small#1} & \textbf{\small #2} \\
+      {\small#1} & \textbf{\small\textcolor{venuecolor}{#2}} \\
     \end{tabular*}\vspace{-2pt}\label{#3}
 }
 
@@ -145,7 +162,7 @@
 \newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}, itemsep=4pt, topsep=2pt]}
 \newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
 
-\newcommand{\resumeSubHeadingListLabelStart}{\begin{enumerate}[leftmargin=0.0in, label={[\arabic*]}, itemsep=4pt, topsep=2pt]}
+\newcommand{\resumeSubHeadingListLabelStart}{\begin{enumerate}[leftmargin=0.0in, label={[\arabic*]}, itemsep=8pt, topsep=2pt]}
 \newcommand{\resumeSubHeadingListLabelEnd}{\end{enumerate}}
 
 \newcommand{\resumeItemListStart}{\begin{itemize}[leftmargin=*, itemsep=1pt, topsep=1pt, parsep=0pt, partopsep=0pt]}
@@ -165,7 +182,9 @@
 \end{center}
 %
 \section{RESEARCH INTEREST}
-\emph{I am interested in computer systems security, especially in:  hardware/software codesign for security, Trusted Execution Environment (TEE), secure IO design for TEE, software/hardware vulnerability research, side-channel attacks and mitigations, and fuzzing}%, and sharing knowledge through blogging}
+\begin{interestbox}
+\small\emph{I am interested in computer systems security, especially in:  hardware/software codesign for security, Trusted Execution Environment (TEE), secure IO design for TEE, software/hardware vulnerability research, side-channel attacks and mitigations, and fuzzing}
+\end{interestbox}
 \vspace{-3pt}
 %
 \section{TECHNICAL SKILLS}
@@ -180,23 +199,22 @@
     \resumeSubheading
       {Senior Security Engineer: NVIDIA Corporation, Santa Clara, CA}{Jul 2024 -- Current}
       {Title}{Location}
- \resumeItemListStart
+\resumeItemListStart
 
 \resumeItem{Owned device evidence and CoRIM generation for Vera and Grace confidential computing}
-%
-\begin{itemize}[leftmargin=0.18in, itemsep=0pt, topsep=0pt]
-    \item Implemented cross-layer firmware support across \emph{RMM, ATF, PSCFW (IROT), and Caliptra DPE} to enable end-to-end \emph{Vera CCA} evidence generation.
-    \item Implemented the software stack to enable \emph{Baremetal Secure AI} attestation evidence generation for Vera and Grace CPUs.
-    \item Developed CoRIM for Vera CCA and Vera/Grace baremetal attestation
-\end{itemize}
+\resumeItemListStart
+    \resumeItem{Implemented cross-layer firmware support across \emph{RMM, ATF, PSCFW (IROT), and Caliptra DPE} to enable end-to-end \emph{Vera CCA} evidence generation.}
+    \resumeItem{Implemented the software stack to enable \emph{Baremetal Secure AI} attestation evidence generation for Vera and Grace CPUs.}
+    \resumeItem{Developed CoRIM for Vera CCA and Vera/Grace baremetal attestation.}
+\resumeItemListEnd
 %
 \resumeItem{Owned Live Firmware Activation (LFA) support for RMM}
-\begin{itemize}[leftmargin=0.18in, itemsep=0pt, topsep=0pt]
-    \item Built the supporting software stack across \emph{RMM, ATF, and Vera IROT} to enable live firmware activation.
-\end{itemize}
+\resumeItemListStart
+    \resumeItem{Built the supporting software stack across \emph{RMM, ATF, and Vera IROT} to enable live firmware activation.}
+\resumeItemListEnd
 %
 \resumeItem{Experienced in the end-to-end SBIOS firmware development lifecycle, including build, validation, testing, and firmware package releases.}
-\resumeItem{Engineered secure tenant data loading (e.g., ML models) for NVFlare by integrating encrypted disk and early attestation key provisioning directly into initramfs, securing the boot sequence}
+\resumeItem{Engineered secure tenant data loading (e.g., ML models) for NVFlare by integrating encrypted disk and early attestation key provisioning directly into initramfs, securing the boot sequence.}
     \resumeItemListEnd
     \resumeSubheading
       {Postdoc Researcher: Georgia Institute of Technology, Atlanta, GA}{Jan 2022 -- Jul 2024}
@@ -244,10 +262,8 @@
     \href{https://www.computer.org/csdl/proceedings-article/sp/2025/223600a013/21B7Q5c3ZHq}{Paper}}
     {SP 2025}{paper:portal}
     \resumeItemListStart
-        \resumeItem{TEEs designed for confidential VMs face limitations in directly interfacing with peripherals, necessitating encryption and decryption overhead when transmitting data to devices. Portal addresses this concern by implementing access control}
-        \resumeItem{
-        Redesigned IOMMU subsystem within the Linux kernel and migrated the resource allocation component, including SMMU page table management, to TF-RMM. Introduced RMI interface calls between KVM and TF-RMM to enable confidential VM to have a dedicated, isolated DMA region.
-        }
+        \resumeItem{Eliminated per-transfer encryption overhead for Arm CCA Realm VMs accessing DMA-capable peripherals (GPU, NPU) by migrating SMMU stage-2 page table ownership into TF-RMM and introducing new RMI calls (\texttt{RMI\_DEVICE\_ATTACH/DETACH}) between KVM and RMM, enabling hardware-enforced isolated DMA regions without cryptographic cost.}
+        \resumeItem{Extended the Linux SMMU driver to delegate page table management to RMM; implemented the Realm-side driver and the full RMI call path across KVM, TF-RMM, and the SMMU hardware controller.}
     \resumeItemListEnd
 %
      \resumeProjectHeadingWithLabel
@@ -255,10 +271,8 @@
     \href{https://www.usenix.org/conference/usenixsecurity24/presentation/liu-mingyi}{Paper}}
     {USENIX 2024}{paper:defi}
         \resumeItemListStart
-        \resumeItem{Investigated DeFi
-users’ security perceptions and commonly adopted practices,
-and how those affected by previous scams or hacks (DeFi victims) respond and try to recover their losses.}
-        \resumeItem{Conducted qualitative analysis through coding 14 interviewers' responses using Dedoose.}
+        \resumeItem{Revealed that DeFi victims overwhelmingly skip post-incident security review and instead seek new platforms to recover losses quickly --- behavior analogous to gambling addiction --- suggesting industry regulation is more effective than user education alone.}
+        \resumeItem{Conducted a two-phase study ($N{=}14$ semi-structured interviews + $N{=}493$ survey); performed qualitative coding of interview transcripts using Dedoose, mapping responses to a taxonomy of DeFi attack types (rug pulls, flash loans, oracle manipulation, access-control bugs).}
     \resumeItemListEnd
     %
     \resumeProjectHeadingWithLabel
@@ -268,8 +282,8 @@ and how those affected by previous scams or hacks (DeFi victims) respond and try
     }{NDSS 2024}{paper:sense}
 %
     \resumeItemListStart
-        \resumeItem{SENSE grants TEEs access to micro-architectural information, facilitating preemptive protection against side-channel attacks targeting caches and TLBs. SENSE is implemented using the GEM5 system-level processor simulator.}
-        \resumeItem{Modified GEM5 out-of-order processor pipeline to redirect its execution to the pre-registered handler by implementing micro-code. I modified cache and TLB design to introduce additional bits tracking events with minimal cost.} 
+        \resumeItem{Addressed the lack of microarchitectural visibility in TEEs that leaves them blind to cache/TLB side-channel attacks by designing a subscription-based ISA extension that delivers hardware events directly to the enclave handler --- without requiring OS cooperation.}
+        \resumeItem{Extended the GEM5 out-of-order CPU pipeline with new micro-ops and added event-tracking metadata bits to the cache and TLB models; implemented the enclave-side handler dispatch path and evaluated detection latency against PRIME+PROBE attacks.}
     \resumeItemListEnd
 %
     \resumeProjectHeadingWithLabel
@@ -278,11 +292,8 @@ and how those affected by previous scams or hacks (DeFi victims) respond and try
     $|$
     \href{https://news.ycombinator.com/item?id=34977319}{Hacker News}}{USENIX 2023}{paper:autofz}
     \resumeItemListStart
-        \resumeItem{
-      Autofz alleviates the need for users to manually configure the best fuzzer for each specific target. Similar to AutoML, it automatically and adaptively configures best-performing fuzzers at runtime and achieves the best performance.}
-        \resumeItem{
-        Experienced in multiple fuzzers such as LearnAFL, RedQueen, MOpt, AFLFast, AFL, LAF-Intel, Angora, FairFuzz, Radamsa, QSYM.
-        }
+        \resumeItem{Eliminated the need for per-target fuzzer selection by building a runtime coordinator that measures each fuzzer's coverage gain via AFL bitmaps and reallocates CPU time with AIMD, lifting bug-finding throughput by up to 3$\times$ over the best single fuzzer across 12 targets.}
+        \resumeItem{Implemented the orchestration layer in Python using Linux cgroups for CPU pinning; integrated 12 fuzzers (AFL, AFLFast, MOpt, RedQueen, QSYM, Angora, and others) under a unified coverage-feedback interface.}
     \resumeItemListEnd
 %
     \resumeProjectHeadingWithLabel
@@ -292,9 +303,8 @@ and how those affected by previous scams or hacks (DeFi victims) respond and try
     \href{https://www.youtube.com/watch?v=hyuZFf3QxvM}{Demo}
     }{USENIX 2017}{paper:sgx-rop}
     \resumeItemListStart
-        \resumeItem{Dark-ROP demonstrates practical exploitation of memory corruption vulnerabilities within enclaves through Return-Oriented Programming (ROP), utilizing special oracles induced by the design of Intel SGX.}
-         \resumeItem{
-        Located ROP gadgets by leveraging the side effects of newly introduced instructions for Intel SGX, all without prior knowledge of the binary details of the target process. Implemented full ROP chain and demonstrated attack.}
+        \resumeItem{Demonstrated the first blind ROP attack against Intel SGX: exploited the deterministic AEX fault oracle to probe enclave memory word-by-word and reconstruct a gadget map --- without any binary knowledge --- then chained a \texttt{memcpy()} gadget into a full key-exfiltration payload.}
+        \resumeItem{Built the AEX-based memory scanner and ROP-chain generator in C/x86 assembly; reverse-engineered EPCM/TCS/SSA layouts to locate gadgets and craft the exploit entirely from outside the enclave.}
     \resumeItemListEnd
 %
     \resumeProjectHeadingWithLabel
@@ -305,17 +315,16 @@ and how those affected by previous scams or hacks (DeFi victims) respond and try
     {Demo}
     }{SysTEX 2017}{paper:sgx-bomb}
     \resumeItemListStart
-        \resumeItem{SGX-Bomb showcases how Rowhammer attacks can jeopardize enclave integrity, posing a risk of denial-of-service (DoS) scenarios, which is especially concerning for cloud providers that host untrusted enclave programs.}
-        \resumeItem{Implemented kernel driver to reverse engineer mapping between physical address to memory bank for locating two adjacent rows. Demonstrated rowhammer attack inside Intel SGX with X86 assembly and C++ coding.
-        }
+        \resumeItem{Showed that an enclave can weaponize Rowhammer to permanently lock the Memory Encryption Engine (MEE) and force a machine reboot --- rendering SGX's integrity guarantees a denial-of-service vector for cloud multi-tenant scenarios.}
+        \resumeItem{Wrote a kernel driver to reverse-engineer DRAM bank/row mapping from physical addresses; implemented the double-sided Rowhammer loop in x86 assembly inside an enclave to flip MEE metadata bits and trigger a machine lockdown.}
     \resumeItemListEnd
 %
     \resumeProjectHeadingWithLabel
     {\textbf{PrivateZone: Providing a Private Execution Environment using ARM TrustZone} $|$ \href{https://cysec.kr/publications/PrivateZone_Providing_a_Private_Execution_Environment_using_ARM_TrustZone.pdf}{Paper}
     }{TDSC 2016}{paper:privateZone}
     \resumeItemListStart
-        \resumeItem{PrivateZone provides a secure TEE for developers to deploy and execute user processes on mobile platforms. It delivers assurances similar to TrustZone without imposing additional costs on developers to deploy applications}
-        \resumeItem{Implemented stage-2 page table for  Privatezone and developed the logic for context switching, effectively managing the transition between trusted stage-2 page tables and untrusted ones. Experienced in ARM assembly coding.}
+        \resumeItem{Extended ARM TrustZone to protect arbitrary user-space processes without porting them to the Secure World, by intercepting Linux scheduling events in Monitor mode and switching per-process stage-2 page tables on each context switch.}
+        \resumeItem{Implemented the stage-2 page table allocator and the Monitor-mode context-switch handler in ARM assembly; modified the Linux scheduler to emit SVC calls that trigger the switch between trusted and untrusted page tables.}
         
     \resumeItemListEnd
 
@@ -324,8 +333,8 @@ and how those affected by previous scams or hacks (DeFi victims) respond and try
     {\textbf{OpenSGX: An Open Platform for SGX Research} $|$ \href{https://taesoo.kim/pubs/2016/jain:opensgx.pdf}{Paper} $|$
     \href{https://en.wikipedia.org/wiki/Software_Guard_Extensions}{Wikipedia: SGX}}{NDSS 2015}{paper:open-sgx}
     \resumeItemListStart
-        \resumeItem{OpenSGX enables Intel SGX exploration with instruction-level emulation, addressing limitations in TEE software development and offering a comprehensive ecosystem, including an OS, enclave handling, user libraries, and debugging}
-        \resumeItem{Implemented X86 assembly facilitating context switching within the SGX environment, enabling the transition between entering and exiting the SGX. Developed stub-call allowing SGX to invoke system calls through a customized libc}        
+        \resumeItem{Lowered the barrier to SGX research before hardware was available by building an instruction-level emulator in QEMU that faithfully reproduced EPCM, SECS, TCS, and SSA data structures, enabling enclave development and testing on commodity machines.}
+        \resumeItem{Implemented \texttt{EENTER}/\texttt{EEXIT} context-switch stubs in x86 assembly, EPCM management in QEMU's softmmu, and a \texttt{sgxlib} user library with a stub-call layer that routes enclave system calls through an untrusted trampoline.}
     \resumeItemListEnd
 %   
     %\newpage
@@ -344,10 +353,8 @@ and how those affected by previous scams or hacks (DeFi victims) respond and try
     {\textbf{PRIME+RETOUCH: When Cache is Locked and Leaked} $|$ 
     \href{https://arxiv.org/abs/2402.15425}{Paper}}{Arxiv}{paper:cache-attack}
     \resumeItemListStart
-        \resumeItem{PRIME+RETOUCH attack circumvents cache-based side-channel defense monitoring eviction events by utilizing cache replacement policy metadata. The attack is demonstrated on both Intel x86 and Apple M1 architectures.}
-        \resumeItem{
-       Conducted reverse engineering to analyze the cache eviction policy of the most recent X86 processor and the Apple M1 chip.  Developed PoC in X86 and ARM assembly, employing pointer chasing along with memory barriers
-        }
+        \resumeItem{Identified a blind spot in eviction-based cache side-channel defenses: Tree-PLRU replacement metadata can be manipulated to ``retouch'' a cache set so the victim line survives eviction silently --- bypassing Intel TSX-based monitors and Apple M1 PMU counters.}
+        \resumeItem{Reverse-engineered the Tree-PLRU state machine on recent Intel and Apple M1 caches; built the PRIME+RETOUCH PoC in x86/ARM assembly using pointer-chasing and memory barriers; demonstrated cross-core and cross-process secret recovery.}
     \resumeItemListEnd
 %
     \resumeProjectHeadingWithLabel

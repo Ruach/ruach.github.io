@@ -7,11 +7,12 @@
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{xcolor}
+\usepackage{mdframed}
 
 \hypersetup{colorlinks=true, urlcolor=blue, linkcolor=blue}
 
 \title{\textbf{Research Paper Summaries}\\
-\large Layers, Security Skills, and Technical Expertise}
+\large Detailed Technical Summaries with Layers and Security Skills}
 \author{Jaehyuk Lee}
 \date{}
 
@@ -21,29 +22,27 @@
 \newpage
 
 % ============================================================
-\section*{Overview: Skills Across All Papers}
-\addcontentsline{toc}{section}{Overview: Skills Across All Papers}
+\section*{Overview: Skill Profile Across All Papers}
+\addcontentsline{toc}{section}{Overview: Skill Profile Across All Papers}
 % ============================================================
 
-The nine papers collectively span four major \textbf{system layers} and two broad \textbf{security skill domains}:
-
-\subsection*{Layers Touched}
+\subsection*{System Layers Touched}
 \begin{itemize}
-    \item \textbf{Hardware / Microarchitecture:} CPU cache internals, DRAM (Rowhammer), dirty-bit logic, PMU counters, cache replacement policy (Tree-PLRU), Intel MEE, SGX EPC.
-    \item \textbf{Firmware / TEE Runtime:} ARM TF-RMM, TrustZone Monitor mode, SGX enclave lifecycle instructions (ECREATE, EADD, EENTER, EEXIT), SMMU.
-    \item \textbf{Hypervisor / OS Kernel:} KVM, Stage-2 page tables, cgroups, Linux process management, QEMU binary translation, perf/PMU kernel interface.
-    \item \textbf{Application / Protocol:} SGX enclave user-space library (\texttt{sgxlib}), Solidity smart contracts, DeFi protocol logic, fuzzer runtimes (AFL, libFuzzer).
+    \item \textbf{Hardware / Microarchitecture:} CPU cache (L1/LLC, Tree-PLRU, dirty bits), DRAM (Rowhammer), PMU/performance counters, Memory Encryption Engine (MEE), SGX EPC/EPCM, cache replacement policy internals.
+    \item \textbf{Firmware / TEE Runtime:} ARM TF-RMM, TrustZone Monitor mode, SGX enclave lifecycle instructions (ECREATE, EADD, EENTER, EEXIT, EGETKEY, EREPORT), SMMU page-table management.
+    \item \textbf{Hypervisor / OS Kernel:} Linux KVM, Stage-2 page tables (IPA$\to$PA), cgroups, perf/PMU subsystem, QEMU binary translation, Linux SGX driver.
+    \item \textbf{Application / Protocol:} SGX enclave user-space library (\texttt{sgxlib}), Solidity smart contracts, DeFi protocol logic, fuzzer runtimes (AFL, libFuzzer, Angora, QSYM, Redqueen, etc.).
 \end{itemize}
 
-\subsection*{Security Skills Learned}
+\subsection*{Security Skills Developed}
 \begin{itemize}
-    \item \textbf{TEE design and exploitation:} Building, attacking, and defending Trusted Execution Environments (SGX, TrustZone, Arm CCA).
-    \item \textbf{Microarchitectural side-channel attacks:} Cache timing (Prime+Probe, Prime+Retouch), dirty-bit exploitation, PMU-based leakage.
-    \item \textbf{Hardware fault attacks:} Rowhammer against SGX EPC, MEE integrity fault as a denial-of-service primitive.
-    \item \textbf{Control-flow attacks:} Return-Oriented Programming (ROP) against TrustZone Secure World.
-    \item \textbf{DMA isolation and peripheral security:} Extending CCA's isolation guarantees to SMMU and DMA-capable peripherals.
-    \item \textbf{Automated vulnerability discovery:} Coverage-guided fuzzing, dynamic fuzzer composition, runtime scheduling for exploit discovery.
-    \item \textbf{Smart contract / DeFi security:} Vulnerability taxonomy, longitudinal exploit analysis, on-chain forensics.
+    \item \textbf{TEE design \& implementation:} Built/emulated Intel SGX (OpenSGX), ARM TrustZone Secure World (PrivateZone), and Arm CCA Realm isolation (PORTAL).
+    \item \textbf{TEE exploitation:} ROP against SGX enclaves (Dark-ROP), Rowhammer DoS via MEE (SGX-Bomb), microarchitectural side-channel against enclaves (SENSE, PRIME+RETOUCH).
+    \item \textbf{Microarchitectural side-channel attack:} Cache-timing (Prime+Probe), PLRU metadata exploitation (PRIME+RETOUCH), TSX-assisted noise-free monitoring, reverse engineering undocumented PMU on Apple M1.
+    \item \textbf{Hardware fault injection:} Rowhammer double-sided hammering, timing-based DRAM bank probing inside an enclave.
+    \item \textbf{DMA / peripheral isolation:} SMMU stage-2 page-table extension in TF-RMM, RMI interface between KVM and RMM.
+    \item \textbf{Automated vulnerability discovery:} Coverage-guided fuzzing, dynamic fuzzer composition with AIMD scheduling.
+    \item \textbf{Smart contract / DeFi security:} Longitudinal vulnerability taxonomy, user-behavior study.
 \end{itemize}
 
 \newpage
@@ -51,104 +50,130 @@ The nine papers collectively span four major \textbf{system layers} and two broa
 % ============================================================
 \section{PORTAL: Fast and Secure Device Access with Arm CCA}
 % ============================================================
-\textbf{Venue:} IEEE S\&P 2025 \hfill
-\href{https://www.computer.org/csdl/proceedings-article/sp/2025/223600a013/21B7Q5c3ZHq}{[Paper Link]}
+\textbf{Venue:} IEEE S\&P 2025, pp.\ 4099--4116 \hfill
+\href{https://www.computer.org/csdl/proceedings-article/sp/2025/223600a013/21B7Q5c3ZHq}{[Paper Link]}\\
+\textbf{Authors:} Fan Sang, \textbf{Jaehyuk Lee}, Xiaokuan Zhang, Taesoo Kim (Georgia Tech / George Mason)
 
-\subsection*{Problem}
-Modern mobile SoCs integrate peripherals (GPU, NPU, DSP) that use DMA to access memory.
-When confidential VMs run under Arm CCA (Confidential Compute Architecture), these peripherals
-can break the Realm isolation boundary because the IOMMU/SMMU is not CCA-aware by design.
+\subsection*{Background \& Problem}
+Arm CCA (Confidential Compute Architecture) introduces hardware-enforced \emph{Realm VMs} whose memory is protected even from the hypervisor.
+However, modern mobile SoCs integrate DMA-capable peripherals (GPU, NPU, DSP) that need to access memory.
+The IOMMU/SMMU governing these peripherals is not CCA-aware, so a peripheral's DMA can freely read/write Realm memory, breaking the confidentiality and integrity guarantees CCA provides.
+Existing solutions force the Realm to encrypt/decrypt all data handed to devices, introducing prohibitive overhead — up to 2$\times$ slowdown for GPU workloads.
+
+\subsection*{Key Insight}
+PORTAL observes that the Realm Management Monitor (TF-RMM), which already enforces Realm memory access from the CPU side, can \emph{also} manage the SMMU page tables.
+By migrating SMMU ownership to TF-RMM and extending the RMI call interface between KVM and RMM, Realm VMs can be granted isolated DMA regions without encryption overhead.
 
 \subsection*{What Was Built}
-PORTAL extends Arm CCA's Realm Management Monitor (TF-RMM) to mediate peripheral device access.
-It introduces a new interface between the RMM and the normal-world hypervisor (KVM) so that
-Realm VMs can safely share DMA with peripherals without compromising confidentiality or integrity.
+\begin{itemize}
+    \item \textbf{TF-RMM extension:} Added tracking of Realm-owned physical address (PA) ranges in RMM; extended RMM to program SMMU stage-2 page tables to enforce that DMA from peripherals can only reach designated Realm PA ranges.
+    \item \textbf{KVM extension:} Introduced new RMI calls (\texttt{RMI\_DEVICE\_ATTACH}, \texttt{RMI\_DEVICE\_DETACH}) between the Normal World hypervisor (KVM) and RMM, allowing a Realm VM to request exclusive DMA regions.
+    \item \textbf{SMMU driver:} Modified the Linux SMMU driver to delegate ownership of SMMU stage-2 page tables to RMM for Realm-attached devices; Normal World cannot manipulate these tables.
+    \item \textbf{Realm guest driver:} Thin driver inside the Realm VM exposes a userspace API to request/release DMA capability from peripherals.
+\end{itemize}
 
 \subsection*{Layers Touched}
 \begin{itemize}
-    \item \textbf{Firmware:} TF-RMM — extended to track Realm memory regions and enforce SMMU mappings.
-    \item \textbf{Hypervisor:} KVM — new RMI calls to request/release device access on behalf of Realm VMs.
-    \item \textbf{Driver:} SMMU driver — modified to enforce Realm-owned PA ranges.
-    \item \textbf{Guest VM:} Realm guest driver — userspace API to request DMA from peripherals.
+    \item \textbf{Firmware (TF-RMM):} Extended enclave-equivalent monitoring to include DMA address ranges; SMMU stage-2 page table management moved into RMM.
+    \item \textbf{Hypervisor (KVM):} New RMI calls bridge hypervisor device management and RMM.
+    \item \textbf{Kernel Driver (SMMU):} Delegation mechanism to yield SMMU ownership to RMM.
+    \item \textbf{Guest VM:} Realm driver to request device memory windows.
 \end{itemize}
 
 \subsection*{Security Skills}
-\begin{itemize}
-    \item Arm CCA architecture and Realm Management Interface (RMI)
-    \item Stage-2 page table design for confidential VMs
-    \item SMMU/IOMMU internals and DMA isolation enforcement
-    \item TF-RMM firmware development
-    \item Linux KVM hypervisor modification
-\end{itemize}
+Arm CCA architecture (Realm/Monitor/Normal worlds), RMI call interface design, Stage-2 paging for DMA isolation, SMMU/IOMMU internals, TF-RMM firmware development, Linux KVM modification.
 
 \newpage
 
 % ============================================================
-\section{A Longitudinal Study of Vulnerabilities in the DeFi Ecosystem}
+\section{DeFi Security Study: User Perception of Breaches}
 % ============================================================
-\textbf{Venue:} USENIX Security 2024
+\textbf{Venue:} USENIX Security 2024, pp.\ 6039--6055 \hfill
+\href{https://www.usenix.org/conference/usenixsecurity24/presentation/liu-mingyi}{[Paper Link]}\\
+\textbf{Authors:} Mingyi Liu, Jun Ho Huh, HyungSeok Han, \textbf{Jaehyuk Lee}, Jihae Ahn, Frank Li, Hyoungshick Kim, Taesoo Kim
 
-\subsection*{Problem}
-DeFi protocols have suffered billions of dollars in losses from smart contract exploits.
-No prior work systematically studied how vulnerability classes evolve over time and
-whether the ecosystem learns from past incidents.
+\subsection*{Background \& Problem}
+Decentralized Finance (DeFi) lost \$1.95 billion to scams and hacks in 2023 alone.
+Despite the scale of losses, no prior work had systematically investigated \emph{user behavior}: what do DeFi users understand about security risks, and how do victims respond after being attacked?
 
 \subsection*{What Was Built}
-A dataset and analysis pipeline covering hundreds of DeFi incidents over multiple years,
-categorizing vulnerability classes (reentrancy, price oracle manipulation, flash loan attacks,
-access control flaws, etc.) and tracking recurrence trends.
-Qualitative coding was performed using Dedoose.
+A two-phase empirical study:
+\begin{enumerate}
+    \item \textbf{Semi-structured interviews} ($N=14$ DeFi users, including victims) analyzing security perception, risk tolerance, and post-incident behavior.
+    \item \textbf{Follow-up survey} ($N=493$) validating interview themes at scale.
+\end{enumerate}
+Qualitative coding of interview transcripts was performed using \textbf{Dedoose}, mapping responses to thematic categories (e.g., awareness of rug pulls, flash loans, oracle manipulation, access control bugs).
+
+\subsection*{Key Findings}
+\begin{itemize}
+    \item Users prefer DeFi over CeFi for decentralization and high returns; they are \emph{aware} DeFi is riskier than CeFi yet accept the risk.
+    \item Most victims do \emph{not} revise security practices after being attacked; instead they seek new DeFi platforms quickly — analogous to addictive gambling behavior.
+    \item Financial incentive dominates security concern, suggesting industry-level regulation is needed, not just user education.
+\end{itemize}
 
 \subsection*{Layers Touched}
 \begin{itemize}
-    \item \textbf{Smart contract layer:} Solidity code auditing and vulnerability classification.
-    \item \textbf{Protocol logic:} AMMs, lending protocols, flash loan mechanics.
-    \item \textbf{On-chain data:} Blockchain transaction analysis and incident reconstruction.
+    \item \textbf{Smart contract layer:} Vulnerability taxonomy including reentrancy, oracle manipulation, flash loans, access-control flaws.
+    \item \textbf{Protocol logic:} AMMs, lending protocols, bridge contracts.
+    \item \textbf{Research methodology:} Qualitative coding (Dedoose), survey design, statistical analysis.
 \end{itemize}
 
 \subsection*{Security Skills}
-\begin{itemize}
-    \item Smart contract vulnerability taxonomy and auditing
-    \item Blockchain data analysis and on-chain forensics
-    \item DeFi protocol mechanics (AMMs, flash loans, oracles)
-    \item Qualitative research methodology (Dedoose coding)
-    \item Longitudinal security measurement methodology
-\end{itemize}
+Smart contract vulnerability taxonomy, DeFi protocol mechanics (AMMs, flash loans, bridges), qualitative interview coding (Dedoose), longitudinal security measurement, survey methodology.
 
 \newpage
 
 % ============================================================
-\section{SENSE: Side-Channel Evaluation and Noise-addition System for Enclaves}
+\section{SENSE: Microarchitectural Event Notifications for TEEs}
 % ============================================================
-\textbf{Venue:} NDSS 2024
+\textbf{Venue:} NDSS 2024 \hfill
+\href{https://www.ndss-symposium.org/wp-content/uploads/2024-176-paper.pdf}{[Paper Link]}\\
+\textbf{Authors:} Fan Sang, \textbf{Jaehyuk Lee}, Xiaokuan Zhang, Meng Xu, Scott Constable, Yuan Xiao, Michael Steiner, Mona Vij, Taesoo Kim
 
-\subsection*{Problem}
-SGX enclaves are vulnerable to microarchitectural side-channel attacks (cache timing,
-branch predictor leakage, PMU-based observation). Defenses are ad hoc and lack a
-systematic evaluation framework.
+\subsection*{Background \& Problem}
+Cache-based side-channel attacks (Prime+Probe, Flush+Reload) against SGX enclaves are well-studied.
+Existing detection defenses (e.g., TSX-based, HPC-based) fail because:
+\begin{enumerate}
+    \item TEEs cannot trust the OS to relay PMU data (untrusted OS mediation).
+    \item Attacks can leak small amounts per execution, amortizing statistical signatures below detection thresholds.
+    \item TSX is platform-specific and was deprecated.
+\end{enumerate}
+The fundamental gap is that attackers can observe microarchitectural events freely, while \emph{victims inside TEEs cannot}.
+
+\subsection*{Key Insight}
+Reverse the information asymmetry: expose fine-grained microarchitectural events \emph{directly} to userspace TEEs via hardware, bypassing the untrusted OS.
 
 \subsection*{What Was Built}
-SENSE provides: (1) a systematic framework for evaluating microarchitectural side-channel
-leakage inside and across SGX enclave boundaries, and (2) a noise-injection mechanism
-to mitigate observable leakage. It profiles hardware performance counters inside and
-outside the enclave using the kernel perf subsystem.
+SENSE adds three cooperating modules to the processor:
+
+\textbf{Subscription Module (SM):}
+Each cache entry is extended with two bits: \texttt{SS} (monitored) and \texttt{SS\_FAULT} (evicted while monitored).
+Enclave code prefetches sensitive cache lines into the \emph{watch set} by issuing \texttt{sssub} ISA instructions.
+When a watched cache line is evicted, the cache sets \texttt{SS\_FAULT} and piggybacks this flag on the next memory response to the CPU.
+
+\textbf{Notification Module (NM):}
+A new CPU mode (\emph{SENSE mode}) and ISA instructions (\texttt{ssbegin}, \texttt{ssend}, \texttt{sstramp}).
+Control registers \texttt{CR.SS\_MODE} and \texttt{CR\_SS\_TRAMP} hold the trampoline address.
+When \texttt{SS\_FAULT} is signaled, the CPU triggers a \emph{SENSE Fault (\#SS)}, clears microarchitectural state (flushes cache entries), and jumps to the userspace handler trampoline inside the enclave — \emph{without changing privilege levels}.
+
+\textbf{Action Module (AM):}
+Default handlers: \textbf{ABORT} (terminate on eviction), \textbf{INVARIANT} (re-prefetch evicted lines, effectively pinning them), and \textbf{THRESHOLD} (terminate after $n$ events).
+
+\textbf{Implementation:} Prototype on a cycle-accurate gem5 x86 out-of-order (O3) emulator with 4 GHz clock.
+Hardware overhead: $\sim$0.1\% transistors (estimated vs.\ Nehalem); memory overhead: 2 bits per cache line.
+Performance overhead under benign workloads: \textbf{1.2\%} on PolyBenchC.
 
 \subsection*{Layers Touched}
 \begin{itemize}
-    \item \textbf{CPU microarchitecture:} Cache behavior, branch predictor state, PMU event counting.
-    \item \textbf{SGX enclave runtime:} Enclave entry/exit (AEX), SSA-based state observation.
-    \item \textbf{OS kernel:} Perf subsystem and PMU access from ring-0.
-    \item \textbf{Compiler/toolchain:} Instrumentation of enclave binaries.
+    \item \textbf{CPU microarchitecture:} Cache entry bits, cache controller logic, Load-Store Unit (LSU) memory response path.
+    \item \textbf{ISA:} Five new instructions (\texttt{ssbegin}, \texttt{ssend}, \texttt{sstramp}, \texttt{sssub}, \texttt{ssunsub}).
+    \item \textbf{CPU control unit:} New interrupt vector (\#SS), SENSE Fault control logic.
+    \item \textbf{SGX enclave runtime:} Userspace event handler, \texttt{\_ssbegin}/\texttt{\_ssend}/\texttt{\_sswatch} wrappers.
+    \item \textbf{Simulation:} gem5 O3 CPU and Classical Memory System extended with SENSE.
 \end{itemize}
 
 \subsection*{Security Skills}
-\begin{itemize}
-    \item Intel SGX internals (AEX, SSA, EPCM)
-    \item Microarchitectural side-channel attack methodology
-    \item PMU/perf event profiling at kernel level
-    \item GEM5 simulation for microarchitectural analysis
-    \item Side-channel leakage quantification and noise mitigation
-\end{itemize}
+Intel SGX internals (AEX, SSA, EPCM), cache side-channel attack analysis (Prime+Probe, Flush+Reload), hardware-software co-design for TEE security, gem5 microarchitectural simulation and RTL estimation, ISA extension design, side-channel leakage quantification.
 
 \newpage
 
@@ -156,204 +181,345 @@ outside the enclave using the kernel perf subsystem.
 \section{autofz: Automated Fuzzer Composition at Runtime}
 % ============================================================
 \textbf{Venue:} USENIX Security 2023 \hfill
-\href{https://github.com/sslab-gatech/autofz}{[GitHub]}
+\href{https://www.usenix.org/system/files/sec23fall-prepub-446-fu.pdf}{[Paper Link]} $|$
+\href{https://github.com/sslab-gatech/autofz}{[GitHub]}\\
+\textbf{Authors:} Yu-Fu Fu, \textbf{Jaehyuk Lee}, Taesoo Kim (Georgia Tech)
 
-\subsection*{Problem}
-Dozens of fuzzers exist, each optimized for different target characteristics.
-Manual fuzzer selection is suboptimal, and static combinations waste resources.
-No prior system dynamically allocates fuzzer compute resources based on live feedback.
+\subsection*{Background \& Problem}
+Dozens of diverse fuzzers exist (AFL, Redqueen, Angora, QSYM, MOpt, libFuzzer, LAF-Intel, etc.), each outperforming others on specific targets.
+\emph{Selection burden}: no static analysis reliably predicts which fuzzer(s) will win on a new binary, and the rankings \emph{invert} over time within a single campaign (rank inversion).
+Collaborative fuzzing (ENFUZZ, CUPID) uses static, pre-trained configurations — suboptimal when the target binary or workload phase changes.
+
+\subsection*{Key Insight}
+Monitor runtime coverage trends (\emph{AFL bitmap}) as a unified metric across all fuzzers, and apply an \textbf{AIMD-inspired scheduler} to reallocate CPU resources dynamically — like a gradient-following optimizer for fuzzer selection.
 
 \subsection*{What Was Built}
-autofz monitors coverage feedback (AFL bitmap) from multiple fuzzers running in parallel
-and applies an AIMD-inspired (Additive Increase, Multiplicative Decrease) scheduler to
-dynamically reallocate CPU time toward whichever fuzzers are currently finding new coverage.
+autofz (6.2K lines of Python3 + Docker) runs in two interleaved phases:
+
+\textbf{Preparation Phase:}
+All $N$ baseline fuzzers run in short 30-second windows with equal resources.
+autofz computes each fuzzer's \emph{unique bitmap contribution} (subtracting common paths).
+An early-exit condition fires when the peak bitmap difference exceeds a threshold $\theta$.
+$\theta$ is self-calibrated via AIMD: increase on early exit, halve otherwise — avoiding premature or overly conservative decisions.
+
+\textbf{Focus Phase:}
+Selected fuzzers run longer with \emph{proportional CPU allocation} based on contribution ratio.
+Resources are enforced via Linux \textbf{cgroups} per fuzzer process group.
+After Focus, seeds are synchronized across fuzzers, then Preparation restarts.
+
+\textbf{Multi-core support:} Scale-up/Scale-down API per fuzzer; autofz instantiates $\lceil N \times RA[f] \rceil$ processes per fuzzer.
+
+\textbf{Evaluation (UNIFUZZ + FTS, 10 repetitions each):}
+\begin{itemize}
+    \item Outperforms every individual fuzzer in 11/12 UNIFUZZ and 11/12 FTS targets.
+    \item Finds \textbf{152\% more bugs} than individual fuzzers; \textbf{415\% more} than CUPID/ENFUZZ.
+    \item Average rank: 1.22 (UNIFUZZ), 1.2 (FTS) out of 11 fuzzers.
+\end{itemize}
 
 \subsection*{Layers Touched}
 \begin{itemize}
-    \item \textbf{OS scheduling:} cgroups for CPU quota enforcement, process pinning.
-    \item \textbf{Fuzzer internals:} AFL bitmap coverage feedback, libFuzzer corpus sharing.
-    \item \textbf{Coverage instrumentation:} Compile-time and binary-level coverage tracking.
+    \item \textbf{OS scheduling:} Linux cgroups for per-fuzzer CPU quota enforcement; process pinning.
+    \item \textbf{Fuzzer internals:} AFL bitmap (shared memory), corpus directory structures for each fuzzer, seed synchronization.
+    \item \textbf{Coverage instrumentation:} AFL-instrumented target binary re-run to normalize bitmap across different fuzzers.
+    \item \textbf{Container:} Docker-based deployment for reproducibility.
 \end{itemize}
 
 \subsection*{Security Skills}
-\begin{itemize}
-    \item Coverage-guided fuzzing (AFL, libFuzzer, honggfuzz, etc.)
-    \item Linux cgroups and process resource management
-    \item AIMD scheduling algorithm design
-    \item Automated vulnerability discovery methodology
-    \item Runtime profiling and feedback-driven optimization
-\end{itemize}
+Coverage-guided fuzzing mechanics (AFL bitmap, corpus sharing), AIMD algorithm design, Linux cgroups, automated vulnerability discovery methodology, multi-fuzzer integration (AFL, AFLFast, MOpt, Redqueen, Angora, QSYM, libFuzzer, LAF-Intel, FairFuzz, Radamsa, LearnAFL).
 
 \newpage
 
 % ============================================================
-\section{Hacking in Darkness: ROP against TrustZone Secure World}
+\section{Hacking in Darkness: Dark-ROP against SGX Enclaves}
 % ============================================================
-\textbf{Venue:} USENIX Security 2017
+\textbf{Venue:} USENIX Security 2017 \hfill
+\href{https://www.usenix.org/system/files/conference/usenixsecurity17/sec17-lee-jaehyuk.pdf}{[Paper Link]}\\
+\textbf{Authors:} \textbf{Jaehyuk Lee}, Jinsoo Jang, Yeongjin Jang, Nohyun Kwak, Yeseul Choi, Changho Choi, Taesoo Kim, Marcus Peinado, Brent B.\ Kang
 
-\subsection*{Problem}
-ARM TrustZone's Secure World is assumed to be a strong isolation boundary.
-This paper demonstrates that ROP (Return-Oriented Programming) attacks can be
-mounted \emph{against} the Secure World from the Normal World, breaking that assumption.
+\subsection*{Background \& Problem}
+Intel SGX guarantees confidentiality and integrity by encrypting all enclave memory.
+Even the binary running inside can be encrypted (deployed via a loader, e.g., VC3).
+Prior ROP attacks (including Blind ROP) assume knowledge of the target binary.
+The question: \emph{can a memory-corruption vulnerability inside an SGX enclave be exploited when the attacker has zero knowledge of the enclave binary?}
 
-\subsection*{What Was Built}
-A full ROP attack chain targeting a real TrustZone implementation.
-Gadgets were identified in Secure World firmware binaries, chained via SVC/SMC calls
-from Normal World Linux, and used to achieve arbitrary code execution inside Secure World.
+\subsection*{Key Insight}
+SGX's own hardware mechanisms create oracles that reveal information about an \emph{unknown} binary:
+\begin{enumerate}
+    \item \textbf{Page-fault oracle:} AEX on page fault exposes the \texttt{CR2} register (faulting address, page-granular), allowing the attacker to determine the number of pops before a \texttt{ret} by placing non-executable page addresses on the stack.
+    \item \textbf{EEXIT oracle:} EEXIT does not clear registers; by chaining pop gadgets and ending with ENCLU(EEXIT), register values leak out, identifying \emph{which} registers a gadget pops.
+    \item \textbf{Memory oracle:} Probing every enclave address as a potential \texttt{memcpy()} gadget — if untrusted memory is modified, the function was found.
+\end{enumerate}
+
+\subsection*{What Was Built (Dark-ROP)}
+\textbf{Phase 1 — Finding the vulnerability:}
+Fuzzing exported enclave entry points and monitoring AEX page-fault signals to detect buffer-overflow conditions and locate the return address offset.
+
+\textbf{Phase 2 — Gadget discovery (from standard SGX libraries):}
+Using the three oracles above, automatically located four gadgets from \texttt{libsgx\_trts.a} and \texttt{libsgx\_tstdc.a}:
+\begin{enumerate}
+    \item \texttt{pop rdx; pop rcx; pop rbx; ret} + \texttt{ENCLU} (EEXIT/EREPORT/EGETKEY gate)
+    \item \texttt{mov rax, rbx; pop rbx; pop rbp; pop r12; ret} (rax setter)
+    \item \texttt{pop rsi; pop r15; ret} + \texttt{pop rdi; ret} (argument registers)
+    \item \texttt{memcpy()} function (arbitrary read/write between enclave and untrusted memory)
+\end{enumerate}
+
+\textbf{Phase 3 — Exploiting EGETKEY \& EREPORT:}
+Chained gadgets (248 bytes of ROP payload) to invoke \texttt{EGETKEY} (derive encryption key) and \texttt{EREPORT}, then exfiltrate results via \texttt{memcpy()}.
+
+\textbf{SGX Malware (MitM shadow enclave):}
+\begin{itemize}
+    \item Dump entire enclave binary and data to untrusted memory via \texttt{memcpy()} gadget.
+    \item Run extracted binary outside the enclave; when SGX leaf functions are needed, invoke them via Dark-ROP calls into the real enclave.
+    \item Hijack remote attestation: use Dark-ROP to call \texttt{EREPORT} with attacker-controlled \texttt{REPORTDATA} (containing attacker's ECDH key), then forward the signed report to the remote server.
+\end{itemize}
+
+\textbf{Implementation:} Intel Core i7-6700 (Skylake), Ubuntu 14.04, Intel SGX SDK.
 
 \subsection*{Layers Touched}
 \begin{itemize}
-    \item \textbf{ARM TrustZone:} Monitor mode, Secure EL1 firmware, SVC/SMC dispatch.
-    \item \textbf{Normal World OS:} Linux userspace and kernel as the attacker's vantage point.
-    \item \textbf{Binary analysis:} Gadget discovery in Secure World binaries.
+    \item \textbf{Intel SGX ISA:} ENCLU leaf functions (EEXIT, EGETKEY, EREPORT), AEX exception handling, TCS, SSA.
+    \item \textbf{Memory layout:} EPC pages, enclave stack/heap, SIGSTRUCT, EINITTOKEN.
+    \item \textbf{Exploit development:} ROP chain construction (x86-64), gadget discovery in unknown binary.
+    \item \textbf{Remote attestation:} ECDH key exchange protocol, REPORT/Quote flow, QE interaction.
 \end{itemize}
 
 \subsection*{Security Skills}
-\begin{itemize}
-    \item Return-Oriented Programming (ROP) exploit construction
-    \item ARM TrustZone architecture (Monitor mode, world switching)
-    \item Binary analysis and gadget finding
-    \item SVC/SMC call interface exploitation
-    \item QEMU-based system emulation for attack development
-\end{itemize}
+Intel SGX architecture (ENCLU/ENCLS, AEX, SSA, attestation), x86-64 ROP exploit construction, blind gadget discovery (oracle-based), enclave memory forensics, remote attestation protocol internals, man-in-the-middle attack construction against SGX.
 
 \newpage
 
 % ============================================================
 \section{SGX-Bomb: Locking Down the Processor via Rowhammer}
 % ============================================================
-\textbf{Venue:} SysTEX 2017
+\textbf{Venue:} SysTEX 2017 \hfill
+\href{https://www.unexploitable.systems/uploads/jang:sgx-bomb.pdf}{[Paper Link]}\\
+\textbf{Authors:} Yeongjin Jang, \textbf{Jaehyuk Lee}, Sangho Lee, Taesoo Kim
 
-\subsection*{Problem}
-Intel SGX's Memory Encryption Engine (MEE) detects EPC bit flips to protect enclave integrity.
-This defense can be weaponized: an attacker who induces Rowhammer bit flips in EPC causes
-the MEE to trigger a system-wide processor lockdown, creating a denial-of-service.
+\subsection*{Background \& Problem}
+Intel SGX's Memory Encryption Engine (MEE) uses an integrity tree (Merkle-tree variant) rooted in on-die SRAM to detect any tampering with EPC memory.
+When MEE detects an integrity violation, it applies a \emph{drop-and-lock policy}: the memory controller is locked and the entire processor halts — requiring a cold reboot.
+This policy was designed to defend against \emph{hardware} attackers who physically tamper with DRAM.
+The threat model of SGX explicitly does not consider software-induced DRAM bit flips because the assumption was: software cannot flip DRAM bits.
+The Rowhammer attack breaks this assumption.
 
-\subsection*{What Was Built}
-SGX-Bomb demonstrates that Rowhammer against EPC pages causes the MEE integrity check to fail,
-resulting in a machine check exception that locks the processor and requires a physical reboot.
-This is a novel \emph{liveness attack} using SGX's own security mechanism against the system.
+\subsection*{Attack Design (Three Steps)}
+\textbf{Step 1 — Find conflicting DRAM rows in EPC:}
+Inside an enclave, the attacker has no physical address visibility.
+However, conflicting rows in the same DRAM bank show slower access latency than rows in different banks (due to row activation/precharge).
+The attacker scans enclave heap memory, measuring access latency of pairs $(p_1, p_2)$ using \texttt{clflushopt} + \texttt{mfence} + load + \texttt{lfence}.
+Threshold: if $>600{,}000$ cycles for 1,000 accesses, the pair is in the same bank.
+
+\textbf{Step 2 — Find interleaved (double-sided hammer targets):}
+Because the Linux SGX driver allocates EPC pages sequentially, three consecutive conflicting virtual addresses map to sequential physical addresses.
+Addresses $p_1$ and $p_3$ (with $p_2$ in between) are used for double-sided Rowhammer against the row containing $p_2$.
+
+\textbf{Step 3 — Trigger bit flip and processor lockdown:}
+\begin{verbatim}
+loop:
+  mov (p1), r10; mov (p2), r11
+  clflushopt (p1); clflushopt (p2)
+\end{verbatim}
+After each hammering round, scan all enclave heap addresses.
+If any EPC page contains a flipped bit, the MEE integrity tree mismatch triggers a machine check, locking the processor.
+
+\textbf{Results on DDR4 (i7-6700K + Crucial 8GB):}
+\begin{itemize}
+    \item Default refresh rate (64ms): system hangs in \textbf{283 seconds}.
+    \item Reduced refresh (128ms): 30 seconds; (256ms): 4 seconds; (503ms, max): 1 second.
+    \item Validated: the processor ignores keystrokes, SSH, kernel interrupts (CTRL+ALT+DEL); only cold power cycle recovers.
+\end{itemize}
+
+\textbf{Stealth:} SGX's anti-side-channel inference (ASCI) feature hides enclave PMU cache-miss events from OS-level Rowhammer detectors (ANVIL, Linux kernel patch), making SGX-Bomb undetectable.
 
 \subsection*{Layers Touched}
 \begin{itemize}
-    \item \textbf{DRAM hardware:} Rowhammer bit-flip induction via cache eviction hammering.
-    \item \textbf{Intel SGX:} EPC memory layout, MEE integrity verification, EPCM state.
-    \item \textbf{CPU fault handling:} Machine check exceptions triggered by MEE failure.
+    \item \textbf{DRAM hardware:} Rowhammer disturbance errors, DRAM bank mapping (timing side channel).
+    \item \textbf{Intel SGX:} EPC memory layout, MEE integrity tree, EPCM, drop-and-lock policy, ASCI.
+    \item \textbf{OS/driver:} Linux SGX driver sequential EPC allocation (exploited for row identification).
+    \item \textbf{CPU fault handling:} Machine check exception pathway triggered by MEE.
 \end{itemize}
 
 \subsection*{Security Skills}
-\begin{itemize}
-    \item Rowhammer attack methodology (cache flush, hammering patterns)
-    \item Intel SGX internals (EPC, MEE, EPCM)
-    \item Hardware fault injection and exploitation
-    \item Denial-of-service via microarchitectural fault escalation
-    \item Memory subsystem security analysis
-\end{itemize}
+Rowhammer attack methodology (double-sided hammering, \texttt{clflushopt}), DRAM bank mapping via timing side channel, Intel SGX memory subsystem (EPC, MEE, integrity tree), hardware fault injection to achieve DoS, understanding ASCI to evade OS-level detection.
 
 \newpage
 
 % ============================================================
-\section{PrivateZone: Providing a Private Execution Environment using ARM TrustZone}
+\section{PrivateZone: Private Execution Environment with ARM TrustZone}
 % ============================================================
-\textbf{Venue:} IEEE TDSC 2016
+\textbf{Venue:} IEEE TDSC 2016 \hfill
+\href{https://cysec.kr/publications/PrivateZone_Providing_a_Private_Execution_Environment_using_ARM_TrustZone.pdf}{[Paper Link]}\\
+\textbf{Authors:} Jinsoo Jang, Changho Choi, \textbf{Jaehyuk Lee}, Nohyun Kwak, Seongman Lee, Yeseul Choi, Brent B.\ Kang
 
-\subsection*{Problem}
-Sensitive mobile applications lack hardware-backed isolation equivalent to Intel SGX.
-ARM TrustZone exists but is locked to OEM/vendor code and unavailable to third-party apps.
+\subsection*{Background \& Problem}
+ARM TrustZone provides a Trusted Execution Environment (TEE) for mobile devices, but it is a closed resource: only OEM-certified applications (DRM, payment) can run in the Secure World.
+Third-party developers cannot deploy code in the TEE without device manufacturer partnership.
+The goal is to open TrustZone to arbitrary developer-written Security Critical Logic (SCL) \emph{without compromising the existing TEE services}.
 
-\subsection*{What Was Built}
-PrivateZone opens TrustZone's Secure World to third-party trusted applications by using
-Stage-2 paging and Monitor mode to isolate Secure World apps from each other and from
-the Normal World — providing an SGX-like enclave model on ARM mobile platforms.
+\subsection*{Key Insight}
+Use ARM's virtualization extensions (Stage-2 paging) to carve out a third environment — the \emph{Private Execution Environment (PrEE)} — that is isolated from both the Rich Execution Environment (REE) and the existing TEE.
+The PrEE resides in memory outside the hardware-protected TEE region (enforced by TZASC), isolated from the REE by Stage-2 page tables managed by PrivateZone in Monitor mode.
+
+\subsection*{Architecture}
+\textbf{Three environments:} REE (Normal World, Linux/Android), TEE (Secure World, SierraTEE), PrEE (new, software-isolated).
+
+\textbf{Stage-2 paging:}
+At boot, PrivateZone creates two Stage-2 page tables — one for the REE (1.8 GB) and one for the PrEE (201 MB) — in the bootloader.
+VTTBR register switches which page table is active.
+Neither environment can access the other's physical memory.
+TEE is hardware-isolated from both via TZASC.
+
+\textbf{Environment switching (Monitor mode):}
+All switches go through PrivateZone in Monitor mode, triggered by \texttt{SMC} instructions.
+SCL invocation is triggered via \texttt{SVC \#0xdeadbf} in user mode, handled in the REE kernel, which calls \texttt{SMC}.
+
+\textbf{SCL lifecycle:}
+\textbf{Deploy}: PrivateZone copies SCL from REE to PrEE, computes SHA1 hash, verifies against developer-signed hash.
+\textbf{Invoke}: PrivateZone saves REE context, copies parameters from REE to PrEE (with validation), switches VTTBR to PrEE, jumps to SCL entry.
+\textbf{Revoke}: clears SCL pages.
+
+\textbf{Security:}
+SCL pages have PXN (Privileged Execute Never) and WXN flags; kernel objects and SCL pages are never on the same physical page (prevents ret2dir).
+IRQ forwarded to REE for scheduling; register state cleared before world switch.
+
+\textbf{Implementation:} Arndale board (Cortex-A15 dual-core, 1.7 GHz), Linaro-Android 13.11, SierraTEE.
+4,627 lines of C in TEE (Monitor mode); 340 lines of ARM assembly in PrEE.
+
+\textbf{Overhead:} $\sim$3\% on Phoronix application benchmarks; SCL invocation adds $\sim$3.3$\times$ overhead dominated by SHA1 hash check during deployment (2440 µs).
 
 \subsection*{Layers Touched}
 \begin{itemize}
-    \item \textbf{ARM TrustZone:} Monitor mode, Secure EL1 OS design, world-switch handler.
-    \item \textbf{Stage-2 paging:} Memory isolation between multiple Secure World tenants.
-    \item \textbf{Normal World OS:} Linux kernel interface for launching trusted apps.
-    \item \textbf{Emulation:} QEMU modifications to support PrivateZone semantics.
+    \item \textbf{ARM TrustZone:} Monitor mode (highest privilege), Secure Configuration Register (SCR), TZASC.
+    \item \textbf{Stage-2 paging (virtualization extension):} VTTBR, HCR, IPA$\to$PA translation tables created at boot.
+    \item \textbf{Normal World OS (Linux):} Kernel driver for \texttt{SMC} invocation; bootloader memory partitioning.
+    \item \textbf{PrEE kernel:} Minimal exception handlers (SVC, prefetch abort, IRQ, data abort) in ARM assembly.
 \end{itemize}
 
 \subsection*{Security Skills}
-\begin{itemize}
-    \item ARM TrustZone design and Secure World OS implementation
-    \item Stage-2 (IPA$\to$PA) page table construction for tenant isolation
-    \item Monitor mode entry/exit and world-switch security
-    \item Trusted application lifecycle management
-    \item QEMU system modification for TEE research
-\end{itemize}
+ARM TrustZone architecture (Monitor mode, world switch, SCR/VTTBR/HCR registers), Stage-2 (IPA$\to$PA) page table construction for software isolation, PXN/WXN security flags, Secure World OS design, TZASC configuration, cache maintenance across worlds (\texttt{DCIMVAC}), ARM assembly coding.
 
 \newpage
 
 % ============================================================
 \section{OpenSGX: An Open Platform for SGX Research}
 % ============================================================
-\textbf{Venue:} NDSS 2015
+\textbf{Venue:} NDSS 2016 \hfill
+\href{https://taesoo.kim/pubs/2016/jain:opensgx.pdf}{[Paper Link]}\\
+\textbf{Authors:} Prerit Jain, Soham Desai, Seongmin Kim, Ming-Wei Shih, \textbf{JaeHyuk Lee}, Changho Choi, Youjung Shin, Taesoo Kim, Brent B.\ Kang, Dongsu Han
 
-\subsection*{Problem}
-Intel SGX was announced before real hardware was available, leaving researchers
-with no way to build, run, or study SGX enclaves. A faithful, open emulation platform was needed.
+\subsection*{Background \& Problem}
+Intel SGX was announced before actual hardware was available; the first SGX CPUs shipped in October 2015 on a handful of Dell laptops.
+The research community had no way to build, test, or study SGX enclaves.
+Intel's own emulator was available only to a closed group of collaborators.
+OpenSGX was the first publicly available, instruction-level SGX emulator.
 
-\subsection*{What Was Built}
-OpenSGX is a full software emulation of Intel SGX built on QEMU.
-It emulates SGX instructions (ECREATE, EADD, EENTER, EEXIT, ERESUME),
-EPCM, SECS, TCS, and SSA data structures.
-It also ships \texttt{sgxlib}, a user-space library for writing enclave programs,
-and adds GDB support for in-enclave debugging.
+\subsection*{What Was Built (19K lines of C)}
+OpenSGX extends QEMU's usermode binary translation (TCG) with six components:
+
+\textbf{1. Hardware Emulation (5,954 lines):}
+All SGX ISA instructions (Table I in paper: ECREATE, EADD, EEXTEND, EINIT, EENTER, EEXIT, ERESUME, EGETKEY, EREPORT, EAUG, EACCEPT, etc.) implemented as QEMU helper routines.
+CPU state extended with \texttt{CREGS} (enclave mode flag \texttt{CR\_CURR\_EIP}, etc.).
+EPC emulated as a contiguous virtual memory region; EPCM maintained in software.
+All memory accesses instrumented: \texttt{gen\_helper\_mem\_access()} checks source (enclave/non-enclave), destination (EPC/non-EPC), and EPCM permissions.
+
+\textbf{2. OS Emulation Layer (1,531 lines):}
+New system calls (\texttt{sys\_sgx\_init}, \texttt{sys\_create\_enclave}, \texttt{sys\_add\_epc}, \texttt{sys\_stat\_enclave}) service ENCLS (privileged) instructions.
+Enclave initialization sequence: ECREATE → EADD × $N$ → EEXTEND × ($N \times 16$) → EINIT.
+
+\textbf{3. Enclave Loader:}
+Reads ELF sections (\texttt{.enc\_text}, \texttt{.enc\_data}) and loads them into EPC pages.
+Custom linker script ensures PIC-compatible enclave binaries.
+
+\textbf{4. \texttt{sgxlib} User Library (2,978 lines):}
+APIs for both host (\texttt{sgx\_enter}, \texttt{sgx\_host\_read/write}) and enclave (\texttt{sgx\_exit}, \texttt{sgx\_getkey}, \texttt{sgx\_getreport}, \texttt{sgx\_malloc}, \texttt{sgx\_memcpy}).
+Communication via \textbf{trampoline} (code) and \textbf{stub} (data) shared regions.
+\texttt{sgx\_malloc()} uses EAUG/EACCEPT for dynamic EPC allocation; EACCEPT validates the new page's EPCM pending bit to thwart Iago attacks.
+
+\textbf{5. GDB Debugger Support:}
+GDB stub maps translated QEMU instructions back to original source; new commands: \texttt{info epc}, \texttt{info epcm}, \texttt{info secs}, \texttt{list enclaves}.
+
+\textbf{6. Performance Monitoring:}
+Per-enclave descriptor counts context switches, ENCLU/ENCLS instructions, TLB flushes, dynamically allocated EPC pages.
+
+\textbf{Case study:} Ported Tor directory server and exit node to OpenSGX, protecting identity/signing keys inside enclaves; measured 3.2$\times$--12$\times$ CPU cycle overhead vs.\ native QEMU (dominated by \texttt{sgx\_send}/\texttt{sgx\_recv} calls crossing enclave boundaries).
 
 \subsection*{Layers Touched}
 \begin{itemize}
-    \item \textbf{CPU emulation:} QEMU binary translation extended with SGX opcode handling.
-    \item \textbf{SGX ISA:} All enclave lifecycle instructions and memory management structures.
-    \item \textbf{User-space runtime:} \texttt{sgxlib} enclave programming library.
-    \item \textbf{Debug tooling:} GDB extension for single-stepping inside emulated enclaves.
+    \item \textbf{CPU emulation (QEMU):} Binary translation (TCG) extended with SGX opcode dispatch; per-instruction memory access instrumentation.
+    \item \textbf{SGX ISA:} All enclave lifecycle instructions, all data structures (SECS, TCS, SSA, EPCM, SIGSTRUCT, EINITTOKEN, KEYREQUEST, REPORT).
+    \item \textbf{OS/system calls:} New Linux-like syscall interface for enclave management.
+    \item \textbf{User-space runtime:} \texttt{sgxlib} enclave library; trampoline/stub communication protocol.
+    \item \textbf{Debug tooling:} GDB Python extension for SGX-specific state inspection.
 \end{itemize}
 
 \subsection*{Security Skills}
-\begin{itemize}
-    \item Intel SGX ISA and enclave lifecycle (ECREATE$\to$EENTER$\to$EEXIT)
-    \item QEMU internals and binary translation extension
-    \item Enclave memory management (EPC, EPCM, SECS, TCS, SSA)
-    \item Systems programming for TEE runtime design
-    \item Debugger integration for security research tooling
-\end{itemize}
+Intel SGX ISA and data structures (ECREATE through ERESUME, EPCM, SECS, TCS, SSA), QEMU binary translation internals and extension, enclave memory management, Iago attack mitigation via EAUG/EACCEPT, remote attestation protocol (EREPORT/EGETKEY), GDB extension development, systems programming for TEE platform design.
 
 \newpage
 
 % ============================================================
-\section{PRIME+RETOUCH: Exploiting Cache Dirty Bits for Stealthy Cache Attacks}
+\section{PRIME+RETOUCH: Cache Side Channel via Replacement Policy}
 % ============================================================
-\textbf{Venue:} arXiv
+\textbf{Venue:} arXiv:2402.15425 \hfill
+\href{https://arxiv.org/abs/2402.15425}{[Paper Link]}\\
+\textbf{Authors:} \textbf{Jaehyuk Lee}, Fan Sang, Taesoo Kim (Georgia Tech)\\
+\emph{Acknowledged by Intel.}
 
-\subsection*{Problem}
-Classic Prime+Probe cache side-channel attacks are noisy because cache eviction is
-detectable by victim or defense monitors.
-The write-back cache dirty-bit mechanism is an under-explored side channel that leaks
-cache-line usage without requiring the noisy eviction step.
+\subsection*{Background \& Problem}
+\textbf{Prefetching-and-locking defenses} (e.g., Cloak using Intel TSX) claim to prevent cache side-channel leakage by preloading sensitive data into the cache and locking it with a TSX transaction.
+If the attacker evicts a protected cache line, the TSX transaction aborts and the victim detects the attack.
+The core assumption: \emph{meaningful information leaks only through cache evictions}.
 
-\subsection*{What Was Built}
-PRIME+RETOUCH exploits write-back dirty bits to perform stealthy cache side-channel attacks.
-By ``retouching'' (re-dirtying) cache lines, the attacker avoids eviction-based detection
-used by defenses that monitor cache evictions.
-The attack is evaluated on Intel and ARM M1 platforms using hardware PMUs
-and includes a detailed analysis of the Tree-PLRU cache replacement policy.
+PRIME+RETOUCH breaks this assumption: information leaks through the \emph{Tree-PLRU replacement policy metadata} without ever evicting the victim's data.
+
+\subsection*{Key Technical Contribution: Leaky Tree-PLRU}
+The Tree-PLRU policy uses a binary tree per cache set where intermediate nodes store bits indicating which sub-tree was accessed less recently.
+When a cache line is accessed, all flags on the path root$\to$leaf are flipped to mark it as MRU.
+
+\textbf{Critical observation:} Back-to-back accesses to the same cache line (prefetch then genuine access) are \emph{indistinguishable} in the final tree state — both result in the same PLRU metadata.
+PRIME+RETOUCH makes them distinguishable by inserting an attacker ``retouch'' between the prefetch and the genuine access:
+
+\begin{enumerate}
+    \item \textbf{Prime:} Attacker primes all ways of the target cache set.
+    \item \textbf{Wait:} Victim prefetches sensitive data $V$ into cache.
+    \item \textbf{Retouch:} Attacker accesses the current PLRU cache way (which was occupied by $V$'s prefetch) using \emph{PLRU Aware Retouch} — always targeting the cache way that the Tree-PLRU marks as next eviction candidate.
+    \item \textbf{Probe:} Force one cache miss; observe which way is evicted — reveals whether $V$ was accessed after the prefetch.
+\end{enumerate}
+
+\textbf{PLRU Aware Retouch:} Standard retouch suffers false positives when the attacker retouches before the victim prefetches (unsynchronized).
+The solution: always retouch the \emph{post-prime PLRU entry} (known to the attacker from the Tree-PLRU state), which deterministically resolves synchronization ambiguity.
+This reduces unsynchronized sequences to synchronized equivalents — allowing off-line analysis of tree state after the attack, rather than real-time timing.
+
+\textbf{Poor man's algorithm (false-negative elimination):} When precise synchronization is unavailable, autofz-style delay reduction identifies the exact window between victim prefetch and genuine access.
+
+\subsection*{Reverse Engineering the Apple M1 L1 Cache}
+\begin{itemize}
+    \item No public documentation for M1 cache architecture.
+    \item Discovered undocumented PMU event \texttt{0xa3} (L1 D-cache miss) and \texttt{0x2} (core clock cycles) via XNU kernel source and Rosetta2 binary translation of \texttt{rdtsc}.
+    \item Read \texttt{CCSIDREL1}/\texttt{CSSELREL1} system registers to retrieve cache hierarchy (Firestorm: 128KB, 256 sets, 8-way; Icestorm: 64KB, 128 sets, 8-way).
+    \item Confirmed Tree-PLRU on M1 L1 cache using timing differences (L1 hit: $\sim$2--4 cycles; L1 miss: $\sim$12--16 cycles).
+\end{itemize}
+
+\textbf{M1 challenge:} System timer (\texttt{s34c15c106}) is too coarse (1MHz--50MHz vs.\ 3.2GHz core clock) to distinguish L1 hit/miss.
+Solution: accumulate 14 additional cache miss events using a crafted access sequence that causes misses \emph{only} when the victim accessed data. The amplified latency becomes measurable with the coarse timer.
+
+\subsection*{Attacks Demonstrated}
+\begin{itemize}
+    \item \textbf{AES T-Table (x86):} Leaks T-Table access patterns with prefetch-and-locking (Cloak/TSX) deployed; achieves same accuracy as classic Prime+Probe without defense. Only 0.2\% of executions cause TSX faults (vs.\ 93.4\% for Prime+Probe).
+    \item \textbf{AES T-Table in SGX enclave (x86):} Identical leakage inside SGX enclaves with prefetch-based defense.
+    \item \textbf{Apple M1:} Demonstrated feasibility of leaking victim access pattern without fine-grained timer.
+\end{itemize}
 
 \subsection*{Layers Touched}
 \begin{itemize}
-    \item \textbf{CPU cache microarchitecture:} L1/LLC write-back dirty-bit logic, cache-line state.
-    \item \textbf{Cache replacement policy:} Tree-PLRU analysis to control eviction behavior.
-    \item \textbf{PMU:} Hardware performance counters on Intel (TSX) and ARM M1.
+    \item \textbf{L1 cache microarchitecture:} Tree-PLRU binary tree state, 8-way set-associative L1 D-cache.
+    \item \textbf{Intel TSX:} Noise-free reverse engineering using write-set vs.\ read-set eviction behavior.
+    \item \textbf{Apple M1 PMU:} Undocumented PMU interface, system register access at EL0.
+    \item \textbf{Intel SGX (bonus):} Attack works within SGX-protected enclaves with TSX-based cache locking defense.
 \end{itemize}
 
 \subsection*{Security Skills}
-\begin{itemize}
-    \item Cache side-channel attack construction (Prime+Probe variant)
-    \item Write-back dirty-bit microarchitectural exploitation
-    \item Tree-PLRU replacement policy reverse engineering
-    \item Intel TSX abuse for cache state observation
-    \item ARM M1 PMU profiling and microarchitectural timing analysis
-    \item Stealth side-channel design (evading eviction-based defenses)
-\end{itemize}
+Tree-PLRU replacement policy reverse engineering (Intel Coffee Lake, Apple M1), noise-free cache monitoring via Intel TSX, eviction policy metadata exploitation, undocumented PMU interface discovery on Apple M1 (via Rosetta2 analysis), signal amplification for coarse-timer platforms, bypassing prefetch-and-locking cache side-channel defenses (Cloak), ARM64 assembly and pointer chasing with memory barriers.
 
 \newpage
 
@@ -363,22 +529,37 @@ and includes a detailed analysis of the Tree-PLRU cache replacement policy.
 % ============================================================
 
 \begin{center}
-\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{>{\bfseries}p{4cm} p{10cm}}
+\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{>{\bfseries}p{4.2cm} p{9.8cm}}
 \toprule
 Skill Area & Papers / Evidence \\
 \midrule
-TEE design \& impl. & OpenSGX, PrivateZone, PORTAL \\
-TEE exploitation & Hacking in Darkness (ROP), SGX-Bomb (fault), SENSE (side-channel) \\
-Microarch. side channels & SENSE, PRIME+RETOUCH \\
-Hardware fault attacks & SGX-Bomb (Rowhammer + MEE) \\
-DMA \& peripheral isolation & PORTAL (SMMU, CCA) \\
-Hypervisor / Stage-2 paging & PORTAL (KVM), PrivateZone (Stage-2) \\
-Firmware development & PORTAL (TF-RMM), PrivateZone (Monitor mode) \\
-Fuzzing \& vuln. discovery & autofz \\
-Smart contract security & DeFi longitudinal study \\
-Emulation / tooling & OpenSGX (QEMU + GDB) \\
-Control-flow exploitation & Hacking in Darkness (ROP gadget chaining) \\
+TEE design \& implementation
+  & OpenSGX (SGX emulation), PrivateZone (TrustZone PrEE), PORTAL (CCA Realm + SMMU) \\
+TEE exploitation
+  & Dark-ROP (ROP via SGX oracles), SGX-Bomb (Rowhammer+MEE DoS), SENSE (side-channel in enclave) \\
+Microarch.\ side-channel attack
+  & SENSE (cache eviction notifications), PRIME+RETOUCH (PLRU metadata leak) \\
+Cache replacement policy
+  & PRIME+RETOUCH (Tree-PLRU reverse engineering, Intel + Apple M1) \\
+Hardware fault attacks
+  & SGX-Bomb (Rowhammer double-sided + MEE integrity fault) \\
+DMA \& peripheral isolation
+  & PORTAL (SMMU stage-2 tables in TF-RMM, RMI design) \\
+Hypervisor \& Stage-2 paging
+  & PORTAL (KVM + RMM), PrivateZone (Stage-2 IPA$\to$PA) \\
+Firmware development
+  & PORTAL (TF-RMM extension), PrivateZone (Monitor mode ARM asm) \\
+SGX ISA \& enclave lifecycle
+  & OpenSGX (QEMU emulation), Dark-ROP (ENCLU oracle exploitation) \\
+Fuzzing \& vuln.\ discovery
+  & autofz (AIMD meta-fuzzer, cgroups, 11 fuzzers) \\
+Smart contract / DeFi security
+  & DeFi study (vulnerability taxonomy, user behavior, Dedoose) \\
+Emulation \& tooling
+  & OpenSGX (QEMU + sgxlib + GDB extension) \\
+ROP exploit construction
+  & Dark-ROP (blind ROP against unknown encrypted binary) \\
 \bottomrule
 \end{tabular}
 \end{center}

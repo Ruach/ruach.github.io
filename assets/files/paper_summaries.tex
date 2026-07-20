@@ -1,0 +1,386 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+
+\hypersetup{colorlinks=true, urlcolor=blue, linkcolor=blue}
+
+\title{\textbf{Research Paper Summaries}\\
+\large Layers, Security Skills, and Technical Expertise}
+\author{Jaehyuk Lee}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================
+\section*{Overview: Skills Across All Papers}
+\addcontentsline{toc}{section}{Overview: Skills Across All Papers}
+% ============================================================
+
+The nine papers collectively span four major \textbf{system layers} and two broad \textbf{security skill domains}:
+
+\subsection*{Layers Touched}
+\begin{itemize}
+    \item \textbf{Hardware / Microarchitecture:} CPU cache internals, DRAM (Rowhammer), dirty-bit logic, PMU counters, cache replacement policy (Tree-PLRU), Intel MEE, SGX EPC.
+    \item \textbf{Firmware / TEE Runtime:} ARM TF-RMM, TrustZone Monitor mode, SGX enclave lifecycle instructions (ECREATE, EADD, EENTER, EEXIT), SMMU.
+    \item \textbf{Hypervisor / OS Kernel:} KVM, Stage-2 page tables, cgroups, Linux process management, QEMU binary translation, perf/PMU kernel interface.
+    \item \textbf{Application / Protocol:} SGX enclave user-space library (\texttt{sgxlib}), Solidity smart contracts, DeFi protocol logic, fuzzer runtimes (AFL, libFuzzer).
+\end{itemize}
+
+\subsection*{Security Skills Learned}
+\begin{itemize}
+    \item \textbf{TEE design and exploitation:} Building, attacking, and defending Trusted Execution Environments (SGX, TrustZone, Arm CCA).
+    \item \textbf{Microarchitectural side-channel attacks:} Cache timing (Prime+Probe, Prime+Retouch), dirty-bit exploitation, PMU-based leakage.
+    \item \textbf{Hardware fault attacks:} Rowhammer against SGX EPC, MEE integrity fault as a denial-of-service primitive.
+    \item \textbf{Control-flow attacks:} Return-Oriented Programming (ROP) against TrustZone Secure World.
+    \item \textbf{DMA isolation and peripheral security:} Extending CCA's isolation guarantees to SMMU and DMA-capable peripherals.
+    \item \textbf{Automated vulnerability discovery:} Coverage-guided fuzzing, dynamic fuzzer composition, runtime scheduling for exploit discovery.
+    \item \textbf{Smart contract / DeFi security:} Vulnerability taxonomy, longitudinal exploit analysis, on-chain forensics.
+\end{itemize}
+
+\newpage
+
+% ============================================================
+\section{PORTAL: Fast and Secure Device Access with Arm CCA}
+% ============================================================
+\textbf{Venue:} IEEE S\&P 2025 \hfill
+\href{https://www.computer.org/csdl/proceedings-article/sp/2025/223600a013/21B7Q5c3ZHq}{[Paper Link]}
+
+\subsection*{Problem}
+Modern mobile SoCs integrate peripherals (GPU, NPU, DSP) that use DMA to access memory.
+When confidential VMs run under Arm CCA (Confidential Compute Architecture), these peripherals
+can break the Realm isolation boundary because the IOMMU/SMMU is not CCA-aware by design.
+
+\subsection*{What Was Built}
+PORTAL extends Arm CCA's Realm Management Monitor (TF-RMM) to mediate peripheral device access.
+It introduces a new interface between the RMM and the normal-world hypervisor (KVM) so that
+Realm VMs can safely share DMA with peripherals without compromising confidentiality or integrity.
+
+\subsection*{Layers Touched}
+\begin{itemize}
+    \item \textbf{Firmware:} TF-RMM — extended to track Realm memory regions and enforce SMMU mappings.
+    \item \textbf{Hypervisor:} KVM — new RMI calls to request/release device access on behalf of Realm VMs.
+    \item \textbf{Driver:} SMMU driver — modified to enforce Realm-owned PA ranges.
+    \item \textbf{Guest VM:} Realm guest driver — userspace API to request DMA from peripherals.
+\end{itemize}
+
+\subsection*{Security Skills}
+\begin{itemize}
+    \item Arm CCA architecture and Realm Management Interface (RMI)
+    \item Stage-2 page table design for confidential VMs
+    \item SMMU/IOMMU internals and DMA isolation enforcement
+    \item TF-RMM firmware development
+    \item Linux KVM hypervisor modification
+\end{itemize}
+
+\newpage
+
+% ============================================================
+\section{A Longitudinal Study of Vulnerabilities in the DeFi Ecosystem}
+% ============================================================
+\textbf{Venue:} USENIX Security 2024
+
+\subsection*{Problem}
+DeFi protocols have suffered billions of dollars in losses from smart contract exploits.
+No prior work systematically studied how vulnerability classes evolve over time and
+whether the ecosystem learns from past incidents.
+
+\subsection*{What Was Built}
+A dataset and analysis pipeline covering hundreds of DeFi incidents over multiple years,
+categorizing vulnerability classes (reentrancy, price oracle manipulation, flash loan attacks,
+access control flaws, etc.) and tracking recurrence trends.
+Qualitative coding was performed using Dedoose.
+
+\subsection*{Layers Touched}
+\begin{itemize}
+    \item \textbf{Smart contract layer:} Solidity code auditing and vulnerability classification.
+    \item \textbf{Protocol logic:} AMMs, lending protocols, flash loan mechanics.
+    \item \textbf{On-chain data:} Blockchain transaction analysis and incident reconstruction.
+\end{itemize}
+
+\subsection*{Security Skills}
+\begin{itemize}
+    \item Smart contract vulnerability taxonomy and auditing
+    \item Blockchain data analysis and on-chain forensics
+    \item DeFi protocol mechanics (AMMs, flash loans, oracles)
+    \item Qualitative research methodology (Dedoose coding)
+    \item Longitudinal security measurement methodology
+\end{itemize}
+
+\newpage
+
+% ============================================================
+\section{SENSE: Side-Channel Evaluation and Noise-addition System for Enclaves}
+% ============================================================
+\textbf{Venue:} NDSS 2024
+
+\subsection*{Problem}
+SGX enclaves are vulnerable to microarchitectural side-channel attacks (cache timing,
+branch predictor leakage, PMU-based observation). Defenses are ad hoc and lack a
+systematic evaluation framework.
+
+\subsection*{What Was Built}
+SENSE provides: (1) a systematic framework for evaluating microarchitectural side-channel
+leakage inside and across SGX enclave boundaries, and (2) a noise-injection mechanism
+to mitigate observable leakage. It profiles hardware performance counters inside and
+outside the enclave using the kernel perf subsystem.
+
+\subsection*{Layers Touched}
+\begin{itemize}
+    \item \textbf{CPU microarchitecture:} Cache behavior, branch predictor state, PMU event counting.
+    \item \textbf{SGX enclave runtime:} Enclave entry/exit (AEX), SSA-based state observation.
+    \item \textbf{OS kernel:} Perf subsystem and PMU access from ring-0.
+    \item \textbf{Compiler/toolchain:} Instrumentation of enclave binaries.
+\end{itemize}
+
+\subsection*{Security Skills}
+\begin{itemize}
+    \item Intel SGX internals (AEX, SSA, EPCM)
+    \item Microarchitectural side-channel attack methodology
+    \item PMU/perf event profiling at kernel level
+    \item GEM5 simulation for microarchitectural analysis
+    \item Side-channel leakage quantification and noise mitigation
+\end{itemize}
+
+\newpage
+
+% ============================================================
+\section{autofz: Automated Fuzzer Composition at Runtime}
+% ============================================================
+\textbf{Venue:} USENIX Security 2023 \hfill
+\href{https://github.com/sslab-gatech/autofz}{[GitHub]}
+
+\subsection*{Problem}
+Dozens of fuzzers exist, each optimized for different target characteristics.
+Manual fuzzer selection is suboptimal, and static combinations waste resources.
+No prior system dynamically allocates fuzzer compute resources based on live feedback.
+
+\subsection*{What Was Built}
+autofz monitors coverage feedback (AFL bitmap) from multiple fuzzers running in parallel
+and applies an AIMD-inspired (Additive Increase, Multiplicative Decrease) scheduler to
+dynamically reallocate CPU time toward whichever fuzzers are currently finding new coverage.
+
+\subsection*{Layers Touched}
+\begin{itemize}
+    \item \textbf{OS scheduling:} cgroups for CPU quota enforcement, process pinning.
+    \item \textbf{Fuzzer internals:} AFL bitmap coverage feedback, libFuzzer corpus sharing.
+    \item \textbf{Coverage instrumentation:} Compile-time and binary-level coverage tracking.
+\end{itemize}
+
+\subsection*{Security Skills}
+\begin{itemize}
+    \item Coverage-guided fuzzing (AFL, libFuzzer, honggfuzz, etc.)
+    \item Linux cgroups and process resource management
+    \item AIMD scheduling algorithm design
+    \item Automated vulnerability discovery methodology
+    \item Runtime profiling and feedback-driven optimization
+\end{itemize}
+
+\newpage
+
+% ============================================================
+\section{Hacking in Darkness: ROP against TrustZone Secure World}
+% ============================================================
+\textbf{Venue:} USENIX Security 2017
+
+\subsection*{Problem}
+ARM TrustZone's Secure World is assumed to be a strong isolation boundary.
+This paper demonstrates that ROP (Return-Oriented Programming) attacks can be
+mounted \emph{against} the Secure World from the Normal World, breaking that assumption.
+
+\subsection*{What Was Built}
+A full ROP attack chain targeting a real TrustZone implementation.
+Gadgets were identified in Secure World firmware binaries, chained via SVC/SMC calls
+from Normal World Linux, and used to achieve arbitrary code execution inside Secure World.
+
+\subsection*{Layers Touched}
+\begin{itemize}
+    \item \textbf{ARM TrustZone:} Monitor mode, Secure EL1 firmware, SVC/SMC dispatch.
+    \item \textbf{Normal World OS:} Linux userspace and kernel as the attacker's vantage point.
+    \item \textbf{Binary analysis:} Gadget discovery in Secure World binaries.
+\end{itemize}
+
+\subsection*{Security Skills}
+\begin{itemize}
+    \item Return-Oriented Programming (ROP) exploit construction
+    \item ARM TrustZone architecture (Monitor mode, world switching)
+    \item Binary analysis and gadget finding
+    \item SVC/SMC call interface exploitation
+    \item QEMU-based system emulation for attack development
+\end{itemize}
+
+\newpage
+
+% ============================================================
+\section{SGX-Bomb: Locking Down the Processor via Rowhammer}
+% ============================================================
+\textbf{Venue:} SysTEX 2017
+
+\subsection*{Problem}
+Intel SGX's Memory Encryption Engine (MEE) detects EPC bit flips to protect enclave integrity.
+This defense can be weaponized: an attacker who induces Rowhammer bit flips in EPC causes
+the MEE to trigger a system-wide processor lockdown, creating a denial-of-service.
+
+\subsection*{What Was Built}
+SGX-Bomb demonstrates that Rowhammer against EPC pages causes the MEE integrity check to fail,
+resulting in a machine check exception that locks the processor and requires a physical reboot.
+This is a novel \emph{liveness attack} using SGX's own security mechanism against the system.
+
+\subsection*{Layers Touched}
+\begin{itemize}
+    \item \textbf{DRAM hardware:} Rowhammer bit-flip induction via cache eviction hammering.
+    \item \textbf{Intel SGX:} EPC memory layout, MEE integrity verification, EPCM state.
+    \item \textbf{CPU fault handling:} Machine check exceptions triggered by MEE failure.
+\end{itemize}
+
+\subsection*{Security Skills}
+\begin{itemize}
+    \item Rowhammer attack methodology (cache flush, hammering patterns)
+    \item Intel SGX internals (EPC, MEE, EPCM)
+    \item Hardware fault injection and exploitation
+    \item Denial-of-service via microarchitectural fault escalation
+    \item Memory subsystem security analysis
+\end{itemize}
+
+\newpage
+
+% ============================================================
+\section{PrivateZone: Providing a Private Execution Environment using ARM TrustZone}
+% ============================================================
+\textbf{Venue:} IEEE TDSC 2016
+
+\subsection*{Problem}
+Sensitive mobile applications lack hardware-backed isolation equivalent to Intel SGX.
+ARM TrustZone exists but is locked to OEM/vendor code and unavailable to third-party apps.
+
+\subsection*{What Was Built}
+PrivateZone opens TrustZone's Secure World to third-party trusted applications by using
+Stage-2 paging and Monitor mode to isolate Secure World apps from each other and from
+the Normal World — providing an SGX-like enclave model on ARM mobile platforms.
+
+\subsection*{Layers Touched}
+\begin{itemize}
+    \item \textbf{ARM TrustZone:} Monitor mode, Secure EL1 OS design, world-switch handler.
+    \item \textbf{Stage-2 paging:} Memory isolation between multiple Secure World tenants.
+    \item \textbf{Normal World OS:} Linux kernel interface for launching trusted apps.
+    \item \textbf{Emulation:} QEMU modifications to support PrivateZone semantics.
+\end{itemize}
+
+\subsection*{Security Skills}
+\begin{itemize}
+    \item ARM TrustZone design and Secure World OS implementation
+    \item Stage-2 (IPA$\to$PA) page table construction for tenant isolation
+    \item Monitor mode entry/exit and world-switch security
+    \item Trusted application lifecycle management
+    \item QEMU system modification for TEE research
+\end{itemize}
+
+\newpage
+
+% ============================================================
+\section{OpenSGX: An Open Platform for SGX Research}
+% ============================================================
+\textbf{Venue:} NDSS 2015
+
+\subsection*{Problem}
+Intel SGX was announced before real hardware was available, leaving researchers
+with no way to build, run, or study SGX enclaves. A faithful, open emulation platform was needed.
+
+\subsection*{What Was Built}
+OpenSGX is a full software emulation of Intel SGX built on QEMU.
+It emulates SGX instructions (ECREATE, EADD, EENTER, EEXIT, ERESUME),
+EPCM, SECS, TCS, and SSA data structures.
+It also ships \texttt{sgxlib}, a user-space library for writing enclave programs,
+and adds GDB support for in-enclave debugging.
+
+\subsection*{Layers Touched}
+\begin{itemize}
+    \item \textbf{CPU emulation:} QEMU binary translation extended with SGX opcode handling.
+    \item \textbf{SGX ISA:} All enclave lifecycle instructions and memory management structures.
+    \item \textbf{User-space runtime:} \texttt{sgxlib} enclave programming library.
+    \item \textbf{Debug tooling:} GDB extension for single-stepping inside emulated enclaves.
+\end{itemize}
+
+\subsection*{Security Skills}
+\begin{itemize}
+    \item Intel SGX ISA and enclave lifecycle (ECREATE$\to$EENTER$\to$EEXIT)
+    \item QEMU internals and binary translation extension
+    \item Enclave memory management (EPC, EPCM, SECS, TCS, SSA)
+    \item Systems programming for TEE runtime design
+    \item Debugger integration for security research tooling
+\end{itemize}
+
+\newpage
+
+% ============================================================
+\section{PRIME+RETOUCH: Exploiting Cache Dirty Bits for Stealthy Cache Attacks}
+% ============================================================
+\textbf{Venue:} arXiv
+
+\subsection*{Problem}
+Classic Prime+Probe cache side-channel attacks are noisy because cache eviction is
+detectable by victim or defense monitors.
+The write-back cache dirty-bit mechanism is an under-explored side channel that leaks
+cache-line usage without requiring the noisy eviction step.
+
+\subsection*{What Was Built}
+PRIME+RETOUCH exploits write-back dirty bits to perform stealthy cache side-channel attacks.
+By ``retouching'' (re-dirtying) cache lines, the attacker avoids eviction-based detection
+used by defenses that monitor cache evictions.
+The attack is evaluated on Intel and ARM M1 platforms using hardware PMUs
+and includes a detailed analysis of the Tree-PLRU cache replacement policy.
+
+\subsection*{Layers Touched}
+\begin{itemize}
+    \item \textbf{CPU cache microarchitecture:} L1/LLC write-back dirty-bit logic, cache-line state.
+    \item \textbf{Cache replacement policy:} Tree-PLRU analysis to control eviction behavior.
+    \item \textbf{PMU:} Hardware performance counters on Intel (TSX) and ARM M1.
+\end{itemize}
+
+\subsection*{Security Skills}
+\begin{itemize}
+    \item Cache side-channel attack construction (Prime+Probe variant)
+    \item Write-back dirty-bit microarchitectural exploitation
+    \item Tree-PLRU replacement policy reverse engineering
+    \item Intel TSX abuse for cache state observation
+    \item ARM M1 PMU profiling and microarchitectural timing analysis
+    \item Stealth side-channel design (evading eviction-based defenses)
+\end{itemize}
+
+\newpage
+
+% ============================================================
+\section*{Consolidated Skill Matrix}
+\addcontentsline{toc}{section}{Consolidated Skill Matrix}
+% ============================================================
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{>{\bfseries}p{4cm} p{10cm}}
+\toprule
+Skill Area & Papers / Evidence \\
+\midrule
+TEE design \& impl. & OpenSGX, PrivateZone, PORTAL \\
+TEE exploitation & Hacking in Darkness (ROP), SGX-Bomb (fault), SENSE (side-channel) \\
+Microarch. side channels & SENSE, PRIME+RETOUCH \\
+Hardware fault attacks & SGX-Bomb (Rowhammer + MEE) \\
+DMA \& peripheral isolation & PORTAL (SMMU, CCA) \\
+Hypervisor / Stage-2 paging & PORTAL (KVM), PrivateZone (Stage-2) \\
+Firmware development & PORTAL (TF-RMM), PrivateZone (Monitor mode) \\
+Fuzzing \& vuln. discovery & autofz \\
+Smart contract security & DeFi longitudinal study \\
+Emulation / tooling & OpenSGX (QEMU + GDB) \\
+Control-flow exploitation & Hacking in Darkness (ROP gadget chaining) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}

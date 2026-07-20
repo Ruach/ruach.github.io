@@ -164,21 +164,12 @@
 \end{center}
 %
 \section{RESEARCH INTEREST}
-\emph{I am interested in computer systems security, especially in:  hardware/software codesign for security, Trusted Execution Environment (TEE), secure IO design for TEE, software/hardware vulnerability research, side-channel attacks and its mitigations, and fuzzing}%, and sharing knowledge through blogging}
+\emph{I am interested in computer systems security, especially in:  hardware/software codesign for security, Trusted Execution Environment (TEE), secure IO design for TEE, software/hardware vulnerability research, side-channel attacks and mitigations, and fuzzing}%, and sharing knowledge through blogging}
 \vspace{-3pt}
-
-\section{EDUCATION}
-\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lllp{3.5cm}r@{}}
-    \textbf{Institution} & \textbf{Degree} & \textbf{Field of Study} & \textbf{Dates} & \textbf{GPA} \\
-    Korea Advanced Institute of Science and Technology & \emph{Ph.D.} & Information Security & Aug 2015 - Feb 2021 & {3.95} \\
-    {Korea Advanced Institute of Science and Technology} & \emph{M.S.} & Information Security & Sep 2013 - Aug 2015 & {4.1} \\
-    {Handong Global University} & \emph{B.S.} & Computer Science & Mar 2010 - Aug 2013 & {4.2} 
-\end{tabular*}}
-\vspace{-6pt}
 %
 \section{TECHNICAL SKILLS}
 \begin{itemize}[leftmargin=0.1in, label={}, itemsep=1pt, topsep=0pt, parsep=0pt]
-    \item \small\textbf{Software}: C, C++, Rust, Scala, Java, Python, TF-A, TF-RMM, Caliptra FW, NVIDIA PSCFW, Linux Kernel, KVM, QEMU, ARM/X86 Assembly, Fuzzing, GDB, IDA Pro, CoCLI
+    \item \small\textbf{Software}: C, C++, Rust, Scala, Python, TF-A, TF-RMM, Caliptra FW, PSC FW (NVIDIA IROT), Linux Kernel, KVM, QEMU, ARM/X86 Assembly, Fuzzing, GDB, CoCLI
     \item \small\textbf{Hardware}: GEM5 (x86 simulator), Processor Pipeline, Cache, TLB, Microcode, HW Side Channel, (System)Verilog, Chisel (RISC-V), Intel SGX \& TDX, ARM CCA \& TrustZone, IOMMU, PCIe
     \item \small\textbf{Spec}: Entity Attestation Token (EAT), Concise Reference Integrity Manifest (CoRIM), DICE Protection Environment (DPE), Security Protocol and Data Model (SPDM), TEE Device Interface Security Protocol (TDISP)
 \end{itemize}
@@ -191,36 +182,37 @@
  \resumeItemListStart
 
 \resumeItem{Owned device evidence and CoRIM generation for Vera and Grace confidential computing}
+%
 \begin{itemize}[leftmargin=0.18in, itemsep=0pt, topsep=0pt]
-    \item Implemented cross-layer firmware support across RMM, ATF, PSCFW (IROT), and Caliptra DPE to enable end-to-end Vera CCA evidence generation.
-    \item Implemented the software stack to enable baremetal attestation evidence generation for Vera and Grace CPUs.
+    \item Implemented cross-layer firmware support across \emph{RMM, ATF, PSCFW (IROT), and Caliptra DPE} to enable end-to-end \emph{Vera CCA} evidence generation.
+    \item Implemented the software stack to enable \emph{Baremetal Secure AI} attestation evidence generation for Vera and Grace CPUs.
     \item Developed CoRIM for Vera CCA and Vera/Grace baremetal attestation
 \end{itemize}
-
+%
 \resumeItem{Owned Live Firmware Activation (LFA) support for RMM}
 \begin{itemize}[leftmargin=0.18in, itemsep=0pt, topsep=0pt]
-    \item Built the supporting software stack across RMM, ATF, and Vera IROT to enable live firmware activation.
+    \item Built the supporting software stack across \emph{RMM, ATF, and Vera IROT} to enable live firmware activation.
 \end{itemize}
-
-\resumeItem{Experienced in the end-to-end SBIOS firmware development lifecycle, including build, validation, testing, and firmware package releases.}
-    \resumeItemListEnd
 %
+\resumeItem{Experienced in the end-to-end SBIOS firmware development lifecycle, including build, validation, testing, and firmware package releases.}
+\resumeItem{Engineered secure tenant data loading (e.g., ML models) for NVFlare by integrating encrypted disk and early attestation key provisioning directly into initramfs, securing the boot sequence}
+    \resumeItemListEnd
     \resumeSubheading
       {Postdoc Researcher: Georgia Institute of Technology, Atlanta, GA}{Jan 2022 -- Jul 2024}
       {Title}{Location}
       \resumeItemListStart
-        \resumeItem {Developed an automated fuzzer selection tool that dynamically selects fuzzer(s) based on runtime analysis \ref{paper:autofz}. Anyone having no knowledge of fuzzers can simply utilize it for automate vulnerability discovery, irrespective of the target 
-        }
+        \resumeItem {Developed an automated fuzzer selection tool that dynamically selects fuzzer(s) based on runtime analysis \ref{paper:autofz}. Anyone having no knowledge of fuzzers can simply utilize it for automate vulnerability discovery}
         \resumeItem {Experienced in vulnerability research on Intel and ARM's latest hardware feature designed for confidential VM (TDX \& CCA). Identified new side-channel issues related to resource allocation in the construction of confidential VMs}
-         \resumeItem {Implemented a secure and swift IO path between confidential Virtual Machines (VM) and peripherals such as GPUs by leveraging robust isolation guarantees of IOMMU (SMMU) and ARM CCA, avoiding encryption overhead~\ref{paper:portal}} \resumeItem {Volunteered as an IT admin, possessing hands-on experience on IPMI, python \& shell scripting for multiple server management (30 servers), and troubleshooting software/hardware issues.}
+         \resumeItem {Implemented a secure IO path between confidential VMs and peripherals such as GPUs by leveraging isolation guarantees of IOMMU (SMMU) and ARM CCA, avoiding encryption overhead~\ref{paper:portal}} %\resumeItem {Developed expertise in managing 30+ node multi-rack server environments and diagnosing end-to-end hardware and software issues}
     \resumeItemListEnd
       
     \resumeSubheading
       {Postdoc Researcher: \small{Korea Advanced Institute of Science and Technology}, Korea}{Mar 2021 -- Dec 2021}
       {Title}{Location}
       \resumeItemListStart
-        \resumeItem {Implemented novel cache side-channel attack on X86 and Apple M1 chips, unveiling the memory access pattern without evicting the victim's cache entries and completely bypassing side-channel defenses monitoring cache evictions \ref{paper:cache-attack}}
-        \resumeItem {Actively engaged in mentoring and educating Ph.D. students in large group settings (20 students)}
+        \resumeItem {Implemented cache side-channel attack on X86 and Apple M1 chips, unveiling the memory access pattern without evicting the victim's cache entries and \emph{completely bypassing side-channel defenses} monitoring cache evictions \ref{paper:cache-attack}}
+        \resumeItem{Took the lead in managing and mentoring a group of 20 Ph.D. students}
+
 
     \resumeItemListEnd
     
@@ -228,22 +220,21 @@
       {Research Intern: Georgia Institute of Technology, Atlanta, GA}{Nov 2019 -- May 2020}
       {Title}{Location}
       \resumeItemListStart
-        \resumeItem {
-        To address side-channel attacks, I implemented a hardware framework enabling user space applications to subscribe to micro-architecture events, including cache and TLB evictions, and demonstrated its effectiveness on GEM5 simulator \ref{paper:sense}
-        }
+        \resumeItem{Designed and implemented a \emph{hardware-based side-channel mitigation} on the GEM5 simulator, enabling user-space applications to subscribe to micro-architectural events (cache and TLB evictions) \ref{paper:sense}}
     \resumeItemListEnd
 
     \resumeSubheading
       {Research Intern: Microsoft Research, Redmond, WA}{May 2016 -- August 2016}
       {Title}{Location}
       \resumeItemListStart
-        \resumeItem {Conducted vulnerability research about the potential impact of a memory corruption within confidential computing (Intel SGX). Implemented practical ROP attack against encrypted binary, compromising its confidentiality guarantee \ref{paper:sgx-rop}}
-        \resumeItem {Developed secure Content Delivery Network (CDN) to safeguard user data residing on the server, allowing industry companies, to offload user data to a third-party CDN server without having to place full trust in the cloud provider}
+        \resumeItem{Researched memory corruption vulnerabilities in Intel SGX and executed a practical ROP attack against encrypted binaries, demonstrating compromise of confidentiality guarantees \ref{paper:sgx-rop}.}
+        %
+        \resumeItem{Developed a secure CDN that enables enterprises to offload sensitive user data to untrusted third-party cloud providers without compromising confidentiality.}
     \resumeItemListEnd
   \resumeSubHeadingListEnd
 %------------Publications-----------
-\section{PUBLICATION \& PATENT \small\href{https://scholar.google.com/citations?user=nfpCTgUAAAAJ&hl=en}{(822 citations)}} 
-\emph{top-tier conferences (USENIX Security, NDSS) and Journal (TDSC)}
+\section{PUBLICATION \& PATENT \small\href{https://scholar.google.com/citations?user=nfpCTgUAAAAJ&hl=en}{(826 citations)}} 
+\emph{top-tier conferences (SP, USENIX Security, NDSS) and Journal (TDSC)}
 \vspace{2pt}
     \resumeSubHeadingListLabelStart
 %
@@ -254,7 +245,7 @@
     \resumeItemListStart
         \resumeItem{TEEs designed for confidential VMs face limitations in directly interfacing with peripherals, necessitating encryption and decryption overhead when transmitting data to devices. Portal addresses this concern by implementing access control}
         \resumeItem{
-        Redesign IOMMU subsystem within the Linux kernel and migrate the resource allocation component, including SMMU page table management, to TF-RMM. Introduce RMI interface calls between KVM and TF-RMM to enable confidential VM to have a dedicated, isolated DMA region.
+        Redesigned IOMMU subsystem within the Linux kernel and migrated the resource allocation component, including SMMU page table management, to TF-RMM. Introduced RMI interface calls between KVM and TF-RMM to enable confidential VM to have a dedicated, isolated DMA region.
         }
     \resumeItemListEnd
 %
@@ -440,6 +431,15 @@ The invention introduces a secure IoT gateway design, utilizing Intel SGX for pr
     \resumeSubHeadingListEnd
 \end{comment}
 %
+\section{EDUCATION}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lllp{3.5cm}r@{}}
+    \textbf{Institution} & \textbf{Degree} & \textbf{Field of Study} & \textbf{Dates} & \textbf{GPA} \\
+    Korea Advanced Institute of Science and Technology & \emph{Ph.D.} & Information Security & Aug 2015 - Feb 2021 & {3.95} \\
+    {Korea Advanced Institute of Science and Technology} & \emph{M.S.} & Information Security & Sep 2013 - Aug 2015 & {4.1} \\
+    {Handong Global University} & \emph{B.S.} & Computer Science & Mar 2010 - Aug 2013 & {4.2} 
+\end{tabular*}}
+\vspace{-6pt}
+%
 \section{PROFESSIONAL ACTIVITIES}
 
     \resumeSubHeadingListLabelStart
@@ -533,31 +533,5 @@ The invention introduces a secure IoT gateway design, utilizing Intel SGX for pr
           {\emph{Detecting Emulated Environment: Exploiting Behavioral Discrepancies In QEMU}}
           {{M.S. Thesis.}}
     \resumeSubHeadingListEnd
-
-
-\begin{comment}
-\section {LIST OF REFERENCES}
-    \resumeSubHeadingListStart
-    \item {\textbf{Dr. BrentByunghoon Kang, Ph.D.}}
-    \vspace{-7pt}
-    \resumeReference{Professor of School of Information Security}
-    \resumeReference{KAIST, Daejeon, Korea}
-    \resumeReference{Homepage : \href{https://cysec.kr/}{https://cysec.kr/}}
-    \resumeReference{Email : \href{mailto:brentkang@kaist.ac.kr}{brentkang@kaist.ac.kr}}
-
-
-    \item {\textbf{Dr. Yeongjin Jang, Ph.D.}}
-    \vspace{-7pt}
-    \resumeReference{Principal Engineer, Software,}
-    \resumeReference{Samsung Research America, Mountain View, CA}
-    \resumeReference{Homepage : \href{https://www.unexploitable.systems/}{https://www.unexploitable.systems/}}
-    \resumeReference{Email : \href{y.jang1@samsung.com}{y.jang1@samsung.com}}
-\end{comment}
-
-
-
-
-
 \end{document}
-
 

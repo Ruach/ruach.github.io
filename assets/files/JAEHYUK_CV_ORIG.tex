@@ -92,7 +92,7 @@
   \item
     \begin{tabular*}{1.0\textwidth}[t]{l@{\extracolsep{\fill}}r}
       \textbf{#1} & \textbf{\small #2} \\
-    \end{tabular*}\vspace{1pt}
+    \end{tabular*}\vspace{-4pt}
 }
 
 \newcommand{\resumeSubSubheading}[2]{
@@ -134,7 +134,7 @@
     \item
     \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
       {\small#1} & \textbf{\small\textcolor{venuecolor}{#2}} \\
-    \end{tabular*}\vspace{0pt}\label{#3}
+    \end{tabular*}\vspace{-2pt}\label{#3}
 }
 
 
@@ -172,14 +172,14 @@
 \renewcommand\labelitemi{$\vcenter{\hbox{\tiny$\bullet$}}$}
 \renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
 
-\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}, itemsep=4pt, topsep=2pt]}
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}, itemsep=8pt, topsep=2pt]}
 \newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
 
 \newcommand{\resumeSubHeadingListLabelStart}{\begin{enumerate}[leftmargin=0.0in, label={[\arabic*]}, itemsep=8pt, topsep=2pt]}
 \newcommand{\resumeSubHeadingListLabelEnd}{\end{enumerate}}
 
-\newcommand{\resumeItemListStart}{\begin{itemize}[leftmargin=*, itemsep=1pt, topsep=0pt, parsep=0pt, partopsep=0pt]}
-\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-3pt}}
+\newcommand{\resumeItemListStart}{\begin{itemize}[leftmargin=*, itemsep=1pt, topsep=1pt, parsep=0pt, partopsep=0pt]}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-4pt}}
 
 % ---- Career Timeline macro ----
 % Single horizontal axis. Role bars sit on the axis; publication pins hang below.
@@ -297,7 +297,7 @@
     \small
     \raisebox{-0.1\height}\faPhone\ 470-861-6020 ~
     \href{https://ruach.github.io}{\faHome\ https://ruach.github.io} ~
-    \href{mailto:jaehyukl@nvidia.com}{\faEnvelope\ jaehyukl@nvidia.com} ~
+    \href{mailto:jaehyukl@nvidia.com}{\faEnvelope\ jaehyukl@nvidia.com} ~ 
    % \href{https://www.linkedin.com/in/jaehyuk-lee-29b33b121/}{\faLinkedin\ Jaehyuk Lee}  ~
     \vspace{-10pt}
 \end{center}
@@ -307,9 +307,9 @@
 %\noindent\timelineChart
 %\vspace{4pt}
 %%
-\section{SUMMARY}
+\section{RESEARCH INTEREST}
 \begin{interestbox}
-\small\emph{I work on high-assurance systems security: Trusted Execution Environments, cryptographic attestation and root-of-trust, and hypervisor/OS isolation, paired with the adversarial side (side-channel attacks, exploit development, and fuzzing) to test whether those guarantees hold. Throughout my career, I have tackled security problems across the full hardware-software stack, driven by a desire to turn complex research problems into production-ready solutions.}
+\small\emph{I am interested in computer systems security, with a focus on hardware/software co-design for security, Trusted Execution Environments (TEEs), secure I/O design, building verifiable chains of trust through secure boot and cryptographic attestation, and vulnerability research including side-channel attacks and mitigations, and fuzzing.}
 \end{interestbox}
 \vspace{-3pt}
 %
@@ -319,61 +319,62 @@
     \item \small\textbf{Hardware}: GEM5 (x86 simulator), Processor Pipeline, Cache, TLB, Microcode, HW Side Channel, (System)Verilog, Chisel (RISC-V), Intel SGX \& TDX, ARM CCA \& TrustZone, IOMMU, PCIe
     \item \small\textbf{Spec}: Entity Attestation Token (EAT), Concise Reference Integrity Manifest (CoRIM), DICE Protection Environment (DPE), Security Protocol and Data Model (SPDM), TEE Device Interface Security Protocol (TDISP)
 \end{itemize}
-\vspace{-3pt}
+\vspace{-4pt}
 \section{WORK EXPERIENCE}
-\vspace{1pt}
   \resumeSubHeadingListStart
     \resumeSubheading
       {Senior Security Engineer: NVIDIA Corporation, Santa Clara, CA}{Jul 2024 -- Current}
       {Title}{Location}
 \resumeItemListStart
 
-\resumeItem{Owned an end-to-end cryptographic attestation chain from silicon root of trust to signed evidence for Vera and Grace CC}
+\resumeItem{Owned device evidence and CoRIM generation for Vera and Grace confidential computing}
 \resumeItemListStart
-    \resumeItem{Developed cross-layer firmware and software stacks across bootloader, RMM, ATF, PSCFW, and Caliptra DPE to enable end-to-end attestation and evidence generation for Vera CCA and Baremetal Secure AI on Vera and Grace CPUs.}
-    \resumeItem{Developed and deployed CoRIM/CoMID manifests for Vera CCA and Vera/Grace baremetal attestation}
+    \resumeItem{Implemented cross-layer firmware support across \emph{RMM, ATF, PSCFW (IROT), and Caliptra DPE} to enable end-to-end \emph{Vera CCA} evidence generation.}
+    \resumeItem{Implemented the software stack to enable \emph{Baremetal Secure AI} attestation evidence generation for Vera and Grace CPUs.}
+    \resumeItem{Developed CoRIM for Vera CCA and Vera/Grace baremetal attestation.}
 \resumeItemListEnd
 %
-\vspace{4pt}
-\resumeItem{Led Live Firmware Activation (LFA) support for RMM, building the software stack across \emph{RMM, ATF, and Vera IROT}.}
+\resumeItem{Owned Live Firmware Activation (LFA) support for RMM}
+\resumeItemListStart
+    \resumeItem{Built the supporting software stack across \emph{RMM, ATF, and Vera IROT} to enable live firmware activation.}
+\resumeItemListEnd
 %
-\resumeItem{Hardened guest OS boot sequence and model loading using initramfs disk encryption with early, attested key provisioning.}
+\resumeItem{Engineered secure tenant data loading (e.g., ML models) for NVFlare by integrating encrypted disk and early attestation key provisioning directly into initramfs, securing the boot sequence.}
+\resumeItem{Experienced in the end-to-end SBIOS firmware development lifecycle, including build, validation, testing, and firmware package releases.}
     \resumeItemListEnd
     \resumeSubheading
       {Postdoc Researcher: Georgia Institute of Technology, Atlanta, GA}{Jan 2022 -- Jul 2024}
       {Title}{Location}
       \resumeItemListStart
-        \resumeItem {Developed an automated fuzzer selection tool that dynamically selects fuzzer(s) based on runtime analysis \ref{paper:autofz}} %Anyone having no knowledge of fuzzers can simply utilize it for automate vulnerability discovery}
-        \resumeItem {Designed and implemented a hardware-enforced secure I/O path between confidential VMs and DMA peripherals ~\ref{paper:portal}}
-        %(GPUs) by moving IOMMU (SMMU) page-table ownership into the TEE's trust boundary under ARM CCA, replacing per-transfer encryption with isolation guarantees~\ref{paper:portal}} %\resumeItem {Developed expertise in managing 30+ node multi-rack server environments and diagnosing end-to-end hardware and software issues}
-        \resumeItem {Conducted vulnerability research on Intel and ARM's latest hardware-isolated confidential VM architectures (TDX \& CCA)}
+        \resumeItem {Developed an automated fuzzer selection tool that dynamically selects fuzzer(s) based on runtime analysis \ref{paper:autofz}. Anyone having no knowledge of fuzzers can simply utilize it for automate vulnerability discovery}
+        \resumeItem {Experienced in vulnerability research on Intel and ARM's latest hardware feature designed for confidential VM (TDX \& CCA). Identified new side-channel issues related to resource allocation in the construction of confidential VMs}
+         \resumeItem {Implemented a secure IO path between confidential VMs and peripherals such as GPUs by leveraging isolation guarantees of IOMMU (SMMU) and ARM CCA, avoiding encryption overhead~\ref{paper:portal}} %\resumeItem {Developed expertise in managing 30+ node multi-rack server environments and diagnosing end-to-end hardware and software issues}
     \resumeItemListEnd
-     
+      
     \resumeSubheading
       {Postdoc Researcher: \small{Korea Advanced Institute of Science and Technology}, Korea}{Mar 2021 -- Dec 2021}
       {Title}{Location}
       \resumeItemListStart
-        \resumeItem {Demonstrated an eviction-free cache side-channel attack on x86 and Apple M1, bypassing eviction-monitoring defenses~\ref{paper:cache-attack}}
+        \resumeItem {Implemented cache side-channel attack on X86 and Apple M1 chips, unveiling the memory access pattern without evicting the victim's cache entries and \emph{completely bypassing side-channel defenses} monitoring cache evictions \ref{paper:cache-attack}}
         \resumeItem{Took the lead in managing and mentoring a group of 20 Ph.D. students}
 
 
     \resumeItemListEnd
-   
+    
     \resumeSubheading
       {Research Intern: Georgia Institute of Technology, Atlanta, GA}{Nov 2019 -- May 2020}
       {Title}{Location}
       \resumeItemListStart
-        \resumeItem{Developed a hardware-based side-channel mitigation system on GEM5, monitoring cache and TLB eviction events~\ref{paper:sense}}
-        %(cache and TLB evictions) \ref{paper:sense}}
+        \resumeItem{Designed and implemented a \emph{hardware-based side-channel mitigation} on the GEM5 simulator, enabling user-space applications to subscribe to micro-architectural events (cache and TLB evictions) \ref{paper:sense}}
     \resumeItemListEnd
 
     \resumeSubheading
       {Research Intern: Microsoft Research, Redmond, WA}{May 2016 -- August 2016}
       {Title}{Location}
       \resumeItemListStart
-        \resumeItem{Executed practical ROP attacks on Intel SGX by exploiting memory corruption vulnerabilities without binary details~\ref{paper:sgx-rop}}
+        \resumeItem{Researched memory corruption vulnerabilities in Intel SGX and executed a practical ROP attack against encrypted binaries, demonstrating compromise of confidentiality guarantees \ref{paper:sgx-rop}.}
         %
-        \resumeItem{Developed a secure CDN that enables enterprises to offload sensitive user data to untrusted third-party cloud providers}
+        \resumeItem{Developed a secure CDN that enables enterprises to offload sensitive user data to untrusted third-party cloud providers without compromising confidentiality.}
     \resumeItemListEnd
   \resumeSubHeadingListEnd
 %------------Publications-----------
@@ -388,32 +389,37 @@
     \href{https://www.computer.org/csdl/proceedings-article/sp/2025/223600a013/21B7Q5c3ZHq}{Paper}}
     {SP 2025}{paper:portal}
     \resumeItemListStart
-        \resumeItem{Eliminated per-transfer encryption overhead for Arm CCA Realm VMs accessing DMA-capable peripherals.}
-        %by migrating SMMU stage-2 page table ownership into TF-RMM and introducing new RMI calls (\texttt{RMI\_DEVICE\_ATTACH/DETACH}) between KVM and RMM, enabling hardware-enforced isolated DMA regions without cryptographic cost.}
-        \resumeItem{Extended the Linux SMMU driver to delegate page table management to RMM; implemented the Realm-side driver and the full RMI call path across KVM, TF-RMM, and the SMMU hardware controller. Changed RMM implementation to enable hardware-enforced (GPT) isolated DMA regions without cryptographic operation.}
+        \resumeItem{Eliminated per-transfer encryption overhead for Arm CCA Realm VMs accessing DMA-capable peripherals (GPU, NPU) by migrating SMMU stage-2 page table ownership into TF-RMM and introducing new RMI calls (\texttt{RMI\_DEVICE\_ATTACH/DETACH}) between KVM and RMM, enabling hardware-enforced isolated DMA regions without cryptographic cost.}
+        \resumeItem{Extended the Linux SMMU driver to delegate page table management to RMM; implemented the Realm-side driver and the full RMI call path across KVM, TF-RMM, and the SMMU hardware controller.}
     \resumeItemListEnd
 %
+     \resumeProjectHeadingWithLabel
+    {\textbf{Survey On DeFi Users’ Perception of Security Breaches and Countermeasures} $|$ 
+    \href{https://www.usenix.org/conference/usenixsecurity24/presentation/liu-mingyi}{Paper}}
+    {USENIX 2024}{paper:defi}
+        \resumeItemListStart
+        \resumeItem{Revealed that DeFi victims overwhelmingly skip post-incident security review and instead seek new platforms to recover losses quickly --- behavior analogous to gambling addiction --- suggesting industry regulation is more effective than user education alone.}
+        \resumeItem{Conducted a two-phase study ($N{=}14$ semi-structured interviews + $N{=}493$ survey); performed qualitative coding of interview transcripts using Dedoose, mapping responses to a taxonomy of DeFi attack types (rug pulls, flash loans, oracle manipulation, access-control bugs).}
+    \resumeItemListEnd
     %
     \resumeProjectHeadingWithLabel
-    {\textbf{SENSE: Enhancing Microarchitectural Awareness via Subscription-Based Notification}
+    {\textbf{SENSE: Enhancing Microarchitectural Awareness via Subscription-Based Notification} 
     $|$
     \href{https://www.ndss-symposium.org/wp-content/uploads/2024-176-paper.pdf}{Paper}
     }{NDSS 2024}{paper:sense}
 %
     \resumeItemListStart
-        \resumeItem{Addressed the lack of microarchitectural visibility in TEEs that leaves them blind to cache/TLB side-channel attacks}
-        %by designing a subscription-based ISA extension that delivers hardware events directly to the enclave handler --- without requiring OS cooperation.}
-        \resumeItem{Extended the GEM5 out-of-order CPU pipeline with new micro-ops and added event-tracking metadata bits to the cache and TLB models; implemented the enclave-side handler dispatch path.}
+        \resumeItem{Addressed the lack of microarchitectural visibility in TEEs that leaves them blind to cache/TLB side-channel attacks by designing a subscription-based ISA extension that delivers hardware events directly to the enclave handler --- without requiring OS cooperation.}
+        \resumeItem{Extended the GEM5 out-of-order CPU pipeline with new micro-ops and added event-tracking metadata bits to the cache and TLB models; implemented the enclave-side handler dispatch path and evaluated detection latency against PRIME+PROBE attacks.}
     \resumeItemListEnd
 %
     \resumeProjectHeadingWithLabel
-    {\textbf{autofz: Automated Fuzzer Composition at Runtime} $|$
+    {\textbf{autofz: Automated Fuzzer Composition at Runtime} $|$ 
     \href{https://www.usenix.org/system/files/sec23fall-prepub-446-fu.pdf}{Paper}
     $|$
     \href{https://news.ycombinator.com/item?id=34977319}{Hacker News}}{USENIX 2023}{paper:autofz}
     \resumeItemListStart
-        \resumeItem{Eliminated the need for per-target fuzzer selection by building a runtime coordinator that measures each fuzzer's coverage}
-        %via AFL bitmaps and reallocates CPU time with AIMD, lifting bug-finding throughput by up to 3$\times$ over the best single fuzzer across 12 targets.}
+        \resumeItem{Eliminated the need for per-target fuzzer selection by building a runtime coordinator that measures each fuzzer's coverage gain via AFL bitmaps and reallocates CPU time with AIMD, lifting bug-finding throughput by up to 3$\times$ over the best single fuzzer across 12 targets.}
         \resumeItem{Implemented the orchestration layer in Python using Linux cgroups for CPU pinning; integrated 12 fuzzers (AFL, AFLFast, MOpt, RedQueen, QSYM, Angora, and others) under a unified coverage-feedback interface.}
     \resumeItemListEnd
 %
@@ -424,15 +430,15 @@
     \href{https://www.youtube.com/watch?v=hyuZFf3QxvM}{Demo}
     }{USENIX 2017}{paper:sgx-rop}
     \resumeItemListStart
-        \resumeItem{Demonstrated the first ROP attack against Intel SGX: exploited the deterministic AEX fault oracle to probe enclave memory word-by-word and reconstruct a gadget map \emph{without any binary knowledge} and showcased full key-exfiltration}
-        \resumeItem{Built the AEX-based memory scanner and ROP-chain generator in C/x86 assembly; reverse-engineered Intel SGX library (e.g., EPCM/TCS/SSA layouts) to locate gadgets and craft the exploit entirely from outside the enclave.}
+        \resumeItem{Demonstrated the first blind ROP attack against Intel SGX: exploited the deterministic AEX fault oracle to probe enclave memory word-by-word and reconstruct a gadget map --- without any binary knowledge --- then chained a \texttt{memcpy()} gadget into a full key-exfiltration payload.}
+        \resumeItem{Built the AEX-based memory scanner and ROP-chain generator in C/x86 assembly; reverse-engineered EPCM/TCS/SSA layouts to locate gadgets and craft the exploit entirely from outside the enclave.}
     \resumeItemListEnd
 %
     \resumeProjectHeadingWithLabel
-    {\textbf{SGX-Bomb: Locking Down the Processor via Rowhammer Attack} $|$
+    {\textbf{SGX-Bomb: Locking Down the Processor via Rowhammer Attack} $|$ 
     \href{https://www.unexploitable.systems/uploads/jang:sgx-bomb.pdf}{Paper} $|$
     \href{https://news.ycombinator.com/item?id=15743608}{Hacker News} $|$
-    \href{https://www.youtube.com/watch?v=HUAyTLV_Mao}
+    \href{https://www.youtube.com/watch?v=HUAyTLV_Mao} 
     {Demo}
     }{SysTEX 2017}{paper:sgx-bomb}
     \resumeItemListStart
@@ -446,7 +452,7 @@
     \resumeItemListStart
         \resumeItem{Extended ARM TrustZone to protect arbitrary user-space processes without porting them to the Secure World, by intercepting Linux scheduling events in Monitor mode and switching per-process stage-2 page tables on each context switch.}
         \resumeItem{Implemented the stage-2 page table allocator and the Monitor-mode context-switch handler in ARM assembly; modified the Linux scheduler to emit SVC calls that trigger the switch between trusted and untrusted page tables.}
-       
+        
     \resumeItemListEnd
 
 %
@@ -457,26 +463,10 @@
         \resumeItem{Lowered the barrier to SGX research before hardware was available by building an instruction-level emulator in QEMU that faithfully reproduced EPCM, SECS, TCS, and SSA data structures, enabling enclave development and testing on commodity machines.}
         \resumeItem{Implemented \texttt{EENTER}/\texttt{EEXIT} context-switch stubs in x86 assembly, EPCM management in QEMU's softmmu, and a \texttt{sgxlib} user library with a stub-call layer that routes enclave system calls through an untrusted trampoline.}
     \resumeItemListEnd
-%  
+%   
+    %\newpage
     \resumeProjectHeadingWithLabel
-    {\textbf{PRIME+RETOUCH: When Cache is Locked and Leaked} $|$
-    \href{https://arxiv.org/abs/2402.15425}{Paper}}{Arxiv}{paper:cache-attack}
-    \resumeItemListStart
-        \resumeItem{Identified a blind spot in eviction-based cache side-channel defenses: Tree-PLRU replacement metadata can be manipulated to ``retouch'' a cache set so the victim line survives eviction silently --- bypassing Intel TSX-based monitors and Apple M1 PMU counters.}
-        \resumeItem{Reverse-engineered the Tree-PLRU state machine on recent Intel and Apple M1 caches; built the PRIME+RETOUCH PoC in x86/ARM assembly using pointer-chasing and memory barriers; demonstrated cross-core and cross-process secret recovery.}
-    \resumeItemListEnd
-%
-     \resumeProjectHeadingWithLabel
-    {\textbf{Survey On DeFi Users’ Perception of Security Breaches and Countermeasures} $|$
-    \href{https://www.usenix.org/conference/usenixsecurity24/presentation/liu-mingyi}{Paper}}
-    {USENIX 2024}{paper:defi}
-        \resumeItemListStart
-        \resumeItem{Revealed that DeFi victims overwhelmingly skip post-incident security review and instead seek new platforms to recover losses quickly, suggesting industry regulation is more effective than user education alone.}
-        \resumeItem{Conducted a two-phase study (14 semi-structured interviews + 493 survey); performed qualitative coding of interview transcripts using Dedoose.}
-    \resumeItemListEnd
-%
-   \resumeProjectHeadingWithLabel
-    {\textbf{A Rule Extraction Method Using Relevance Factor for FMM Neural Networks} $|$
+    {\textbf{A Rule Extraction Method Using Relevance Factor for FMM Neural Networks} $|$ 
     \href{https://koreascience.kr/article/JAKO201319947249078.page}{Paper}
     }{KTSDE 2013}{paper:FMM}
     \resumeItemListStart
@@ -484,6 +474,14 @@
         Enhanced Fuzzy Min-Max (FMM) neural network by incorporating the frequency of features in training.}
         \resumeItem{
         Resolved ambiguity by prioritizing clarity and relevance, while ensuring distinctiveness between features and patterns.}
+    \resumeItemListEnd
+%
+    \resumeProjectHeadingWithLabel
+    {\textbf{PRIME+RETOUCH: When Cache is Locked and Leaked} $|$ 
+    \href{https://arxiv.org/abs/2402.15425}{Paper}}{Arxiv}{paper:cache-attack}
+    \resumeItemListStart
+        \resumeItem{Identified a blind spot in eviction-based cache side-channel defenses: Tree-PLRU replacement metadata can be manipulated to ``retouch'' a cache set so the victim line survives eviction silently --- bypassing Intel TSX-based monitors and Apple M1 PMU counters.}
+        \resumeItem{Reverse-engineered the Tree-PLRU state machine on recent Intel and Apple M1 caches; built the PRIME+RETOUCH PoC in x86/ARM assembly using pointer-chasing and memory barriers; demonstrated cross-core and cross-process secret recovery.}
     \resumeItemListEnd
 %
     \resumeProjectHeadingWithLabel
@@ -498,7 +496,7 @@ The invention introduces a secure IoT gateway design, utilizing Intel SGX for pr
 \section{SOFTWARE ARTIFACTS}
 \resumeSubHeadingListStart
     \softwareArtifactHeading
-    {\makebox[2.2cm][l]{\textbf{Autofz:}} {\href{https://github.com/sslab-gatech/autofz}{\faGithub  \hspace{0.1em} https://github.com/sslab-gatech/autofz}}}
+    {\makebox[2.2cm][l]{\textbf{Autofz:}} {\href{https://github.com/sslab-gatech/autofz}{\faGithub  \hspace{0.1em} https://github.com/sslab-gatech/autofz}}} 
     {\makebox[1.0cm][l]{\faCodeFork 12} \makebox[1.0cm][l]{\faStar 85}}
     %
     \softwareArtifactHeading
@@ -531,7 +529,7 @@ The invention introduces a secure IoT gateway design, utilizing Intel SGX for pr
 %
      \resumeProjectHeadingNoBold
     {\textbf{Establishing Secure and Swift IO Path for Confidential Computing}}
-    {{Samsung Research (On-going)}}
+    {{Samsung Research (On-going)}} 
     \resumeItemListStart
         \resumeItem{
         Develop a secure and efficient way for offloading LLM models on a mobile device with hardware-enforced access control. It achieves better performance and reduced energy consumption by eliminating the need for cryptographic operation}
@@ -549,7 +547,7 @@ The invention introduces a secure IoT gateway design, utilizing Intel SGX for pr
 %
     \resumeProjectHeadingNoBold
     {\textbf{OS Kernel Behavior Modeling for Introspection}}
-    {{Agency for Defense Development}}
+    {{Agency for Defense Development}} 
     \resumeItemListStart
         \resumeItem{
         Extracted invariants to capture the benign behavior of the Linux kernel, utilizing the Daikon dynamic invariant detection tool.}
@@ -559,7 +557,7 @@ The invention introduces a secure IoT gateway design, utilizing Intel SGX for pr
 %%
     \resumeProjectHeadingNoBold
     {\textbf{Introspection Platform for Trusted Execution Environment (TEE)}}
-    {{National Security Research Institute (NSRI)}}
+    {{National Security Research Institute (NSRI)}} 
     \resumeItemListStart
         \resumeItem{
       Developed compiler-based monitoring software operating within Intel SGX, aimed at tracing all ENCLU instructions invoked within SGX enclaves to record security-critical events.}
@@ -573,7 +571,7 @@ The invention introduces a secure IoT gateway design, utilizing Intel SGX for pr
     \textbf{Institution} & \textbf{Degree} & \textbf{Field of Study} & \textbf{Dates} & \textbf{GPA} \\
     Korea Advanced Institute of Science and Technology & \emph{Ph.D.} & Information Security & Aug 2015 - Feb 2021 & {3.95} \\
     {Korea Advanced Institute of Science and Technology} & \emph{M.S.} & Information Security & Sep 2013 - Aug 2015 & {4.1} \\
-    {Handong Global University} & \emph{B.S.} & Computer Science & Mar 2010 - Aug 2013 & {4.2}
+    {Handong Global University} & \emph{B.S.} & Computer Science & Mar 2010 - Aug 2013 & {4.2} 
 \end{tabular*}
 \vspace{-6pt}
 %
@@ -637,7 +635,7 @@ The invention introduces a secure IoT gateway design, utilizing Intel SGX for pr
         \end{tabular*}\vspace{-4pt}
     \end{itemize}
     \resumeSubHeadingListLabelEnd
-   
+    
 
 \section {INVITED TALK}
     \resumeSubHeadingListLabelStart
@@ -696,3 +694,4 @@ SENSE             & NDSS'24        &   2 & \textcolor{gray!80}{\rule{1pt}{4pt}} 
 \vspace{2pt}
 \end{comment}
 \end{document}
+

@@ -313,13 +313,6 @@
 \end{interestbox}
 \vspace{-3pt}
 %
-\section{TECHNICAL SKILLS}
-\begin{itemize}[leftmargin=0.1in, label={}, itemsep=1pt, topsep=0pt, parsep=0pt]
-    \item \small\textbf{Software}: C, C++, Rust, Scala, Python, TF-A, TF-RMM, Caliptra FW, PSC FW (NVIDIA IROT), Linux Kernel, KVM, QEMU, ARM/X86 Assembly, Fuzzing, GDB, CoCLI
-    \item \small\textbf{Hardware}: GEM5 (x86 simulator), Processor Pipeline, Cache, TLB, Microcode, HW Side Channel, (System)Verilog, Chisel (RISC-V), Intel SGX \& TDX, ARM CCA \& TrustZone, IOMMU, PCIe
-    \item \small\textbf{Spec}: Entity Attestation Token (EAT), Concise Reference Integrity Manifest (CoRIM), DICE Protection Environment (DPE), Security Protocol and Data Model (SPDM), TEE Device Interface Security Protocol (TDISP)
-\end{itemize}
-\vspace{-3pt}
 \section{WORK EXPERIENCE}
 \vspace{1pt}
   \resumeSubHeadingListStart
@@ -335,7 +328,7 @@
 \resumeItemListEnd
 %
 \vspace{4pt}
-\resumeItem{Led Live Firmware Activation (LFA) support for RMM, building the software stack across \emph{RMM, ATF, and Vera IROT}.}
+\resumeItem{Led Live Firmware Activation (LFA) support for RMM, building the software stack across RMM, ATF, and Vera IROT.}
 %
 \resumeItem{Hardened guest OS boot sequence and model loading using initramfs disk encryption with early attested key provisioning.}
     \resumeItemListEnd
@@ -354,7 +347,7 @@
       {Title}{Location}
       \resumeItemListStart
         \resumeItem {Demonstrated an eviction-free cache side-channel attack on x86 and Apple M1, bypassing eviction-monitoring defenses~\ref{paper:cache-attack}}
-        \resumeItem{Managed and mentored a group of 20 Ph.D. students.}
+        \resumeItem{Assisted in supervising and mentoring Ph.D. students across a large research group (20+ members).}
 
 
     \resumeItemListEnd
@@ -378,7 +371,7 @@
   \resumeSubHeadingListEnd
 %------------Publications-----------
 
-\section{PUBLICATION \& PATENT \small\href{https://scholar.google.com/citations?user=nfpCTgUAAAAJ&hl=en}{(828 citations)}}
+\section{PUBLICATION \& PATENT \small\href{https://scholar.google.com/citations?user=nfpCTgUAAAAJ&hl=en}{(829 citations)}}
 \emph{Top-tier conferences (\textcolor{venuecolor}{SP, USENIX Security, NDSS}) and Journal (\textcolor{venuecolor}{TDSC})}
 \vspace{2pt}
     \resumeSubHeadingListLabelStart
@@ -529,15 +522,6 @@ Designed a secure IoT gateway utilizing Intel SGX for protocol conversion, encry
             \resumeItem{TEEs for confidential VMs, create a unique threat model where trust cannot be placed in the host VMM and OS while still being essential for resource management. We investigate potential side channels due to this new threat model.}
           \resumeItemListEnd
 %
-     \resumeProjectHeadingNoBold
-    {\textbf{Establishing Secure and Swift IO Path for Confidential Computing}}
-    {{Samsung Research (On-going)}}
-    \resumeItemListStart
-        \resumeItem{
-        Develop a secure and efficient way for offloading LLM models on a mobile device with hardware-enforced access control. It achieves better performance and reduced energy consumption by eliminating the need for cryptographic operation}
-    \resumeItemListEnd
-%
-\newpage
     \resumeProjectHeadingNoBold
           {\textbf{Research for Virtual Machine Introspection (VMI) for Linux KVM }}
           {{Nation Security Research Institute}}
@@ -567,6 +551,14 @@ Designed a secure IoT gateway utilizing Intel SGX for protocol conversion, encry
     \resumeItemListEnd
     \resumeSubHeadingListEnd
 \end{comment}
+%
+\section{TECHNICAL SKILLS}
+\begin{itemize}[leftmargin=0.1in, label={}, itemsep=1pt, topsep=0pt, parsep=0pt]
+    \item \small\textbf{Software}: C, C++, Rust, Scala, Python, TF-A, TF-RMM, Caliptra FW, PSC FW (NVIDIA IROT), Linux Kernel, KVM, QEMU, ARM/X86 Assembly, Fuzzing, GDB, CoCLI
+    \item \small\textbf{Hardware}: GEM5 (x86 simulator), Processor Pipeline, Cache, TLB, Microcode, HW Side Channel, (System)Verilog, Chisel (RISC-V), Intel SGX \& TDX, ARM CCA \& TrustZone, IOMMU, PCIe
+    \item \small\textbf{Spec}: Entity Attestation Token (EAT), Concise Reference Integrity Manifest (CoRIM), DICE Protection Environment (DPE), Security Protocol and Data Model (SPDM), TEE Device Interface Security Protocol (TDISP)
+\end{itemize}
+\vspace{-3pt}
 %
 \section{EDUCATION}
 \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lllp{3.5cm}r@{}}
@@ -685,7 +677,7 @@ SGX-Bomb          & SysTEX'17      & 265 & \textcolor{gray!80}{\rule{58pt}{4pt}}
 OpenSGX           & NDSS'15        & 144 & \textcolor{gray!80}{\rule{32pt}{4pt}} & HW $\to$ Kernel $\to$ User \\
 PrivateZone       & TDSC'16        &  84 & \textcolor{gray!80}{\rule{18pt}{4pt}} & Firmware, Kernel \\
 PORTAL            & SP'25          &  21 & \textcolor{gray!80}{\rule{5pt}{4pt}}  & Firmware, Kernel, Driver \\
-autofz            & USENIX Sec.'23 &  21 & \textcolor{gray!80}{\rule{5pt}{4pt}}  & User-space \\
+autofz            & USENIX Sec.'23 &  22 & \textcolor{gray!80}{\rule{5pt}{4pt}}  & User-space \\
 DeFi Survey       & USENIX Sec.'24 &  15 & \textcolor{gray!80}{\rule{3pt}{4pt}}  & --- \\
 P+RETOUCH         & arXiv'24       &   1 & \textcolor{gray!80}{\rule{1pt}{4pt}}  & Hardware (Cache) \\
 SENSE             & NDSS'24        &   2 & \textcolor{gray!80}{\rule{1pt}{4pt}}  & HW Sim (GEM5) \\

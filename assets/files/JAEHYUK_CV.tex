@@ -130,8 +130,8 @@
   linecolor=interestbar,
   backgroundcolor=interestbg,
   innerleftmargin=8pt, innerrightmargin=6pt,
-  innertopmargin=5pt, innerbottommargin=5pt,
-  skipabove=2pt, skipbelow=2pt
+  innertopmargin=5pt, innerbottommargin=3pt,
+  skipabove=2pt, skipbelow=0pt
 ]{interestbox}
 
 \newcommand{\resumeProjectHeadingWithLabel}[3]{
@@ -316,19 +316,18 @@
 \begin{interestbox}
 \small\emph{I work on high-assurance systems security: Trusted Execution Environments, cryptographic attestation and root-of-trust, and hypervisor/OS isolation, paired with the adversarial side (side-channel attacks, exploit development, and fuzzing) to test whether those guarantees hold. Throughout my career, I have tackled security problems across the full hardware-software stack, driven by a desire to turn complex research problems into production-ready solutions.}
 \end{interestbox}
-%
+\vspace{-4.5pt}
 \section{WORK EXPERIENCE}
   \resumeSubHeadingListStart
     \resumeSubheading
       {Senior Security Engineer: NVIDIA Corporation, Santa Clara, CA}{Jul 2024 -- Current}
       {Title}{Location}
     \resumeItemListStart
-        \resumeItem{Owned the attestation architecture for Vera CCA and Grace/Vera bare-metal confidential computing.}
-        \resumeItem{The path runs from the silicon root of trust through signed evidence to CoRIM/CoMID reference values.}
-        \resumeItem{Implemented that chain across the bootloader, PSC firmware, Caliptra DPE, ATF, and RMM.}
-        \resumeItem{Deployed the CoRIM profiles that verify Vera CCA and bare-metal attestation, including Baremetal Secure AI.}
+        \resumeItem{Implemented end-to-end Vera CCA and Baremetal Secure AI attestation, from firmware tokens the attester retrieves.}
+        \resumeItem{Implemented CoRIM generation from golden reference values, released to customers through FLM and rim-service.}
+        \resumeItem{Implemented verifier tools that check the evidence against the released CoRIM.}
         \resumeItem{Implemented Live Firmware Activation (LFA) for the RMM, building the stack across RMM, ATF, and Vera IROT.}
-        \resumeItem{The NVFlare CVM decrypts its disk and loads the model only after initramfs attestation releases the key.}
+        \resumeItem{Protected the NVFlare model so the CVM decrypts its disk and loads it only after initramfs releases the key.}
     \resumeItemListEnd
     \resumeSubheading
       {Postdoc Researcher: Georgia Institute of Technology, Atlanta, GA}{Jan 2022 -- Jul 2024}
@@ -361,14 +360,18 @@
         \resumeItem{Developed a secure CDN that lets enterprises offload sensitive user data to an untrusted third-party cloud.}
     \resumeItemListEnd
   \resumeSubHeadingListEnd
-\vspace{3pt}
-%
+\vspace{1pt}
 \section{TECHNICAL SKILLS}
-\begin{itemize}[leftmargin=0.1in, label={}, itemsep=1pt, topsep=0pt, parsep=0pt]
-    \item \small\textbf{TEEs}: Intel SGX, Intel TDX, Arm CCA, Arm TrustZone; TF-A/ATF, TF-RMM, Caliptra DPE, PSC firmware (NVIDIA IROT); Linux kernel, KVM, QEMU, gem5
-    \item \small\textbf{Attestation and devices}: EAT, CoRIM/CoMID, DICE/DPE, SPDM, TDISP; SMMU/IOMMU, PCIe
-    \item \small\textbf{Implementation}: C, C++, Python, Rust, ARM and x86 assembly, SystemVerilog, Chisel; cache and DRAM side channels, fuzzing, GDB
-\end{itemize}
+{\small
+\renewcommand{\arraystretch}{1.0}
+\begin{tabular*}{\textwidth}{@{}l@{\hspace{2.4em}}l@{}}
+    \textbf{TEEs}: Intel SGX, Intel TDX, Arm CCA, Arm TrustZone & \textbf{Systems}: Linux kernel, KVM, QEMU, gem5 \\
+    \textbf{Attestation}: EAT, CoRIM/CoMID, DICE/DPE & \textbf{Devices}: SPDM, TDISP, SMMU/IOMMU, PCIe \\
+\end{tabular*}\\[1pt]
+\textbf{Firmware}: ATF, TF-RMM, Caliptra DPE, PSC (NVIDIA IROT)\\[1pt]
+\textbf{Languages}: C, C++, Python, Rust, ARM and x86 assembly, SystemVerilog, Chisel\\[1pt]
+\textbf{Architecture}: CPU cache/CPU pipeline, TLB/DRAM
+}
 %------------Publications-----------
 \section{PUBLICATION \& PATENT \small\href{https://scholar.google.com/citations?user=nfpCTgUAAAAJ&hl=en}{(866 citations)}}
 \emph{Selected TEE and platform-security work. Venues: \textbf{S\&P, USENIX Security, NDSS, TDSC}.}
@@ -464,7 +467,7 @@
     \resumeItemListEnd
 \end{enumerate}
 
-% adjust vscape based on the space you want to leave between each section.
+\vspace{1pt}
 \section{SOFTWARE ARTIFACTS}
 \begin{enumerate}[leftmargin=0.0in, label={[\arabic*]}, itemsep=0pt, topsep=2pt]
     \softwareArtifactHeading
@@ -528,21 +531,23 @@
     \resumeSubHeadingListEnd
 \end{comment}
 %
+\vspace{-1.5pt}
 \section{PROFESSIONAL ACTIVITIES}
 {\small
 \textbf{Journal/Conference Reviewer}\\[2pt]
 \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{\hspace{16pt}}l@{\extracolsep{\fill}}r@{}}
-    IEEE TDSC & \emph{2024} & Computers \& Security & \emph{2024} \\
-    JISA & \emph{2024} & IEEE Access & \emph{2024} \\
-    ACM TOIT & \emph{2024} & JCN & \emph{2024} \\
+    IEEE TDSC & \emph{IF 7.3, 2024} & Computers \& Security & \emph{IF 5.7, 2024} \\
+    JISA & \emph{IF 5.6, 2024} & IEEE Access & \emph{IF 3.9, 2024} \\
+    ACM TOIT & \emph{IF 3.9, 2024} & JCN & \emph{IF 3.6, 2024} \\
     IEEE S\&P & \emph{2016--2018, 2020--2022} & USENIX Security & \emph{2015, 2021--2024} \\
     ACM CCS & \emph{2015, 2017--2019, 2023} & NDSS & \emph{2019--2021} \\
-    ASIACCS & \emph{2015--2016, 2018} & SOSP & \emph{2021} \\
-    WWW & \emph{2018} & IEEE MASS & \emph{2024} \\
+    SOSP & \emph{2021} & WWW & \emph{2018} \\
+    ASIACCS & \emph{2015--2016, 2018} & IEEE MASS & \emph{2024} \\
     IEEE ICPADS & \emph{2024} & & \\
 \end{tabular*}
 }
 
+\vspace{-4pt}
 \section {INVITED TALKS}
     \resumeSubHeadingListLabelStart
     \item {\small\textbf{A Novel Cache Side Channel Attack without Attacker Eviction}}
@@ -561,7 +566,7 @@
         \resumeItem{Korea Institute of Information Security and Cryptology, Seoul, South Korea, Apr 2015}
     \resumeItemListEnd
     \resumeSubHeadingListLabelEnd
-%
+\vspace{1pt}
 \section{EDUCATION}
 \begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lllp{3.5cm}r@{}}
     \textbf{Institution} & \textbf{Degree} & \textbf{Field of Study} & \textbf{Dates} & \textbf{GPA} \\
@@ -575,7 +580,7 @@
     \resumeSubHeadingListStart
     \item
     \begin{tabular*}{1.00\textwidth}{l@{\extracolsep{\fill}}r}
-      \parbox[t]{0.8\textwidth}{\emph{\small Unintended Consequences of System Design: Unpremeditated Usage of Benign System Components Devastates Security}} & {\small Ph.D. Thesis.} \\
+      \parbox[t]{0.8\textwidth}{\emph{\small Unpremeditated Usage of Benign System Components Devastates Security}} & {\small Ph.D. Thesis.} \\
     \end{tabular*}\vspace{-3pt}
     %
     \resumeProjectHeadingNoBold

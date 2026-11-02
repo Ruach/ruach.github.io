@@ -4,7 +4,7 @@ GH_PAGES_DIR := $(ROOT_DIR)/gh-pages
 DEPLOY_DATE := $(shell date +'%Y-%m-%d %H:%M:%S')
 CV_SCRIPT := $(ROOT_DIR)/assets/script/build_cv.py
 
-.PHONY: build serve posts assets deploy clean_up cv cv-fast cv-open
+.PHONY: build serve posts assets deploy clean_up cv cv-fast cv-open open-cv
 
 build: chirpy gh-pages posts assets
 	@cd $(CHIRPY_DIR) && bundle exec jekyll build
@@ -54,5 +54,9 @@ cv-fast:
 # Fetch + compile + open the PDF in Preview/Skim
 cv-open:
 	python3 $(CV_SCRIPT) --open
+
+# Open the existing PDF. Does not fetch or compile.
+open-cv:
+	python3 $(CV_SCRIPT) --no-fetch --no-compile --open
 
 

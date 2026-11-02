@@ -55,10 +55,9 @@
 \textbf{Authors:} Fan Sang, \textbf{Jaehyuk Lee}, Xiaokuan Zhang, Taesoo Kim (Georgia Tech / George Mason)
 
 \subsection*{Background \& Problem}
-Arm CCA (Confidential Compute Architecture) introduces hardware-enforced \emph{Realm VMs} whose memory is protected even from the hypervisor.
-However, modern mobile SoCs integrate DMA-capable peripherals (GPU, NPU, DSP) that need to access memory.
-The IOMMU/SMMU governing these peripherals is not CCA-aware, so a peripheral's DMA can freely read/write Realm memory, breaking the confidentiality and integrity guarantees CCA provides.
-Existing solutions force the Realm to encrypt/decrypt all data handed to devices, introducing prohibitive overhead — up to 2$\times$ slowdown for GPU workloads.
+Arm CCA (Confidential Compute Architecture) creates hardware-enforced \emph{Realm VMs} whose memory is protected from untrusted software.
+Modern mobile SoCs nevertheless need Realm VMs to exchange data with DMA-capable peripherals such as GPUs, NPUs, and DSPs.
+Native Arm CCA uses encrypted memory for this device I/O, which imposes substantial performance and power overhead on mobile platforms.
 
 \subsection*{Key Insight}
 PORTAL observes that the Realm Management Monitor (TF-RMM), which already enforces Realm memory access from the CPU side, can \emph{also} manage the SMMU page tables.

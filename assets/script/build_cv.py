@@ -4,11 +4,12 @@ build_cv.py — Fetch live citation count and GitHub stars/forks, patch
 JAEHYUK_CV.tex, then compile it to PDF with pdflatex.
 
 Usage:
-    python3 build_cv.py [--no-fetch] [--no-compile]
+    python3 build_cv.py [--no-fetch] [--no-compile] [--open]
 
 Flags:
     --no-fetch    Skip web fetching; just compile the current .tex file.
-    --no-compile  Only fetch and patch; skip the pdflatex compilation step.
+    --no-compile  Skip pdflatex. Combine with --open to open the existing PDF.
+    --open        Open the PDF in Skim or Preview. Does not require compilation.
 """
 
 import re
@@ -304,7 +305,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--no-fetch",   action="store_true", help="Skip web fetching")
     parser.add_argument("--no-compile", action="store_true", help="Skip pdflatex compilation")
-    parser.add_argument("--open",       action="store_true", help="Open the PDF after compilation")
+    parser.add_argument("--open",       action="store_true", help="Open the PDF; does not require compilation")
     args = parser.parse_args()
 
     citations: int | None = None
@@ -337,10 +338,11 @@ def main() -> None:
         ok = compile_tex()
         if not ok:
             sys.exit(1)
-        if args.open:
-            open_pdf()
     else:
         print("[info] Skipping compilation (--no-compile).")
+
+    if args.open:
+        open_pdf()
 
 
 if __name__ == "__main__":
